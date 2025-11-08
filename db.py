@@ -813,6 +813,95 @@ def get_trade_by_id(trade_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+WRITABLE_TRADE_FIELDS = [
+    "opened_at_utc",
+    "closed_at_utc",
+    "local_tz",
+    "date_local",
+    "time_local",
+    "account_id",
+    "setup_id",
+    "analysis_id",
+    "asset",
+    "entry_price",
+    "stop_loss",
+    "take_profit",
+    "position_size",
+    "risk_pct",
+    "session",
+    "state",
+    "result",
+    "net_pnl",
+    "risk_reward",
+    "reward_percent",
+    "status",
+    "emotional_problem",
+    "hot_thoughts",
+    "cold_thoughts",
+    "retrospective_note",
+]
+
+
+def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: data[k] for k in WRITABLE_TRADE_FIELDS if k in data}
+
+
+def create_trade(data: Dict[str, Any]) -> int:
+    payload = _normalize_trade_payload(data)
+    if not payload:
+        raise ValueError("Нет данных для создания сделки.")
+
+    columns = ", ".join(payload.keys())
+    placeholders = ", ".join(["?"] * len(payload))
+    values = list(payload.values())
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT INTO trades ({columns}) VALUES ({placeholders})",
+            values,
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def update_trade(trade_id: int, data: Dict[str, Any]) -> None:
+    payload = _normalize_trade_payload(data)
+    if not payload:
+        return
+
+    assignments = ", ".join(f"{col}=?" for col in payload.keys())
+    values = list(payload.values())
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE trades SET {assignments} WHERE id=?",
+            values + [trade_id],
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f"Сделка #{trade_id} не найдена.")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_trade(trade_id: int) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM trades WHERE id=?", (trade_id,))
+        if cur.rowcount == 0:
+            raise ValueError(f"Сделка #{trade_id} не найдена.")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 TRADE_COLUMNS = [
     "id",
     "opened_at_utc",
