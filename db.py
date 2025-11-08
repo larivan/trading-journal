@@ -1,11 +1,12 @@
 # db.py — SQLite wrapper for Trade Journal (Python 3.9)
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 # Справочники вынесены в config.py
 from config import (
+    ASSETS,
     ANALYSIS_SECTIONS,
     RESULT_VALUES,
     SESSION_VALUES,
@@ -244,7 +245,6 @@ CREATE INDEX IF NOT EXISTS idx_trades_setup        ON trades(setup_id);
 CREATE INDEX IF NOT EXISTS idx_trades_opened_utc   ON trades(opened_at_utc);
 
 CREATE INDEX IF NOT EXISTS idx_analyses_date_local ON analyses(date_local);
-CREATE INDEX IF NOT EXISTS idx_analyses_type       ON analyses(type);
 CREATE INDEX IF NOT EXISTS idx_analyses_asset      ON analyses(asset);
 """
 
@@ -813,11 +813,52 @@ def get_trade_by_id(trade_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+TRADE_COLUMNS = [
+    "id",
+    "opened_at_utc",
+    "closed_at_utc",
+    "local_tz",
+    "date_local",
+    "time_local",
+    "account_id",
+    "setup_id",
+    "analysis_id",
+    "asset",
+    "entry_price",
+    "stop_loss",
+    "take_profit",
+    "position_size",
+    "risk_pct",
+    "session",
+    "state",
+    "result",
+    "net_pnl",
+    "risk_reward",
+    "reward_percent",
+    "status",
+    "emotional_problem",
+    "hot_thoughts",
+    "cold_thoughts",
+    "retrospective_note",
+]
+
+TRADE_COMPAT_COLUMNS = [
+    "result AS trade_result",
+    "risk_reward AS rr",
+    "net_pnl AS pnl",
+    "date_local AS trade_date",
+    "time_local AS open_time",
+    "opened_at_utc AS created_at",
+    "status AS trade_status",
+]
+
+
 def list_trades(filters: Optional[Dict[str, Any]] = None,
                 order_by: Optional[str] = None,
                 ascending: bool = True) -> List[Dict[str, Any]]:
     filters = filters or {}
-    q = "SELECT * FROM trades WHERE 1=1"
+    select_clause = ", ".join(TRADE_COLUMNS + TRADE_COMPAT_COLUMNS)
+    q = f"SELECT {select_clause} FROM trades WHERE 1=1"
     p: List[Any] = []
 
     mapping = {
@@ -853,6 +894,79 @@ def list_trades(filters: Optional[Dict[str, Any]] = None,
     try:
         rows = conn.execute(q, p).fetchall()
         return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
+def seed_test_trades(count: int = 10) -> None:
+    """
+    Insert synthetic trades for manual testing/demo purposes.
+    Creates `count` rows with alternating states/results.
+    """
+    if count <= 0:
+        return
+
+    sessions = SESSION_VALUES or ["Other"]
+    now = datetime.utcnow()
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        for idx in range(count):
+            opened_at = now - timedelta(hours=idx * 6)
+            closed_at = opened_at + timedelta(hours=2)
+            is_closed = idx % 3 != 0  # roughly 2/3 closed
+            is_reviewed = is_closed and idx % 5 == 0
+
+            state = "reviewed" if is_reviewed else (
+                "closed" if is_closed else "open")
+            result = RESULT_VALUES[idx %
+                                   len(RESULT_VALUES)] if is_closed else None
+            net_pnl = float((idx + 1) * 50) if is_closed else None
+            risk_reward = round(1.0 + (idx % 4) * 0.5,
+                                2) if is_closed else None
+            reward_percent = round(
+                risk_reward * 10, 2) if risk_reward else None
+
+            cur.execute("""
+                INSERT INTO trades (
+                    opened_at_utc, closed_at_utc,
+                    local_tz, date_local, time_local,
+                    account_id, setup_id, analysis_id, asset,
+                    entry_price, stop_loss, take_profit, position_size,
+                    risk_pct, session, state,
+                    result, net_pnl, risk_reward, reward_percent,
+                    status, emotional_problem, hot_thoughts, cold_thoughts, retrospective_note
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                opened_at.strftime("%Y-%m-%dT%H:%M:%S"),
+                closed_at.strftime("%Y-%m-%dT%H:%M:%S") if is_closed else None,
+                "UTC",
+                opened_at.strftime("%Y-%m-%d"),
+                opened_at.strftime("%H:%M:%S"),
+                None,  # account_id
+                None,  # setup_id
+                None,  # analysis_id
+                ASSETS[idx % len(ASSETS)] if ASSETS else f"SYMBOL{idx+1}",
+                100.0 + idx,
+                95.0 + idx,
+                110.0 + idx,
+                1.0 + idx * 0.1,
+                0.5 + (idx % 5) * 0.1,
+                sessions[idx % len(sessions)],
+                state,
+                result,
+                net_pnl,
+                risk_reward,
+                reward_percent,
+                STATUS_VALUES[idx %
+                              len(STATUS_VALUES)] if STATUS_VALUES else None,
+                "stress" if idx % 4 == 0 else None,
+                "Impulse entry" if idx % 2 == 0 else None,
+                "Calm review" if idx % 3 == 0 else None,
+                "Auto-generated sample"
+            ))
+        conn.commit()
     finally:
         conn.close()
 
