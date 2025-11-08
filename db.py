@@ -1,4 +1,5 @@
 # db.py — SQLite wrapper for Trade Journal (Python 3.9)
+import json
 import os
 import sqlite3
 from datetime import datetime, timedelta
@@ -8,10 +9,10 @@ from typing import Any, Dict, List, Optional
 from config import (
     ASSETS,
     ANALYSIS_SECTIONS,
+    EMOTIONAL_PROBLEMS,
     RESULT_VALUES,
     SESSION_VALUES,
     STATE_VALUES,
-    STATUS_VALUES,
 )
 
 # =====================================================================
@@ -30,8 +31,6 @@ def _enum_sql(values: List[str]) -> str:
 
 TRADE_ORDER_COLUMNS = {
     "id",
-    "opened_at_utc",
-    "closed_at_utc",
     "date_local",
     "time_local",
     "account_id",
@@ -45,6 +44,8 @@ TRADE_ORDER_COLUMNS = {
     "risk_reward",
     "reward_percent",
 }
+
+NOTE_CATEGORIES = ("general", "observation", "review")
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -70,6 +71,73 @@ def _now_iso_utc() -> str:
 
 def _rows_to_dicts(rows: List[sqlite3.Row]) -> List[Dict[str, Any]]:
     return [dict(r) for r in rows]
+
+
+def _serialize_emotional_problems(value: Optional[Any]) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                selection = [item for item in parsed
+                             if item in EMOTIONAL_PROBLEMS]
+                return json.dumps(selection) if selection else None
+        except json.JSONDecodeError:
+            pass
+        selection = [
+            item.strip() for item in value.split(",")
+            if item.strip() in EMOTIONAL_PROBLEMS
+        ]
+        return json.dumps(selection) if selection else None
+    if isinstance(value, (list, tuple, set)):
+        selection = [item for item in value if item in EMOTIONAL_PROBLEMS]
+        return json.dumps(selection) if selection else None
+    return None
+
+
+def parse_emotional_problems(raw: Optional[str]) -> List[str]:
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [item for item in parsed if item in EMOTIONAL_PROBLEMS]
+        except json.JSONDecodeError:
+            pass
+        return [
+            item.strip() for item in raw.split(",")
+            if item.strip() in EMOTIONAL_PROBLEMS
+        ]
+    if isinstance(raw, (list, tuple)):
+        return [item for item in raw if item in EMOTIONAL_PROBLEMS]
+    return []
+
+
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    cur = conn.execute(f"PRAGMA table_info({table})")
+    return any(row[1] == column for row in cur.fetchall())
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column_def: str) -> None:
+    column_name = column_def.split()[0]
+    if not _column_exists(conn, table, column_name):
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column_def}")
+
+
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    """Ensure new columns exist for backward compatibility."""
+    _ensure_column(conn, "trades", "estimation INTEGER")
+    _ensure_column(conn, "trades", "emotional_problems TEXT")
+    _ensure_column(
+        conn,
+        "notes",
+        "category TEXT DEFAULT 'general' CHECK (category IN ('general','observation','review'))",
+    )
 
 # =====================================================================
 # Schema (built from constants)
@@ -142,8 +210,6 @@ CREATE TABLE IF NOT EXISTS analyses (
 CREATE TABLE IF NOT EXISTS trades (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    opened_at_utc      TEXT,
-    closed_at_utc      TEXT,
     local_tz           TEXT,
     date_local         TEXT,
     time_local         TEXT,
@@ -153,26 +219,20 @@ CREATE TABLE IF NOT EXISTS trades (
     analysis_id        INTEGER,
     asset              TEXT,
 
-    entry_price        REAL,
-    stop_loss          REAL,
-    take_profit        REAL,
-    position_size      REAL,
-    risk_pct           REAL,
-
     session            TEXT CHECK (session IN ({_enum_sql(SESSION_VALUES)})),
 
     state              TEXT CHECK (state IN ({_enum_sql(STATE_VALUES)})),
     result             TEXT CHECK (result IN ({_enum_sql(RESULT_VALUES)})),
 
     net_pnl            REAL,
+    risk_pct           REAL,
     risk_reward        REAL,
     reward_percent     REAL,
+    estimation         INTEGER,
 
-    status             TEXT CHECK (status IN ({_enum_sql(STATUS_VALUES)})),
-    emotional_problem  TEXT,
+    emotional_problems TEXT,
     hot_thoughts       TEXT,
     cold_thoughts      TEXT,
-    retrospective_note TEXT,
 
     FOREIGN KEY (account_id)  REFERENCES accounts(id)  ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (setup_id)    REFERENCES setups(id)    ON DELETE SET NULL   ON UPDATE CASCADE,
@@ -242,7 +302,6 @@ CREATE INDEX IF NOT EXISTS idx_trades_account      ON trades(account_id);
 CREATE INDEX IF NOT EXISTS idx_trades_asset        ON trades(asset);
 CREATE INDEX IF NOT EXISTS idx_trades_result       ON trades(result);
 CREATE INDEX IF NOT EXISTS idx_trades_setup        ON trades(setup_id);
-CREATE INDEX IF NOT EXISTS idx_trades_opened_utc   ON trades(opened_at_utc);
 
 CREATE INDEX IF NOT EXISTS idx_analyses_date_local ON analyses(date_local);
 CREATE INDEX IF NOT EXISTS idx_analyses_asset      ON analyses(asset);
@@ -255,6 +314,7 @@ def init_db() -> None:
     conn = get_conn()
     try:
         conn.executescript(SCHEMA_SQL)
+        _run_migrations(conn)
         conn.commit()
     finally:
         conn.close()
@@ -321,16 +381,48 @@ def list_setups() -> List[Dict[str, Any]]:
 # =====================================================================
 
 
-def add_note(title: Optional[str], body: str, tags: Optional[str] = None) -> int:
+def add_note(title: Optional[str], body: str,
+             tags: Optional[str] = None,
+             category: Optional[str] = None) -> int:
     conn = get_conn()
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO notes (title, body, tags, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO notes (title, body, tags, created_at) VALUES (?, ?, ?, ?, ?)",
             (title, body, tags, _now_iso_utc())
         )
         conn.commit()
         return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def update_note(note_id: int, title: Optional[str], body: str,
+                tags: Optional[str] = None) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE notes
+            SET title=?, body=?, tags=?
+            WHERE id=?
+            """,
+            (title, body, tags, note_id)
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f"Заметка #{note_id} не найдена.")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_note(note_id: int) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM notes WHERE id=?", (note_id,))
+        conn.commit()
     finally:
         conn.close()
 
@@ -398,11 +490,35 @@ def link_chart_to_trade(trade_id: int, chart_id: int) -> None:
         conn.close()
 
 
+def unlink_chart_from_trade(trade_id: int, chart_id: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "DELETE FROM trade_charts WHERE trade_id=? AND chart_id=?",
+            (trade_id, chart_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def link_note_to_trade(trade_id: int, note_id: int) -> None:
     conn = get_conn()
     try:
         conn.execute(
             "INSERT OR IGNORE INTO trade_notes (trade_id, note_id) VALUES (?, ?)",
+            (trade_id, note_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def unlink_note_from_trade(trade_id: int, note_id: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "DELETE FROM trade_notes WHERE trade_id=? AND note_id=?",
             (trade_id, note_id)
         )
         conn.commit()
@@ -424,18 +540,85 @@ def list_charts_for_trade(trade_id: int) -> List[Dict[str, Any]]:
         conn.close()
 
 
+def delete_chart_if_unused(chart_id: int) -> None:
+    conn = get_conn()
+    try:
+        row = conn.execute("""
+            SELECT
+                (SELECT COUNT(*) FROM trade_charts WHERE chart_id=?) +
+                (SELECT COUNT(*) FROM analysis_charts WHERE chart_id=?) AS cnt
+        """, (chart_id, chart_id)).fetchone()
+        if row and row[0] == 0:
+            conn.execute("DELETE FROM charts WHERE id=?", (chart_id,))
+            conn.commit()
+    finally:
+        conn.close()
+
+
+def replace_trade_charts(trade_id: int, charts: List[Dict[str, Any]]) -> None:
+    existing = list_charts_for_trade(trade_id)
+    for chart in existing:
+        unlink_chart_from_trade(trade_id, chart["id"])
+        delete_chart_if_unused(chart["id"])
+
+    for chart in charts:
+        title = (chart.get("title") or "").strip() or None
+        chart_url = (chart.get("chart_url") or "").strip()
+        if not chart_url:
+            continue
+        chart_id = add_chart(title=title, chart_url=chart_url,
+                             description=chart.get("description"))
+        link_chart_to_trade(trade_id, chart_id)
+
+
 def list_notes_for_trade(trade_id: int) -> List[Dict[str, Any]]:
     conn = get_conn()
     try:
-        rows = conn.execute("""
+        query = """
             SELECT n.* FROM notes n
             JOIN trade_notes tn ON tn.note_id = n.id
             WHERE tn.trade_id = ?
-            ORDER BY n.id ASC
-        """, (trade_id,)).fetchall()
+        """
+        params: List[Any] = [trade_id]
+        query += " ORDER BY n.id ASC"
+        rows = conn.execute(query, params).fetchall()
         return _rows_to_dicts(rows)
     finally:
         conn.close()
+
+
+def replace_trade_notes(trade_id: int, notes: List[Dict[str, Any]]) -> None:
+    existing_notes = {
+        note["id"]: note for note in list_notes_for_trade(trade_id)
+    }
+    kept_ids = set()
+
+    for note in notes:
+        body = (note.get("body") or "").strip()
+        title = (note.get("title") or "").strip() or None
+        tags = (note.get("tags") or "").strip() or None
+        if not body:
+            continue
+        raw_id = note.get("id")
+        try:
+            note_id = int(
+                raw_id) if raw_id is not None and raw_id != "" else None
+        except (TypeError, ValueError):
+            note_id = None
+
+        if note_id and note_id in existing_notes:
+            update_note(note_id, title, body, tags=tags)
+            link_note_to_trade(trade_id, note_id)
+            kept_ids.add(note_id)
+        else:
+            new_id = add_note(title, body, tags=tags)
+            link_note_to_trade(trade_id, new_id)
+            kept_ids.add(new_id)
+
+    for note_id in list(existing_notes.keys()):
+        if note_id not in kept_ids:
+            unlink_note_from_trade(trade_id, note_id)
+            delete_note(note_id)
 
 
 def link_chart_to_analysis(analysis_id: int, chart_id: int, section: str) -> None:
@@ -611,7 +794,8 @@ def list_analysis() -> List[Dict[str, Any]]:
     conn = get_conn()
     try:
         rows = conn.execute(
-            "SELECT * FROM analyses ORDER BY name ASC").fetchall()
+            "SELECT * FROM analyses ORDER BY date_local DESC, time_local DESC, id DESC"
+        ).fetchall()
         return _rows_to_dicts(rows)
     finally:
         conn.close()
@@ -641,17 +825,14 @@ def open_trade(data: Dict[str, Any]) -> int:
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO trades (
-                opened_at_utc, closed_at_utc,
                 local_tz, date_local, time_local,
                 account_id, setup_id, analysis_id, asset,
-                entry_price, stop_loss, take_profit, position_size,
                 risk_pct, session, state,
                 result, net_pnl, risk_reward, reward_percent,
-                status, emotional_problem, hot_thoughts, cold_thoughts, retrospective_note
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                estimation,
+                emotional_problems, hot_thoughts, cold_thoughts
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            data.get("opened_at_utc") or _now_iso_utc(),
-            None,
             data.get("local_tz"),
             data.get("date_local"),
             data.get("time_local"),
@@ -659,10 +840,6 @@ def open_trade(data: Dict[str, Any]) -> int:
             data.get("setup_id"),
             data.get("analysis_id"),
             data.get("asset"),
-            data.get("entry_price"),
-            data.get("stop_loss"),
-            data.get("take_profit"),
-            data.get("position_size"),
             float(data.get("risk_pct")) if data.get(
                 "risk_pct") is not None else None,
             data.get("session"),
@@ -671,11 +848,13 @@ def open_trade(data: Dict[str, Any]) -> int:
             None,  # net_pnl
             None,  # risk_reward
             None,  # reward_percent
-            data.get("status"),
-            data.get("emotional_problem"),
+            int(data.get("estimation")) if data.get(
+                "estimation") is not None else None,
+            _serialize_emotional_problems(
+                data.get("emotional_problems")
+                or data.get("emotional_problem")),
             data.get("hot_thoughts"),
             data.get("cold_thoughts"),
-            data.get("retrospective_note")
         ))
         conn.commit()
         return cur.lastrowid
@@ -814,8 +993,6 @@ def get_trade_by_id(trade_id: int) -> Optional[Dict[str, Any]]:
 
 
 WRITABLE_TRADE_FIELDS = [
-    "opened_at_utc",
-    "closed_at_utc",
     "local_tz",
     "date_local",
     "time_local",
@@ -823,10 +1000,6 @@ WRITABLE_TRADE_FIELDS = [
     "setup_id",
     "analysis_id",
     "asset",
-    "entry_price",
-    "stop_loss",
-    "take_profit",
-    "position_size",
     "risk_pct",
     "session",
     "state",
@@ -834,16 +1007,28 @@ WRITABLE_TRADE_FIELDS = [
     "net_pnl",
     "risk_reward",
     "reward_percent",
-    "status",
-    "emotional_problem",
+    "estimation",
+    "emotional_problems",
     "hot_thoughts",
     "cold_thoughts",
-    "retrospective_note",
 ]
 
 
 def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
-    return {k: data[k] for k in WRITABLE_TRADE_FIELDS if k in data}
+    payload: Dict[str, Any] = {}
+    for key in WRITABLE_TRADE_FIELDS:
+        if key not in data:
+            continue
+        value = data[key]
+        if key == "estimation" and value is not None:
+            try:
+                value = int(value)
+            except (TypeError, ValueError):
+                raise ValueError("estimation должно быть целым числом.")
+        if key == "emotional_problems":
+            value = _serialize_emotional_problems(value)
+        payload[key] = value
+    return payload
 
 
 def create_trade(data: Dict[str, Any]) -> int:
@@ -904,8 +1089,6 @@ def delete_trade(trade_id: int) -> None:
 
 TRADE_COLUMNS = [
     "id",
-    "opened_at_utc",
-    "closed_at_utc",
     "local_tz",
     "date_local",
     "time_local",
@@ -913,10 +1096,6 @@ TRADE_COLUMNS = [
     "setup_id",
     "analysis_id",
     "asset",
-    "entry_price",
-    "stop_loss",
-    "take_profit",
-    "position_size",
     "risk_pct",
     "session",
     "state",
@@ -924,11 +1103,10 @@ TRADE_COLUMNS = [
     "net_pnl",
     "risk_reward",
     "reward_percent",
-    "status",
-    "emotional_problem",
+    "estimation",
+    "emotional_problems",
     "hot_thoughts",
     "cold_thoughts",
-    "retrospective_note",
 ]
 
 TRADE_COMPAT_COLUMNS = [
@@ -937,8 +1115,6 @@ TRADE_COMPAT_COLUMNS = [
     "net_pnl AS pnl",
     "date_local AS trade_date",
     "time_local AS open_time",
-    "opened_at_utc AS created_at",
-    "status AS trade_status",
 ]
 
 
@@ -977,7 +1153,7 @@ def list_trades(filters: Optional[Dict[str, Any]] = None,
                 f"order_by must be one of: {sorted(TRADE_ORDER_COLUMNS)}")
         q += f" ORDER BY {order_by} {'ASC' if ascending else 'DESC'}"
     else:
-        q += " ORDER BY date_local ASC, opened_at_utc ASC, id ASC"
+        q += " ORDER BY date_local ASC, id ASC"
 
     conn = get_conn()
     try:
@@ -1003,7 +1179,6 @@ def seed_test_trades(count: int = 10) -> None:
         cur = conn.cursor()
         for idx in range(count):
             opened_at = now - timedelta(hours=idx * 6)
-            closed_at = opened_at + timedelta(hours=2)
             is_closed = idx % 3 != 0  # roughly 2/3 closed
             is_reviewed = is_closed and idx % 5 == 0
 
@@ -1016,31 +1191,31 @@ def seed_test_trades(count: int = 10) -> None:
                                 2) if is_closed else None
             reward_percent = round(
                 risk_reward * 10, 2) if risk_reward else None
+            estimation = (idx % 5) + 1 if is_closed else None
+            problems = []
+            if idx % 2 == 0:
+                problems.append(EMOTIONAL_PROBLEMS[0]
+                                if EMOTIONAL_PROBLEMS else "emotional management")
+            if idx % 3 == 0 and len(EMOTIONAL_PROBLEMS) > 1:
+                problems.append(EMOTIONAL_PROBLEMS[1])
 
             cur.execute("""
                 INSERT INTO trades (
-                    opened_at_utc, closed_at_utc,
                     local_tz, date_local, time_local,
                     account_id, setup_id, analysis_id, asset,
-                    entry_price, stop_loss, take_profit, position_size,
                     risk_pct, session, state,
                     result, net_pnl, risk_reward, reward_percent,
-                    status, emotional_problem, hot_thoughts, cold_thoughts, retrospective_note
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    estimation,
+                    emotional_problems, hot_thoughts, cold_thoughts
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                opened_at.strftime("%Y-%m-%dT%H:%M:%S"),
-                closed_at.strftime("%Y-%m-%dT%H:%M:%S") if is_closed else None,
-                "UTC",
+                "UTC+3",
                 opened_at.strftime("%Y-%m-%d"),
                 opened_at.strftime("%H:%M:%S"),
                 None,  # account_id
                 None,  # setup_id
                 None,  # analysis_id
                 ASSETS[idx % len(ASSETS)] if ASSETS else f"SYMBOL{idx+1}",
-                100.0 + idx,
-                95.0 + idx,
-                110.0 + idx,
-                1.0 + idx * 0.1,
                 0.5 + (idx % 5) * 0.1,
                 sessions[idx % len(sessions)],
                 state,
@@ -1048,12 +1223,10 @@ def seed_test_trades(count: int = 10) -> None:
                 net_pnl,
                 risk_reward,
                 reward_percent,
-                STATUS_VALUES[idx %
-                              len(STATUS_VALUES)] if STATUS_VALUES else None,
-                "stress" if idx % 4 == 0 else None,
+                estimation,
+                json.dumps(problems) if problems else None,
                 "Impulse entry" if idx % 2 == 0 else None,
-                "Calm review" if idx % 3 == 0 else None,
-                "Auto-generated sample"
+                "Calm review" if idx % 3 == 0 else None
             ))
         conn.commit()
     finally:
