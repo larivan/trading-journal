@@ -5,10 +5,10 @@ from config import PAGES
 init_db()
 
 # Определение страниц
-nav_pages = []
+pages = []
 for page in PAGES.items():
     name, options = page
-    nav_pages.append(
+    pages.append(
         st.Page(
             f"pages/{name}.py",
             title=options['title'],
@@ -18,5 +18,19 @@ for page in PAGES.items():
         )
     )
 
-# Установка и зауск навигации
-st.navigation(nav_pages).run()
+
+# Регистрация страниц
+st.navigation(pages, position="hidden").run()
+
+# Кастомная боковая навигация (показываем только основные страницы)
+with st.sidebar:
+    st.markdown("## Navigation")
+    for page in PAGES.items():
+        name, options = page
+        if options['in_nav']:
+            st.page_link(
+                f"pages/{name}.py",
+                label=options['title'],
+                icon=options['icon']
+            )
+    st.divider()
