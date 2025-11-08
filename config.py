@@ -7,7 +7,7 @@ PAGES = {
         'in_nav': True,
     },
     'trades': {
-        'title': 'Journal',
+        'title': 'Trades Database',
         'icon': ':material/view_list:',
         'default': False,
         'layout': 'wide',

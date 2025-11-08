@@ -5,11 +5,13 @@ from db import create_trade, delete_trade, get_trade_by_id, update_trade
 
 
 def set_dialog_flag(flag: str, value: bool) -> None:
+    """Удобная обёртка для включения/отключения конкретного диалога."""
     st.session_state[flag] = value
 
 
 @st.dialog("Создание сделки")
 def create_trade_dialog() -> None:
+    """Модалка создания: собирает данные формы и пишет их в базу."""
     account_options = st.session_state.get("account_options_for_forms", {})
     form_data = render_trade_form(
         account_options,
@@ -32,6 +34,7 @@ def create_trade_dialog() -> None:
 
 @st.dialog("Редактирование сделки")
 def edit_trade_dialog() -> None:
+    """Модалка редактирования выбранной сделки."""
     trade_id = st.session_state.get("selected_trade_id")
     if not trade_id:
         st.info("Сделка не выбрана.")
@@ -63,6 +66,7 @@ def edit_trade_dialog() -> None:
 
 @st.dialog("Удаление сделки")
 def delete_trade_dialog() -> None:
+    """Модалка удаления с подтверждением и сбросом выбранной строки."""
     trade_id = st.session_state.get("selected_trade_id")
     if not trade_id:
         st.info("Сделка не выбрана.")

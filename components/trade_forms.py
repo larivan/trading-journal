@@ -7,6 +7,7 @@ from config import ASSETS, RESULT_VALUES, SESSION_VALUES, STATE_VALUES
 
 
 def _parse_time(value: Optional[str]) -> time:
+    """Гарантируем корректный объект time для таймпикера."""
     if isinstance(value, time):
         return value
     if isinstance(value, str):
@@ -20,6 +21,7 @@ def _parse_time(value: Optional[str]) -> time:
 
 
 def _parse_date(value: Optional[str]) -> date:
+    """Приводим входные данные к дате для date_input."""
     if isinstance(value, date):
         return value
     if isinstance(value, str):
@@ -32,6 +34,7 @@ def _parse_date(value: Optional[str]) -> date:
 
 
 def _format_decimal(value: Optional[Any]) -> str:
+    """Форматируем числа для текстовых полей PnL / R:R."""
     if value is None or value == "":
         return ""
     try:
@@ -48,7 +51,7 @@ def render_trade_form(
     submit_label: str,
 ) -> Optional[Dict[str, Any]]:
     """
-    Render trade form and return normalized payload after submit.
+    Отрисовывает форму сделки и возвращает нормализованный payload после отправки.
     """
     initial = initial or {}
     trade_date = _parse_date(initial.get("date_local"))
@@ -77,6 +80,7 @@ def render_trade_form(
     rr_default = _format_decimal(initial.get("risk_reward"))
 
     with st.form(form_key):
+        # --- Дата и время открытия сделки ---
         fc1, fc2 = st.columns(2)
         date_value = fc1.date_input(
             "Дата",
@@ -91,6 +95,7 @@ def render_trade_form(
         )
 
         fc3, fc4 = st.columns(2)
+        # --- Привязка к счёту и инструменту ---
         account_value = fc3.selectbox(
             "Счёт",
             account_choices,
@@ -106,6 +111,7 @@ def render_trade_form(
         )
 
         fc5, fc6 = st.columns(2)
+        # --- Состояние сделки и торговая сессия ---
         state_value = fc5.selectbox(
             "Состояние",
             STATE_VALUES or ["open"],
@@ -123,6 +129,7 @@ def render_trade_form(
         )
 
         fc7, fc8 = st.columns(2)
+        # --- Финальные показатели (результат, PnL, R:R) ---
         result_options = ["Не задано"] + (RESULT_VALUES or [])
         result_value = fc7.selectbox(
             "Результат",
@@ -145,12 +152,14 @@ def render_trade_form(
             placeholder="Например 2.5",
         )
 
+        # --- Кнопка отправки формы ---
         submitted = st.form_submit_button(submit_label, use_container_width=True)
 
     if not submitted:
         return None
 
     def _parse_float(raw: str) -> Optional[float]:
+        """Локальный парсер чисел с поддержкой запятой и пустого ввода."""
         raw = (raw or "").strip().replace(",", ".")
         if not raw:
             return None
@@ -165,6 +174,7 @@ def render_trade_form(
     if (pnl_value and pnl_float is None) or (rr_value and rr_float is None):
         return None
 
+    # --- Собираем результат в том виде, в котором его ждут сервисы БД ---
     payload: Dict[str, Any] = {
         "date_local": date_value.isoformat(),
         "time_local": time_value.strftime("%H:%M:%S"),

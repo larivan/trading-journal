@@ -8,10 +8,12 @@ def render_trades_table(
     rows,
     tab_key: str,
 ) -> Tuple[bool, Optional[int]]:
+    """Отображает таблицу сделок и возвращает информацию о новом выборе строки."""
     if not rows:
         st.info("Нет сделок для выбранного периода.")
         return False, None
 
+    # Приводим данные к человекочитаемому виду (русские заголовки, форматы дат/времени)
     df = pd.DataFrame(rows)
     display_columns = [
         "date_local",
@@ -33,18 +35,21 @@ def render_trades_table(
     })
     table["Дата"] = pd.to_datetime(table["Дата"], errors="coerce")
     if "time_local" in df.columns:
-        table.insert(1, "Время", pd.to_datetime(
-            df["time_local"], errors="coerce").dt.time)
+        table.insert(
+            1,
+            "Время",
+            pd.to_datetime(df["time_local"], errors="coerce").dt.time,
+        )
     table["Открыть"] = df["id"].apply(
         lambda tid: f"/trade-detail?trade_id={tid}"
     )
 
+    # Храним отдельный ключ таблицы для каждого периода, чтобы isolировать выбор
     table_key = f"trades_table_{tab_key}"
     st.dataframe(
         table,
         key=table_key,
         hide_index=True,
-        use_container_width=True,
         on_select="rerun",
         selection_mode=["single-row"],
         column_config={
@@ -60,6 +65,7 @@ def render_trades_table(
         },
     )
 
+    # Анализируем state, чтобы понять изменилась ли выделенная строка
     table_state = st.session_state.get(table_key, {})
     selected_rows = table_state.get("selection", {}).get("rows") if table_state else None
 

@@ -17,6 +17,7 @@ TAB_DEFINITIONS = [
 
 
 def account_options() -> Dict[str, Optional[int]]:
+    """Формирует удобный для отображения список счетов с их ID."""
     options: Dict[str, Optional[int]] = {"Все счета": None}
     for account in list_accounts():
         options[f"{account['name']} (#{account['id']})"] = account["id"]
@@ -28,6 +29,7 @@ def build_filters(
     initial_filters: Optional[Dict[str, Optional[str]]] = None,
     initial_range: Optional[Tuple[Optional[date], Optional[date]]] = None,
 ) -> Tuple[Dict[str, Optional[str]], Tuple[Optional[date], Optional[date]]]:
+    """Отрисовывает контролы фильтрации и возвращает выбранные значения."""
     initial_filters = initial_filters or {}
     today = date.today()
     default_from, default_to = initial_range or (
@@ -55,6 +57,7 @@ def build_filters(
     session_options = ["Все"] + SESSION_VALUES
     session_default = initial_filters.get("session", "Все")
 
+    # Блок UI-контролов сгруппирован, чтобы визуально связать фильтры
     with st.container():
         fc1, fc2, fc3, fc4, fc5, fc6 = st.columns(6)
         date_from, date_to = fc1.date_input(
@@ -113,6 +116,7 @@ def build_filters(
 
 
 def tab_date_range(tab_key: str) -> Tuple[Optional[date], Optional[date]]:
+    """Возвращает пресет диапазона дат для предопределённых вкладок."""
     today = date.today()
     if tab_key == "today":
         return today, today
