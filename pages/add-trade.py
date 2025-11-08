@@ -34,10 +34,13 @@ def string_to_float(raw: str, label: str) -> Optional[float]:
 
 
 def get_analysis_for_select() -> Dict[str, Optional[int]]:
-    accounts = list_analysis()
-    options: Dict[str, Optional[int]] = {}
-    for acc in accounts:
-        options[f"{acc['name']} (#{acc['id']})"] = acc["id"]
+    analyses = list_analysis()
+    options: Dict[str, Optional[int]] = {"— Не выбрано —": None}
+    for analysis in analyses:
+        date_label = analysis.get("date_local") or "Без даты"
+        asset_label = analysis.get("asset") or "—"
+        label = f"{date_label} · {asset_label} (#{analysis['id']})"
+        options[label] = analysis["id"]
     return options
 
 
@@ -92,7 +95,7 @@ with st.form("add_trade_form", clear_on_submit=False, border=False):
     #     width=200
     # )
 
-    analysis_options = get_accounts_for_select()
+    analysis_options = get_analysis_for_select()
     account_options = get_accounts_for_select()
     setup_options = get_setups_for_select()
 
@@ -122,10 +125,11 @@ with st.form("add_trade_form", clear_on_submit=False, border=False):
         ASSETS,
         index=0,
     )
+    analysis_labels = list(analysis_options.keys())
     analysis_choice = options_con.selectbox(
         "Analysis",
-        list(analysis_options.keys()),
-        index=None,
+        analysis_labels,
+        index=0,
     )
     setup_choice = options_con.selectbox(
         "Setup",
@@ -174,10 +178,11 @@ with st.form("add_trade_form", clear_on_submit=False, border=False):
         placeholder="Ваши заметки по сделке",
     )
 
-    emotional_problem = options_con.text_area(
-        "Эмоциональные сложности",
-        height=80,
-        placeholder="Что мешало? Какое было состояние?",
+    emotional_problems = options_con.multiselect(
+        "Emotional problems",
+        EMOTIONAL_PROBLEMS,
+        default=[],
+        help="Можно выбрать несколько вариантов, если сделка сопровождалась несколькими эмоциональными трудностями.",
     )
     hot_thoughts = options_con.text_area(
         "Горячие мысли",
@@ -271,7 +276,7 @@ with st.form("add_trade_form", clear_on_submit=False, border=False):
             "time_local": open_time.strftime("%H:%M:%S"),
             "account_id": account_options[account_choice],
             "setup_id": setup_options[setup_choice],
-            "analysis_id": None,
+            "analysis_id": analysis_options.get(analysis_choice),
             "asset": asset_value,
             "entry_price": entry_price,
             "stop_loss": stop_loss,
@@ -280,7 +285,7 @@ with st.form("add_trade_form", clear_on_submit=False, border=False):
             "risk_pct": float(risk_pct),
             "session": session,
             "status": None if status_choice == "— Не задано —" else status_choice,
-            "emotional_problem": emotional_problem.strip() or None,
+            "emotional_problems": emotional_problems,
             "hot_thoughts": hot_thoughts.strip() or None,
             "cold_thoughts": cold_thoughts.strip() or None,
             "retrospective_note": retrospective_note.strip() or None,

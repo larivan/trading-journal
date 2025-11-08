@@ -1,7 +1,8 @@
 import streamlit as st
 
 from components.trade_forms import render_trade_form
-from db import create_trade, delete_trade, get_trade_by_id, update_trade
+from components.trade_manager import render_trade_manager
+from db import create_trade, delete_trade, get_trade_by_id
 
 
 def set_dialog_flag(flag: str, value: bool) -> None:
@@ -32,7 +33,7 @@ def create_trade_dialog() -> None:
         st.error(f"Не удалось создать сделку: {exc}")
 
 
-@st.dialog("Редактирование сделки")
+@st.dialog("Редактирование сделки", width="large")
 def edit_trade_dialog() -> None:
     """Модалка редактирования выбранной сделки."""
     trade_id = st.session_state.get("selected_trade_id")
@@ -43,25 +44,10 @@ def edit_trade_dialog() -> None:
     if not trade:
         st.error("Сделка не найдена.")
         return
-    account_options = st.session_state.get("account_options_for_forms", {})
-    form_data = render_trade_form(
-        account_options,
-        initial=trade,
-        form_key="edit_trade_form",
-        submit_label="Сохранить",
-    )
+    render_trade_manager(trade)
     if st.button("Отмена", key="edit_trade_cancel", use_container_width=True):
         set_dialog_flag("show_edit_trade", False)
         st.rerun()
-    if not form_data:
-        return
-    try:
-        update_trade(trade_id, form_data)
-        st.success("Сделка обновлена.")
-        set_dialog_flag("show_edit_trade", False)
-        st.rerun()
-    except Exception as exc:  # pragma: no cover
-        st.error(f"Не удалось обновить сделку: {exc}")
 
 
 @st.dialog("Удаление сделки")

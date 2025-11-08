@@ -47,7 +47,8 @@ period_col, actions_col = st.columns([0.7, 0.3], vertical_alignment="bottom")
 
 with period_col:
     period_labels = [label for label, _ in TAB_DEFINITIONS]
-    default_label = st.session_state.get("trades_active_period", period_labels[0])
+    default_label = st.session_state.get(
+        "trades_active_period", period_labels[0])
     selected_label = st.segmented_control(
         "Период",
         options=period_labels,
@@ -107,13 +108,17 @@ if selection_changed:
 # --- Правый блок кнопок (создание / открытие / удаление) ---
 open_disabled = st.session_state.get("selected_trade_id") is None
 with actions_placeholder:
-    create_col, open_col, delete_col = st.columns(3, vertical_alignment="bottom")
+    create_col, open_col, delete_col = st.columns(
+        3, vertical_alignment="bottom")
     with create_col:
-        create_clicked = st.button("Создать", type="primary", key="trades_btn_create", width="stretch")
+        create_clicked = st.button(
+            "Создать", type="primary", key="trades_btn_create", width="stretch")
     with open_col:
-        open_clicked = st.button("Открыть", disabled=open_disabled, key="trades_btn_open", width="stretch")
+        open_clicked = st.button(
+            "Открыть", disabled=open_disabled, key="trades_btn_open", width="stretch")
     with delete_col:
-        delete_clicked = st.button("Удалить", disabled=open_disabled, key="trades_btn_delete", width="stretch")
+        delete_clicked = st.button(
+            "Удалить", disabled=open_disabled, key="trades_btn_delete", width="stretch")
 
 if create_clicked:
     set_dialog_flag("show_create_trade", True)
