@@ -388,7 +388,7 @@ def add_note(title: Optional[str], body: str,
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO notes (title, body, tags, created_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO notes (title, body, tags, created_at) VALUES (?, ?, ?, ?)",
             (title, body, tags, _now_iso_utc())
         )
         conn.commit()
@@ -449,8 +449,7 @@ def _require_section(section: Optional[str]) -> str:
     return section
 
 
-def add_chart(title: Optional[str], chart_url: str,
-              description: Optional[str] = None) -> int:
+def add_chart(chart_url: str, description: Optional[str] = None) -> int:
     if not chart_url:
         raise ValueError("chart_url is required.")
 
@@ -458,9 +457,9 @@ def add_chart(title: Optional[str], chart_url: str,
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO charts (title, chart_url, description, created_at) "
-            "VALUES (?, ?, ?, ?)",
-            (title, chart_url, description, _now_iso_utc())
+            "INSERT INTO charts (chart_url, description, created_at) "
+            "VALUES (?, ?, ?)",
+            (chart_url, description, _now_iso_utc())
         )
         conn.commit()
         return cur.lastrowid
@@ -562,11 +561,10 @@ def replace_trade_charts(trade_id: int, charts: List[Dict[str, Any]]) -> None:
         delete_chart_if_unused(chart["id"])
 
     for chart in charts:
-        title = (chart.get("title") or "").strip() or None
         chart_url = (chart.get("chart_url") or "").strip()
         if not chart_url:
             continue
-        chart_id = add_chart(title=title, chart_url=chart_url,
+        chart_id = add_chart(chart_url=chart_url,
                              description=chart.get("description"))
         link_chart_to_trade(trade_id, chart_id)
 
