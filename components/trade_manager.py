@@ -514,11 +514,11 @@ def _render_notes_block(
     )
 
 
-def _render_form_actions_inline(trade_key: str, *, is_create: bool) -> Tuple[bool, bool]:
-    """Кнопки действия в шапке формы рядом со статусом."""
+def _render_header_actions(trade_key: str, *, is_create: bool) -> Tuple[bool, bool]:
+    """Кнопки действий в шапке (используем обычные кнопки)."""
 
     if is_create:
-        submitted = st.form_submit_button(
+        submitted = st.button(
             "Create trade",
             type="primary",
             key=f"tm_submit_{trade_key}",
@@ -528,14 +528,14 @@ def _render_form_actions_inline(trade_key: str, *, is_create: bool) -> Tuple[boo
 
     action_col1, action_col2 = st.columns([1, 1], gap="medium")
     with action_col1:
-        submitted = st.form_submit_button(
+        submitted = st.button(
             "Save changes",
             type="primary",
             key=f"tm_submit_{trade_key}",
             use_container_width=True,
         )
     with action_col2:
-        view_clicked = st.form_submit_button(
+        view_clicked = st.button(
             "View",
             type="secondary",
             key=f"tm_view_{trade_key}",
@@ -649,73 +649,70 @@ def render_trade_manager(
     current_state = current_state if current_state in allowed_states else allowed_states[0]
     selected_state = current_state
 
-    # --- Основная форма ---
-    form_key = f"trade_manager_form_{trade_key}"
-    with st.form(form_key, border=False):
-        with st.container(border=True):
-            header_cols = st.columns(
-                [0.2, 0.3, 0.5],
-                gap="large",
-                vertical_alignment="bottom"
-            )
-            with header_cols[0]:
-                selected_state = st.selectbox(
-                    "Trade status",
-                    allowed_states,
-                    index=allowed_states.index(current_state),
-                    help="Statuses move sequentially similar to Jira.",
-                    format_func=_state_label,
-                    key=f"tm_status_{trade_key}",
-                )
-            with header_cols[2]:
-                submitted, view_clicked = _render_form_actions_inline(
-                    trade_key,
-                    is_create=is_create,
-                )
+    header_container = st.container(border=True)
+    header_cols = header_container.columns(
+        [0.2, 0.3, 0.5],
+        gap="large",
+        vertical_alignment="bottom",
+    )
+    status_col, _spacer_col, actions_col = header_cols
+    selected_state = status_col.selectbox(
+        "Trade status",
+        allowed_states,
+        index=allowed_states.index(current_state),
+        help="Statuses move sequentially similar to Jira.",
+        format_func=_state_label,
+        key=f"tm_status_{trade_key}",
+    )
+    with actions_col:
+        submitted, view_clicked = _render_header_actions(
+            trade_key,
+            is_create=is_create,
+        )
 
-        visible_stages = _visible_stages(selected_state)
-        expanded_stage = STATUS_STAGE.get(selected_state, "open")
+    visible_stages = _visible_stages(selected_state)
+    expanded_stage = STATUS_STAGE.get(selected_state, "open")
 
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            open_values = _render_open_stage(
-                trade_key=trade_key,
-                visible="open" in visible_stages,
-                expanded=(expanded_stage == "open"),
-                defaults=open_defaults,
-                account_labels=account_labels,
-                assets=assets,
-                analysis_labels=analysis_labels,
-                setup_labels=setup_labels,
-            )
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        open_values = _render_open_stage(
+            trade_key=trade_key,
+            visible="open" in visible_stages,
+            expanded=(expanded_stage == "open"),
+            defaults=open_defaults,
+            account_labels=account_labels,
+            assets=assets,
+            analysis_labels=analysis_labels,
+            setup_labels=setup_labels,
+        )
 
-            closed_inputs, emotional_defaults = _render_closed_stage(
-                trade_key=trade_key,
-                visible="closed" in visible_stages,
-                expanded=(expanded_stage == "closed"),
-                defaults=closed_defaults,
-                emotional_defaults=emotional_defaults,
-            )
+        closed_inputs, emotional_defaults = _render_closed_stage(
+            trade_key=trade_key,
+            visible="closed" in visible_stages,
+            expanded=(expanded_stage == "closed"),
+            defaults=closed_defaults,
+            emotional_defaults=emotional_defaults,
+        )
 
-            review_inputs = _render_review_stage(
-                trade_key=trade_key,
-                visible="review" in visible_stages,
-                expanded=(expanded_stage == "review"),
-                defaults=review_defaults,
-            )
+        review_inputs = _render_review_stage(
+            trade_key=trade_key,
+            visible="review" in visible_stages,
+            expanded=(expanded_stage == "review"),
+            defaults=review_defaults,
+        )
 
-        with col2:
-            charts_editor = _render_charts_block(
-                trade_key=trade_key,
-                charts_editor=charts_editor,
-            )
-            st.session_state[charts_state_key] = charts_editor
+    with col2:
+        charts_editor = _render_charts_block(
+            trade_key=trade_key,
+            charts_editor=charts_editor,
+        )
+        st.session_state[charts_state_key] = charts_editor
 
-            observations_editor = _render_notes_block(
-                trade_key=trade_key,
-                observations_editor=observations_df,
-                tag_options=tag_options,
-            )
+        observations_editor = _render_notes_block(
+            trade_key=trade_key,
+            observations_editor=observations_df,
+            tag_options=tag_options,
+        )
     if view_clicked:
         st.info("View mode will be available soon.")
 
