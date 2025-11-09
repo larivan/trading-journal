@@ -204,8 +204,3 @@ def render_trade_manager(
         st.rerun()
     except Exception as exc:  # pragma: no cover - UI feedback
         st.error(f"Failed to persist the trade: {exc}")
-
-
-def reset_trade_manager_context(context: str, *, trade_id: Optional[int] = None) -> None:
-    """Совместимость: раньше чистил session_state, теперь ничего не делает."""
-    _ = (context, trade_id)

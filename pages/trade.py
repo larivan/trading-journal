@@ -2,7 +2,7 @@ from typing import Optional
 
 import streamlit as st
 
-from components.trade_manager import render_trade_manager, reset_trade_manager_context
+from components.trade_manager import render_trade_manager
 from db import get_trade_by_id
 from helpers import apply_page_config_from_file
 
@@ -30,26 +30,20 @@ apply_page_config_from_file(__file__)
 st.session_state.setdefault("selected_trade_id", None)
 previous_trade_id = st.session_state.get("trade_page_active_id")
 
-raw_trade_id = _get_query_param_value("trade_id") or _get_query_param_value("id")
+raw_trade_id = _get_query_param_value(
+    "trade_id") or _get_query_param_value("id")
 
 if not raw_trade_id:
     if previous_trade_id is not None:
-        reset_trade_manager_context(
-            f"page_trade_{previous_trade_id}", trade_id=previous_trade_id
-        )
         st.session_state["trade_page_active_id"] = None
-    st.error("Страница открыта без параметра trade_id. Откройте сделку из трейд-менеджера.")
+    st.error(
+        "Страница открыта без параметра trade_id. Откройте сделку из трейд-менеджера.")
     st.stop()
 
 trade_id = _parse_trade_id(raw_trade_id)
 if trade_id is None:
     st.error("Некорректный параметр trade_id: укажите целое число.")
     st.stop()
-
-if previous_trade_id not in (None, trade_id):
-    reset_trade_manager_context(
-        f"page_trade_{previous_trade_id}", trade_id=previous_trade_id
-    )
 
 trade = get_trade_by_id(trade_id)
 if not trade:

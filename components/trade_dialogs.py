@@ -1,7 +1,7 @@
 import streamlit as st
 
 from components.trade_creator import render_trade_creator
-from components.trade_manager import render_trade_manager, reset_trade_manager_context
+from components.trade_manager import render_trade_manager
 from db import delete_trade, get_trade_by_id
 
 
@@ -17,7 +17,6 @@ def create_trade_dialog() -> None:
     new_trade_id = render_trade_creator(context=context_key)
     if new_trade_id:
         st.session_state["selected_trade_id"] = new_trade_id
-        reset_trade_manager_context(f"edit_{new_trade_id}", trade_id=new_trade_id)
         set_dialog_flag("show_create_trade", False)
         set_dialog_flag("show_edit_trade", True)
         st.rerun()
@@ -45,7 +44,6 @@ def edit_trade_dialog() -> None:
         default_tab="View",
     )
     if st.button("Отмена", key="edit_trade_cancel", use_container_width=True):
-        reset_trade_manager_context(context_key, trade_id=trade_id)
         set_dialog_flag("show_edit_trade", False)
         st.rerun()
 
