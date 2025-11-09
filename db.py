@@ -137,7 +137,7 @@ SCHEMA_SQL = f"""
 PRAGMA foreign_keys = ON;
 
 -- =========================
--- CORE
+-- ОСНОВНЫЕ ТАБЛИЦЫ
 -- =========================
 
 CREATE TABLE IF NOT EXISTS accounts (
@@ -161,17 +161,17 @@ CREATE TABLE IF NOT EXISTS setups (
 CREATE TABLE IF NOT EXISTS notes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     title       TEXT,
-    body        TEXT,
+    body        TEXT
 );
 
 CREATE TABLE IF NOT EXISTS charts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     chart_url    TEXT NOT NULL,
-    caption  TEXT,
+    caption      TEXT
 );
 
 -- =========================
--- ANALYSES
+-- АНАЛИЗЫ
 -- =========================
 
 CREATE TABLE IF NOT EXISTS analyses (
@@ -188,7 +188,7 @@ CREATE TABLE IF NOT EXISTS analyses (
 );
 
 -- =========================
--- TRADES
+-- СДЕЛКИ
 -- =========================
 
 CREATE TABLE IF NOT EXISTS trades (
@@ -224,7 +224,7 @@ CREATE TABLE IF NOT EXISTS trades (
 );
 
 -- =========================
--- JUNCTIONS (many-to-many)
+-- СВЯЗИ (отношения многие-ко-многим)
 -- =========================
 
 CREATE TABLE IF NOT EXISTS analysis_charts (
@@ -278,7 +278,7 @@ CREATE TABLE IF NOT EXISTS note_charts (
 );
 
 -- =========================
--- INDEXES
+-- ИНДЕКСЫ
 -- =========================
 
 CREATE INDEX IF NOT EXISTS idx_trades_date_local   ON trades(date_local);
