@@ -1,11 +1,12 @@
 from datetime import date, datetime, time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 import streamlit as st
 
 from config import ASSETS, EMOTIONAL_PROBLEMS, RESULT_VALUES
 from db import (
+    create_trade,
     list_accounts,
     list_analysis,
     list_charts_for_trade,
@@ -17,6 +18,11 @@ from db import (
     update_trade,
 )
 
+# =============================================================================
+# КОНСТАНТЫ И СЛУЖЕБНЫЕ СТРУКТУРЫ
+# =============================================================================
+# В этом блоке собраны все статусы и человеко-читаемые метки, чтобы не приходилось
+# искать их по всему файлу. При необходимости дополняем значения именно здесь.
 STATUS_TRANSITIONS: Dict[str, List[str]] = {
     "open": ["open", "closed", "cancelled", "missed"],
     "closed": ["closed", "reviewed"],
@@ -34,6 +40,7 @@ STATUS_STAGE = {
 }
 
 RESULT_PLACEHOLDER = "— Not set —"
+CREATE_ALLOWED_STATUSES = ["open", "missed"]
 
 STATE_LABELS = {
     "open": "Open",
@@ -50,19 +57,28 @@ RESULT_LABELS = {
 }
 
 
+# =============================================================================
+# ОБЩИЕ ХЕЛПЕРЫ: парсинг дат, подготовка списков, сбор таблиц
+# =============================================================================
 def _state_label(value: Optional[str]) -> str:
+    """Преобразуем технический статус в человеко-читаемое название."""
+
     if not value:
         return ""
     return STATE_LABELS.get(value, value.replace("_", " ").title())
 
 
 def _result_label(value: Optional[str]) -> str:
+    """Аналогичный хелпер для результата сделки."""
+
     if not value:
         return ""
     return RESULT_LABELS.get(value, value.replace("_", " ").title())
 
 
 def _parse_time_value(value: Optional[str]) -> time:
+    """Унифицируем входные значения времени для таймпикера."""
+
     if isinstance(value, time):
         return value
     if isinstance(value, str):
@@ -76,6 +92,8 @@ def _parse_time_value(value: Optional[str]) -> time:
 
 
 def _parse_date_value(value: Optional[str]) -> date:
+    """Гарантируем корректный объект даты."""
+
     if isinstance(value, date):
         return value
     if isinstance(value, str):
@@ -93,6 +111,8 @@ def _option_with_placeholder(
     placeholder: str,
     formatter,
 ) -> Dict[str, Optional[int]]:
+    """Формируем словарь "подпись -> id" с заглушкой."""
+
     options: Dict[str, Optional[int]] = {placeholder: None}
     for item in items:
         options[formatter(item)] = item["id"]
@@ -101,6 +121,8 @@ def _option_with_placeholder(
 
 def _current_label(options: Dict[str, Optional[int]],
                    current_value: Optional[int]) -> str:
+    """Находим текущую подпись по значению id."""
+
     for label, value in options.items():
         if value == current_value:
             return label
@@ -108,6 +130,8 @@ def _current_label(options: Dict[str, Optional[int]],
 
 
 def _notes_dataframe(notes: List[Dict[str, Any]]) -> pd.DataFrame:
+    """Превращаем список заметок в датафрейм для data_editor."""
+
     base_columns = ["id", "title", "body", "tags"]
     df = pd.DataFrame(notes or [])
     if df.empty:
@@ -126,6 +150,8 @@ def _notes_dataframe(notes: List[Dict[str, Any]]) -> pd.DataFrame:
 
 
 def _charts_dataframe(charts: List[Dict[str, Any]]) -> pd.DataFrame:
+    """Готовим датафрейм с графиками с обязательными колонками."""
+
     base_columns = ["chart_url", "description"]
     df = pd.DataFrame(charts or [])
     if df.empty:
@@ -143,6 +169,8 @@ def _charts_dataframe(charts: List[Dict[str, Any]]) -> pd.DataFrame:
 
 
 def _split_tags(raw_value: Any) -> List[str]:
+    """Разбиваем строку тегов на список и чистим пробелы."""
+
     if isinstance(raw_value, list):
         candidates = raw_value
     elif raw_value is None or pd.isna(raw_value):
@@ -160,6 +188,8 @@ def _split_tags(raw_value: Any) -> List[str]:
 
 
 def _serialize_tags(raw_value: Any) -> Optional[str]:
+    """Обратная операция для записи тегов в БД."""
+
     if isinstance(raw_value, list):
         normalized: List[str] = []
         for tag in raw_value:
@@ -177,6 +207,8 @@ def _serialize_tags(raw_value: Any) -> Optional[str]:
 
 def _prepare_note_records(editor_df: Optional[pd.DataFrame],
                           existing_ids: Optional[Set[int]] = None) -> List[Dict[str, Any]]:
+    """Нормализуем записи заметок перед replace_trade_notes."""
+
     if editor_df is None:
         return []
     existing_ids = {
@@ -185,7 +217,8 @@ def _prepare_note_records(editor_df: Optional[pd.DataFrame],
     working_df = editor_df.copy()
     if "id" not in working_df.columns:
         index_label = working_df.index.name or "index"
-        working_df = working_df.reset_index().rename(columns={index_label: "id"})
+        working_df = working_df.reset_index().rename(
+            columns={index_label: "id"})
     normalized_ids: List[Optional[int]] = []
     for raw_id in working_df["id"].tolist():
         try:
@@ -206,6 +239,8 @@ def _prepare_note_records(editor_df: Optional[pd.DataFrame],
 
 
 def _prepare_chart_records(editor_df: Optional[pd.DataFrame]) -> List[Dict[str, Any]]:
+    """Аналогичная нормализация для графиков."""
+
     if editor_df is None:
         return []
     records: List[Dict[str, Any]] = []
@@ -223,10 +258,14 @@ def _prepare_chart_records(editor_df: Optional[pd.DataFrame]) -> List[Dict[str, 
 
 
 def _allowed_statuses(current_state: str) -> List[str]:
+    """Возвращаем разрешённые переходы для текущего статуса."""
+
     return STATUS_TRANSITIONS.get(current_state, ["open"])
 
 
 def _visible_stages(selected_state: str) -> List[str]:
+    """Определяем, какие блоки формы показывать для выбранного статуса."""
+
     stage = STATUS_STAGE.get(selected_state, "open")
     if stage == "open":
         return ["open"]
@@ -237,8 +276,293 @@ def _visible_stages(selected_state: str) -> List[str]:
     return ["open"]
 
 
-def render_trade_manager(trade: Dict[str, Any]) -> None:
-    trade_id = trade["id"]
+# =============================================================================
+# UI-КОМПОНЕНТЫ: отдельные секции формы
+# =============================================================================
+def _render_open_stage(
+    *,
+    trade_key: str,
+    visible: bool,
+    expanded: bool,
+    defaults: Dict[str, Any],
+    account_labels: List[str],
+    assets: List[str],
+    analysis_labels: List[str],
+    setup_labels: List[str],
+) -> Dict[str, Any]:
+    """Секция открытия сделки (дата, счёт, сетап, риск)."""
+
+    result = defaults.copy()
+    if not visible:
+        return result
+
+    with st.expander("Opening details", expanded=expanded):
+        oc1, oc2 = st.columns(2)
+        result["date"] = oc1.date_input(
+            "Date",
+            value=result["date"],
+            format="DD.MM.YYYY",
+            key=f"tm_date_{trade_key}",
+        )
+        result["time"] = oc2.time_input(
+            "Time",
+            value=result["time"],
+            key=f"tm_time_{trade_key}",
+        )
+
+        result["account_label"] = st.selectbox(
+            "Account",
+            account_labels,
+            index=account_labels.index(result["account_label"]),
+            key=f"tm_account_{trade_key}",
+        )
+
+        result["asset"] = st.selectbox(
+            "Asset",
+            assets,
+            index=assets.index(result["asset"]),
+            key=f"tm_asset_{trade_key}",
+        )
+
+        result["analysis_label"] = st.selectbox(
+            "Daily analysis",
+            analysis_labels,
+            index=analysis_labels.index(result["analysis_label"]),
+            key=f"tm_analysis_{trade_key}",
+        )
+
+        result["setup_label"] = st.selectbox(
+            "Setup",
+            setup_labels,
+            index=setup_labels.index(result["setup_label"]),
+            key=f"tm_setup_{trade_key}",
+        )
+
+        result["risk_pct"] = st.slider(
+            "Risk per trade, %",
+            min_value=0.5,
+            max_value=2.0,
+            value=float(result["risk_pct"]),
+            step=0.1,
+            key=f"tm_risk_{trade_key}",
+        )
+    return result
+
+
+def _render_closed_stage(
+    *,
+    trade_key: str,
+    visible: bool,
+    expanded: bool,
+    defaults: Dict[str, Any],
+    emotional_defaults: List[str],
+) -> Tuple[Dict[str, Any], List[str]]:
+    """Секция фиксации результатов после закрытия сделки."""
+
+    if not visible:
+        return {}, emotional_defaults
+
+    with st.expander("After close", expanded=expanded):
+        cc1, cc2 = st.columns(2)
+        result_options = [RESULT_PLACEHOLDER] + RESULT_VALUES
+        result_value = cc1.selectbox(
+            "Result",
+            result_options,
+            index=result_options.index(
+                defaults["result"]) if defaults["result"] in result_options else 0,
+            key=f"tm_result_{trade_key}",
+            format_func=lambda value: value if value == RESULT_PLACEHOLDER else _result_label(
+                value),
+        )
+        net_pnl_value = cc2.number_input(
+            "Net PnL, $",
+            value=float(defaults["net_pnl"]),
+            step=1.0,
+            key=f"tm_pnl_{trade_key}",
+        )
+        risk_reward_value = cc1.number_input(
+            "R:R",
+            value=float(defaults["risk_reward"]),
+            step=0.1,
+            key=f"tm_rr_{trade_key}",
+        )
+        reward_percent_value = cc2.number_input(
+            "Reward %",
+            value=float(defaults["reward_percent"]),
+            step=0.5,
+            key=f"tm_reward_{trade_key}",
+        )
+
+        hot_thoughts_value = st.text_area(
+            "Hot thoughts",
+            height=100,
+            value=defaults["hot_thoughts"],
+            key=f"tm_hot_{trade_key}",
+        )
+        updated_emotions = st.multiselect(
+            "Emotional challenges",
+            EMOTIONAL_PROBLEMS,
+            default=emotional_defaults,
+            key=f"tm_emotions_{trade_key}",
+        )
+        inputs = {
+            "result": result_value,
+            "net_pnl": net_pnl_value,
+            "risk_reward": risk_reward_value,
+            "reward_percent": reward_percent_value,
+            "hot_thoughts": hot_thoughts_value,
+        }
+    return inputs, updated_emotions
+
+
+def _render_review_stage(
+    *,
+    trade_key: str,
+    visible: bool,
+    expanded: bool,
+    defaults: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Блок ревью сделки: холодные мысли + оценка."""
+
+    if not visible:
+        return None
+
+    with st.expander("Trade review", expanded=expanded):
+        cold_thoughts_value = st.text_area(
+            "Cold thoughts",
+            height=120,
+            value=defaults["cold_thoughts"],
+            key=f"tm_cold_{trade_key}",
+        )
+        estimation_value = st.feedback(
+            "thumbs",
+            default=int(defaults["estimation"] or 0),
+            key=f"tm_estimation_{trade_key}",
+        )
+        return {
+            "cold_thoughts": cold_thoughts_value,
+            "estimation": estimation_value,
+        }
+
+
+def _render_charts_block(
+    *,
+    trade_key: str,
+    charts_editor: pd.DataFrame,
+) -> pd.DataFrame:
+    """Правая колонка с таблицей графиков."""
+
+    st.markdown("#### Charts")
+    st.caption(
+        "Add a chart link (URL) and optional description. Preview is generated automatically.")
+    charts_display_df = charts_editor.copy()
+    charts_display_df["preview"] = charts_display_df["chart_url"]
+    edited_charts = st.data_editor(
+        charts_display_df,
+        hide_index=True,
+        key=f"tm_charts_{trade_key}",
+        num_rows="dynamic",
+        column_config={
+            "chart_url": st.column_config.TextColumn(
+                "Link", help="TradingView, Telegram, etc."),
+            "description": st.column_config.TextColumn(
+                "Description", help="Optional comment"),
+            "preview": st.column_config.ImageColumn(
+                "Preview",
+                help="Thumbnail will load automatically",
+                width="medium",
+            ),
+        },
+        column_order=["chart_url", "description", "preview"],
+    )
+    if edited_charts is None:
+        return charts_editor.copy()
+    return edited_charts.drop(columns=["preview"], errors="ignore").copy()
+
+
+def _render_notes_block(
+    *,
+    trade_key: str,
+    observations_editor: pd.DataFrame,
+    tag_options: List[str],
+) -> pd.DataFrame:
+    """Редактор заметок по сделке."""
+
+    st.markdown("#### Trade observations")
+    st.caption(
+        "Add short observations for the trade. You can keep multiple notes.")
+    return st.data_editor(
+        observations_editor,
+        hide_index=True,
+        key=f"tm_observations_{trade_key}",
+        num_rows="dynamic",
+        column_config={
+            "id": st.column_config.NumberColumn(
+                "ID", disabled=True, width="small"),
+            "title": st.column_config.TextColumn("Title"),
+            "body": st.column_config.TextColumn(
+                "Note", width="medium"),
+            "tags": st.column_config.MultiselectColumn(
+                "Tags",
+                help="Optional markers for filtering",
+                options=tag_options,
+                accept_new_options=True,
+                default=[],
+            ),
+        },
+        column_order=["id", "title", "body", "tags"],
+    )
+
+
+def _render_form_actions_inline(trade_key: str, *, is_create: bool) -> Tuple[bool, bool]:
+    """Кнопки действия в шапке формы рядом со статусом."""
+
+    if is_create:
+        submitted = st.form_submit_button(
+            "Create trade",
+            type="primary",
+            key=f"tm_submit_{trade_key}",
+            use_container_width=True,
+        )
+        return submitted, False
+
+    action_col1, action_col2 = st.columns([1, 1], gap="medium")
+    with action_col1:
+        submitted = st.form_submit_button(
+            "Save changes",
+            type="primary",
+            key=f"tm_submit_{trade_key}",
+            use_container_width=True,
+        )
+    with action_col2:
+        view_clicked = st.form_submit_button(
+            "View",
+            type="secondary",
+            key=f"tm_view_{trade_key}",
+            use_container_width=True,
+        )
+    return submitted, view_clicked
+
+
+# =============================================================================
+# ОСНОВНОЙ ВХОД: единый trade_manager для создания и редактирования
+# =============================================================================
+def render_trade_manager(
+    trade: Optional[Dict[str, Any]],
+    *,
+    mode: str = "edit",
+) -> None:
+    """Универсальный UI: умеет создавать новые сделки и править существующие."""
+
+    if mode not in {"edit", "create"}:
+        raise ValueError("mode должен быть 'edit' или 'create'")
+
+    is_create = mode == "create"
+    trade = trade or {}
+    trade_id = trade.get("id")
+    trade_key = str(trade_id or "new")
+
+    # --- Справочные списки (счета, сетапы, анализы) ---
     accounts = _option_with_placeholder(
         list_accounts(),
         placeholder="— Account not selected —",
@@ -259,47 +583,21 @@ def render_trade_manager(trade: Dict[str, Any]) -> None:
     setup_labels = list(setups.keys())
     analysis_labels = list(analyses.keys())
 
-    trade_notes = list_notes_for_trade(trade_id)
-    observations_df = _notes_dataframe(trade_notes)
-    existing_note_ids: Set[int] = {
-        int(note["id"]) for note in trade_notes if note.get("id") is not None
-    }
-    tag_options = sorted({
-        tag for tags in observations_df["tags"].tolist() for tag in tags
-    })
-    charts_df = _charts_dataframe(list_charts_for_trade(trade_id))
-    observations_editor = observations_df.copy()
-    charts_state_key = f"tm_charts_state_{trade_id}"
-    if charts_state_key not in st.session_state:
-        st.session_state[charts_state_key] = charts_df.copy()
-    charts_editor = st.session_state[charts_state_key]
-
-    current_state = trade.get("state") or "open"
-    allowed_states = _allowed_statuses(current_state)
-    selected_state = st.selectbox(
-        "Trade status",
-        allowed_states,
-        index=allowed_states.index(current_state)
-        if current_state in allowed_states else 0,
-        help="Statuses move sequentially similar to Jira.",
-        width=200,
-        format_func=_state_label,
-    )
-    visible_stages = _visible_stages(selected_state)
-    expanded_stage = STATUS_STAGE.get(selected_state, "open")
-
+    # --- Исходные значения для формы ---
     date_value = _parse_date_value(trade.get("date_local"))
     time_value = _parse_time_value(trade.get("time_local"))
     account_label = _current_label(accounts, trade.get("account_id"))
-    setup_label = _current_label(setups, trade.get("setup_id"))
     analysis_label = _current_label(analyses, trade.get("analysis_id"))
+    setup_label = _current_label(setups, trade.get("setup_id"))
 
-    assets = ASSETS or [trade.get("asset") or "—"]
+    asset_candidates = ASSETS or [trade.get("asset") or "—"]
     asset_default = trade.get("asset") if trade.get(
-        "asset") in assets else assets[0]
+        "asset") in asset_candidates else asset_candidates[0]
+    assets = asset_candidates if asset_default in asset_candidates else [
+        asset_default] + asset_candidates
+
     emotional_defaults = parse_emotional_problems(
         trade.get("emotional_problems"))
-
     closed_defaults = {
         "result": trade.get("result") or RESULT_PLACEHOLDER,
         "net_pnl": trade.get("net_pnl") or 0.0,
@@ -312,220 +610,119 @@ def render_trade_manager(trade: Dict[str, Any]) -> None:
         "estimation": trade.get("estimation") or 0,
     }
 
-    view_clicked = False
-    with st.form(f"trade_manager_form_{trade_id}"):
+    open_defaults = {
+        "date": date_value,
+        "time": time_value,
+        "account_label": account_label,
+        "asset": asset_default,
+        "analysis_label": analysis_label,
+        "setup_label": setup_label,
+        "risk_pct": float(trade.get("risk_pct") or 1.0),
+    }
+
+    # --- Коллекции заметок/чартов ---
+    if is_create or not trade_id:
+        trade_notes: List[Dict[str, Any]] = []
+        charts_df = _charts_dataframe([])
+    else:
+        trade_notes = list_notes_for_trade(trade_id)
+        charts_df = _charts_dataframe(list_charts_for_trade(trade_id))
+    observations_df = _notes_dataframe(trade_notes)
+    existing_note_ids: Set[int] = {
+        int(note["id"]) for note in trade_notes if note.get("id") is not None
+    }
+    tag_options = sorted({
+        tag for tags in observations_df["tags"].tolist() for tag in tags
+    })
+
+    charts_state_key = f"tm_charts_state_{trade_key}"
+    if charts_state_key not in st.session_state:
+        st.session_state[charts_state_key] = charts_df.copy()
+    charts_editor = st.session_state[charts_state_key]
+
+    # --- Управление статусами (create-режим ограничен open/missed) ---
+    current_state = trade.get("state") or "open"
+    if is_create and current_state not in CREATE_ALLOWED_STATUSES:
+        current_state = CREATE_ALLOWED_STATUSES[0]
+    allowed_states = CREATE_ALLOWED_STATUSES if is_create else _allowed_statuses(
+        current_state)
+    current_state = current_state if current_state in allowed_states else allowed_states[0]
+    selected_state = current_state
+
+    # --- Основная форма ---
+    form_key = f"trade_manager_form_{trade_key}"
+    with st.form(form_key, border=False):
+        with st.container(border=True):
+            header_cols = st.columns(
+                [0.2, 0.3, 0.5],
+                gap="large",
+                vertical_alignment="bottom"
+            )
+            with header_cols[0]:
+                selected_state = st.selectbox(
+                    "Trade status",
+                    allowed_states,
+                    index=allowed_states.index(current_state),
+                    help="Statuses move sequentially similar to Jira.",
+                    format_func=_state_label,
+                    key=f"tm_status_{trade_key}",
+                )
+            with header_cols[2]:
+                submitted, view_clicked = _render_form_actions_inline(
+                    trade_key,
+                    is_create=is_create,
+                )
+
+        visible_stages = _visible_stages(selected_state)
+        expanded_stage = STATUS_STAGE.get(selected_state, "open")
+
         col1, col2 = st.columns([1, 2])
         with col1:
-            # --- Open stage ---
-            if "open" in visible_stages:
-                with st.expander(
-                    "Opening details",
-                    expanded=(expanded_stage == "open"),
-                ):
-                    oc1, oc2 = st.columns(2)
-                    date_value = oc1.date_input(
-                        "Date",
-                        value=date_value,
-                        format="DD.MM.YYYY",
-                        key=f"tm_date_{trade_id}",
-                    )
-                    time_value = oc2.time_input(
-                        "Time",
-                        value=time_value,
-                        key=f"tm_time_{trade_id}",
-                    )
+            open_values = _render_open_stage(
+                trade_key=trade_key,
+                visible="open" in visible_stages,
+                expanded=(expanded_stage == "open"),
+                defaults=open_defaults,
+                account_labels=account_labels,
+                assets=assets,
+                analysis_labels=analysis_labels,
+                setup_labels=setup_labels,
+            )
 
-                    account_label = st.selectbox(
-                        "Account",
-                        account_labels,
-                        index=account_labels.index(account_label),
-                        key=f"tm_account_{trade_id}",
-                    )
+            closed_inputs, emotional_defaults = _render_closed_stage(
+                trade_key=trade_key,
+                visible="closed" in visible_stages,
+                expanded=(expanded_stage == "closed"),
+                defaults=closed_defaults,
+                emotional_defaults=emotional_defaults,
+            )
 
-                    asset_default = st.selectbox(
-                        "Asset",
-                        assets,
-                        index=assets.index(asset_default),
-                        key=f"tm_asset_{trade_id}",
-                    )
-
-                    analysis_label = st.selectbox(
-                        "Daily analysis",
-                        analysis_labels,
-                        index=analysis_labels.index(analysis_label),
-                        key=f"tm_analysis_{trade_id}",
-                    )
-
-                    setup_label = st.selectbox(
-                        "Setup",
-                        setup_labels,
-                        index=setup_labels.index(setup_label),
-                        key=f"tm_setup_{trade_id}",
-                    )
-
-                    risk_pct = st.slider(
-                        "Risk per trade, %",
-                        min_value=0.5,
-                        max_value=2.0,
-                        value=float(trade.get("risk_pct") or 1.0),
-                        step=0.1,
-                        key=f"tm_risk_{trade_id}",
-                    )
-
-            # --- Closed stage ---
-            closed_inputs = {}
-            if "closed" in visible_stages:
-                with st.expander(
-                    "After close",
-                    expanded=(expanded_stage == "closed"),
-                ):
-                    cc1, cc2 = st.columns(2)
-                    result_options = [RESULT_PLACEHOLDER] + RESULT_VALUES
-                    result_value = cc1.selectbox(
-                        "Result",
-                        result_options,
-                        index=result_options.index(closed_defaults["result"])
-                        if closed_defaults["result"] in result_options else 0,
-                        key=f"tm_result_{trade_id}",
-                        format_func=lambda value: value if value == RESULT_PLACEHOLDER else _result_label(value),
-                    )
-                    net_pnl_value = cc2.number_input(
-                        "Net PnL, $",
-                        value=float(closed_defaults["net_pnl"]),
-                        step=1.0,
-                        key=f"tm_pnl_{trade_id}",
-                    )
-                    risk_reward_value = cc1.number_input(
-                        "R:R",
-                        value=float(closed_defaults["risk_reward"]),
-                        step=0.1,
-                        key=f"tm_rr_{trade_id}",
-                    )
-                    reward_percent_value = cc2.number_input(
-                        "Reward %",
-                        value=float(closed_defaults["reward_percent"]),
-                        step=0.5,
-                        key=f"tm_reward_{trade_id}",
-                    )
-
-                    hot_thoughts_value = st.text_area(
-                        "Hot thoughts",
-                        height=100,
-                        value=closed_defaults["hot_thoughts"],
-                        key=f"tm_hot_{trade_id}",
-                    )
-                    emotional_defaults = st.multiselect(
-                        "Emotional challenges",
-                        EMOTIONAL_PROBLEMS,
-                        default=emotional_defaults,
-                        key=f"tm_emotions_{trade_id}",
-                    )
-                    closed_inputs = {
-                        "result": result_value,
-                        "net_pnl": net_pnl_value,
-                        "risk_reward": risk_reward_value,
-                        "reward_percent": reward_percent_value,
-                        "hot_thoughts": hot_thoughts_value,
-                    }
-
-            # --- Review stage ---
-            review_inputs = None
-            if "review" in visible_stages:
-                with st.expander(
-                    "Trade review",
-                    expanded=(expanded_stage == "review"),
-                ):
-                    cold_thoughts_value = st.text_area(
-                        "Cold thoughts",
-                        height=120,
-                        value=review_defaults["cold_thoughts"],
-                        key=f"tm_cold_{trade_id}",
-                    )
-                    estimation_value = st.feedback(
-                        "thumbs",
-                        default=int(review_defaults["estimation"]),
-                        key=f"tm_estimation_{trade_id}",
-                    )
-                    review_inputs = {
-                        "cold_thoughts": cold_thoughts_value,
-                        "estimation": estimation_value,
-                    }
+            review_inputs = _render_review_stage(
+                trade_key=trade_key,
+                visible="review" in visible_stages,
+                expanded=(expanded_stage == "review"),
+                defaults=review_defaults,
+            )
 
         with col2:
-            st.markdown("#### Charts")
-            st.caption(
-                "Add a chart link (URL) and optional description. Preview is generated automatically.")
-            charts_display_df = charts_editor.copy()
-            charts_display_df["preview"] = charts_display_df["chart_url"]
-            edited_charts = st.data_editor(
-                charts_display_df,
-                hide_index=True,
-                key=f"tm_charts_{trade_id}",
-                num_rows="dynamic",
-                column_config={
-                    "chart_url": st.column_config.TextColumn(
-                        "Link", help="TradingView, Telegram, etc."),
-                    "description": st.column_config.TextColumn(
-                        "Description", help="Optional comment"),
-                    "preview": st.column_config.ImageColumn(
-                        "Preview",
-                        help="Image fetched from the provided link.",
-                        width="medium",
-                    ),
-                },
-                column_order=["chart_url", "description", "preview"],
+            charts_editor = _render_charts_block(
+                trade_key=trade_key,
+                charts_editor=charts_editor,
             )
-            if edited_charts is not None:
-                cleaned_charts = edited_charts.drop(
-                    columns=["preview"], errors="ignore").copy()
-            else:
-                cleaned_charts = charts_editor.copy()
-            st.session_state[charts_state_key] = cleaned_charts
-            charts_editor = cleaned_charts
+            st.session_state[charts_state_key] = charts_editor
 
-            st.markdown("#### Trade observations")
-            st.caption(
-                "Add short observations for the trade. You can keep multiple notes.")
-            observations_editor = st.data_editor(
-                observations_editor,
-                hide_index=True,
-                key=f"tm_observations_{trade_id}",
-                num_rows="dynamic",
-                column_config={
-                    "id": st.column_config.NumberColumn(
-                        "ID", disabled=True, width="small"),
-                    "title": st.column_config.TextColumn("Title"),
-                    "body": st.column_config.TextColumn(
-                        "Note", width="medium"),
-                    "tags": st.column_config.MultiselectColumn(
-                        "Tags",
-                        help="Optional markers for filtering",
-                        options=tag_options,
-                        accept_new_options=True,
-                        default=[],
-                    ),
-                },
-                column_order=["id", "title", "body", "tags"],
+            observations_editor = _render_notes_block(
+                trade_key=trade_key,
+                observations_editor=observations_df,
+                tag_options=tag_options,
             )
-
-        btn_col1, btn_col2 = st.columns([1, 1])
-        with btn_col1:
-            submitted = st.form_submit_button(
-                "Save changes",
-                type="primary",
-            )
-        with btn_col2:
-            view_clicked = st.form_submit_button(
-                "View",
-                type="secondary",
-            )
-
     if view_clicked:
         st.info("View mode will be available soon.")
 
     if not submitted:
         return
 
+    # --- Валидации ---
     errors: List[str] = []
     if selected_state in ("closed", "reviewed"):
         if not closed_inputs:
@@ -540,14 +737,15 @@ def render_trade_manager(trade: Dict[str, Any]) -> None:
             st.error(err)
         return
 
+    # --- Сбор payload для БД ---
     payload: Dict[str, Any] = {
-        "date_local": date_value.isoformat(),
-        "time_local": time_value.strftime("%H:%M:%S"),
-        "account_id": accounts[account_label],
-        "asset": asset_default,
-        "analysis_id": analyses[analysis_label],
-        "setup_id": setups[setup_label],
-        "risk_pct": float(risk_pct),
+        "date_local": open_values["date"].isoformat(),
+        "time_local": open_values["time"].strftime("%H:%M:%S"),
+        "account_id": accounts[open_values["account_label"]],
+        "asset": open_values["asset"],
+        "analysis_id": analyses[open_values["analysis_label"]],
+        "setup_id": setups[open_values["setup_label"]],
+        "risk_pct": float(open_values["risk_pct"]),
         "state": selected_state,
     }
 
@@ -567,6 +765,7 @@ def render_trade_manager(trade: Dict[str, Any]) -> None:
             "risk_reward": None,
             "reward_percent": None,
             "hot_thoughts": None,
+            "emotional_problems": None,
         })
 
     if review_inputs:
@@ -584,18 +783,35 @@ def render_trade_manager(trade: Dict[str, Any]) -> None:
         payload["closed_at_utc"] = datetime.utcnow().strftime(
             "%Y-%m-%dT%H:%M:%S")
 
+    # --- Сохранение: create или update ---
     try:
-        update_trade(trade_id, payload)
-        replace_trade_notes(
-            trade_id,
-            _prepare_note_records(observations_editor, existing_note_ids)
-        )
-        replace_trade_charts(
-            trade_id,
-            _prepare_chart_records(charts_editor),
-        )
-        st.session_state.pop(charts_state_key, None)
-        st.success("Trade updated.")
+        if is_create:
+            new_trade_id = create_trade(payload)
+            replace_trade_notes(
+                new_trade_id,
+                _prepare_note_records(observations_editor, existing_note_ids),
+            )
+            replace_trade_charts(
+                new_trade_id,
+                _prepare_chart_records(charts_editor),
+            )
+            st.session_state.pop(charts_state_key, None)
+            st.success("Сделка создана.")
+        else:
+            if trade_id is None:
+                raise ValueError(
+                    "Не выбран trade_id для режима редактирования")
+            update_trade(trade_id, payload)
+            replace_trade_notes(
+                trade_id,
+                _prepare_note_records(observations_editor, existing_note_ids),
+            )
+            replace_trade_charts(
+                trade_id,
+                _prepare_chart_records(charts_editor),
+            )
+            st.session_state.pop(charts_state_key, None)
+            st.success("Trade updated.")
         st.rerun()
     except Exception as exc:  # pragma: no cover - UI feedback
-        st.error(f"Failed to update the trade: {exc}")
+        st.error(f"Failed to persist the trade: {exc}")

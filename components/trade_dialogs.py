@@ -1,8 +1,7 @@
 import streamlit as st
 
-from components.trade_forms import render_trade_form
 from components.trade_manager import render_trade_manager
-from db import create_trade, delete_trade, get_trade_by_id
+from db import delete_trade, get_trade_by_id
 
 
 def set_dialog_flag(flag: str, value: bool) -> None:
@@ -10,27 +9,13 @@ def set_dialog_flag(flag: str, value: bool) -> None:
     st.session_state[flag] = value
 
 
-@st.dialog("Создание сделки")
+@st.dialog("Создание сделки", width="large")
 def create_trade_dialog() -> None:
     """Модалка создания: собирает данные формы и пишет их в базу."""
-    account_options = st.session_state.get("account_options_for_forms", {})
-    form_data = render_trade_form(
-        account_options,
-        form_key="create_trade_form",
-        submit_label="Создать",
-    )
+    render_trade_manager(None, mode="create")
     if st.button("Отмена", key="create_trade_cancel", use_container_width=True):
         set_dialog_flag("show_create_trade", False)
         st.rerun()
-    if not form_data:
-        return
-    try:
-        create_trade(form_data)
-        st.success("Сделка создана.")
-        set_dialog_flag("show_create_trade", False)
-        st.rerun()
-    except Exception as exc:  # pragma: no cover - UI feedback
-        st.error(f"Не удалось создать сделку: {exc}")
 
 
 @st.dialog("Редактирование сделки", width="large")

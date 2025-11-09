@@ -23,7 +23,6 @@ apply_page_config_from_file(__file__)
 
 # --- Загружаем список счетов и настраиваем state для форм ---
 account_map = account_options()
-st.session_state["account_options_for_forms"] = account_map
 
 # --- Первичные значения фильтров и диапазона дат ---
 today = date.today()

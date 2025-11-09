@@ -1189,7 +1189,7 @@ def seed_test_trades(count: int = 10) -> None:
                                 2) if is_closed else None
             reward_percent = round(
                 risk_reward * 10, 2) if risk_reward else None
-            estimation = (idx % 5) + 1 if is_closed else None
+            estimation = None
             problems = []
             if idx % 2 == 0:
                 problems.append(EMOTIONAL_PROBLEMS[0]
