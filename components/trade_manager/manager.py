@@ -25,12 +25,7 @@ from .state import allowed_statuses, visible_stages
 from .view import render_view_tab
 
 
-def render_trade_manager(
-    trade: Dict[str, Any],
-    *,
-    context: str = "default",
-    default_tab: str = "Options",
-) -> None:
+def render_trade_manager(trade: Dict[str, Any]) -> None:
     """Главный UI-компонент трейд-менеджера для существующих сделок."""
 
     if not trade or trade.get("id") is None:
