@@ -1,6 +1,6 @@
 import streamlit as st
 
-from components.trade_manager import render_trade_manager
+from components.trade_manager import render_trade_manager, reset_trade_manager_context
 from db import delete_trade, get_trade_by_id
 
 
@@ -12,8 +12,24 @@ def set_dialog_flag(flag: str, value: bool) -> None:
 @st.dialog("Создание сделки", width="large")
 def create_trade_dialog() -> None:
     """Модалка создания: собирает данные формы и пишет их в базу."""
-    render_trade_manager(None, mode="create")
+    context_key = "create_dialog"
+    created_id = st.session_state.get(f"tm_{context_key}_created_id")
+    if created_id:
+        trade = get_trade_by_id(created_id)
+        if trade is None:
+            reset_trade_manager_context(context_key)
+            render_trade_manager(None, mode="create", context=context_key, default_tab="Options")
+        else:
+            render_trade_manager(
+                trade,
+                mode="edit",
+                context=context_key,
+                default_tab="Options",
+            )
+    else:
+        render_trade_manager(None, mode="create", context=context_key, default_tab="Options")
     if st.button("Отмена", key="create_trade_cancel", use_container_width=True):
+        reset_trade_manager_context(context_key, trade_id=created_id)
         set_dialog_flag("show_create_trade", False)
         st.rerun()
 
@@ -29,8 +45,15 @@ def edit_trade_dialog() -> None:
     if not trade:
         st.error("Сделка не найдена.")
         return
-    render_trade_manager(trade)
+    context_key = f"edit_{trade_id}"
+    render_trade_manager(
+        trade,
+        mode="edit",
+        context=context_key,
+        default_tab="View",
+    )
     if st.button("Отмена", key="edit_trade_cancel", use_container_width=True):
+        reset_trade_manager_context(context_key, trade_id=trade_id)
         set_dialog_flag("show_edit_trade", False)
         st.rerun()
 

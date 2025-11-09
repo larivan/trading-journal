@@ -259,8 +259,16 @@ def _prepare_chart_records(editor_df: Optional[pd.DataFrame]) -> List[Dict[str, 
 
 def _allowed_statuses(current_state: str) -> List[str]:
     """Возвращаем разрешённые переходы для текущего статуса."""
-
-    return STATUS_TRANSITIONS.get(current_state, ["open"])
+    forward = STATUS_TRANSITIONS.get(current_state, ["open"])
+    backward = [
+        state for state, options in STATUS_TRANSITIONS.items()
+        if current_state in options
+    ]
+    ordered: List[str] = []
+    for candidate in forward + backward + [current_state]:
+        if candidate not in ordered:
+            ordered.append(candidate)
+    return ordered or ["open"]
 
 
 def _visible_stages(selected_state: str) -> List[str]:
@@ -514,221 +522,314 @@ def _render_notes_block(
     )
 
 
-def _render_header_actions(trade_key: str, *, is_create: bool) -> Tuple[bool, bool]:
-    """Кнопки действий в шапке (используем обычные кнопки)."""
+def _render_header_actions(trade_key: str, *, is_create: bool) -> bool:
+    """Кнопки действий в шапке (submit / save)."""
 
-    if is_create:
-        submitted = st.button(
-            "Create trade",
-            type="primary",
-            key=f"tm_submit_{trade_key}",
-            use_container_width=True,
-        )
-        return submitted, False
-
-    action_col1, action_col2 = st.columns([1, 1], gap="medium")
-    with action_col1:
-        submitted = st.button(
-            "Save changes",
-            type="primary",
-            key=f"tm_submit_{trade_key}",
-            use_container_width=True,
-        )
-    with action_col2:
-        view_clicked = st.button(
-            "View",
-            type="secondary",
-            key=f"tm_view_{trade_key}",
-            use_container_width=True,
-        )
-    return submitted, view_clicked
+    label = "Create trade" if is_create else "Save changes"
+    return st.button(
+        label,
+        type="primary",
+        key=f"tm_submit_{trade_key}",
+        use_container_width=True,
+    )
 
 
 # =============================================================================
 # ОСНОВНОЙ ВХОД: единый trade_manager для создания и редактирования
 # =============================================================================
+
+
+def _format_view_value(value: Optional[Any], placeholder: str = "—") -> str:
+    if value is None:
+        return placeholder
+    if isinstance(value, float):
+        formatted = f"{value:.2f}".rstrip('0').rstrip('.')
+        return formatted or '0'
+    text_value = str(value).strip()
+    return text_value or placeholder
+
+
+def _render_view_tab(
+    trade: Dict[str, Any],
+    trade_notes: List[Dict[str, Any]],
+    trade_charts: List[Dict[str, Any]],
+    *,
+    accounts: Dict[str, Optional[int]],
+    setups: Dict[str, Optional[int]],
+    analyses: Dict[str, Optional[int]],
+) -> None:
+    st.markdown('#### Trade overview')
+    summary_col1, summary_col2 = st.columns(2)
+    summary_col1.markdown(
+        f"**Status:** {_state_label(trade.get('state')) or '—'}")
+    summary_col1.markdown(
+        f"**Result:** {_result_label(trade.get('result')) or '—'}")
+    summary_col1.markdown(
+        f"**Date:** {_format_view_value(trade.get('date_local'))}")
+    summary_col1.markdown(
+        f"**Time:** {_format_view_value(trade.get('time_local'))}")
+
+    summary_col2.markdown(
+        f"**Account:** {_current_label(accounts, trade.get('account_id')) if trade.get('account_id') else '—'}"
+    )
+    summary_col2.markdown(
+        f"**Setup:** {_current_label(setups, trade.get('setup_id')) if trade.get('setup_id') else '—'}"
+    )
+    summary_col2.markdown(
+        f"**Analysis:** {_current_label(analyses, trade.get('analysis_id')) if trade.get('analysis_id') else '—'}"
+    )
+
+    st.divider()
+    st.markdown('#### After close')
+    close_col1, close_col2 = st.columns(2)
+    close_col1.metric('Net PnL', _format_view_value(trade.get('net_pnl')))
+    close_col1.metric('R:R', _format_view_value(trade.get('risk_reward')))
+    close_col2.metric('Reward %', _format_view_value(
+        trade.get('reward_percent')))
+    emotions = parse_emotional_problems(trade.get('emotional_problems'))
+    close_col2.metric('Emotions', ', '.join(emotions) if emotions else '—')
+
+    st.write(
+        f"**Hot thoughts:** {_format_view_value(trade.get('hot_thoughts'))}")
+
+    st.divider()
+    st.markdown('#### Review')
+    st.write(
+        f"**Cold thoughts:** {_format_view_value(trade.get('cold_thoughts'))}")
+    st.write(f"**Estimation:** {_format_view_value(trade.get('estimation'))}")
+
+    st.divider()
+    st.markdown('#### Charts')
+    if not trade_charts:
+        st.caption('Charts not attached')
+    else:
+        for idx, chart in enumerate(trade_charts, start=1):
+            url = chart.get('chart_url') or '—'
+            desc = chart.get('description') or chart.get('title') or ''
+            st.markdown(f"{idx}. [{url}]({url}) — {desc}")
+
+    st.divider()
+    st.markdown('#### Notes')
+    if not trade_notes:
+        st.caption('No observations yet')
+    else:
+        for note in trade_notes:
+            title = note.get(
+                'title') or f"Note #{note.get('id') or ''}".strip()
+            with st.expander(title):
+                st.write(note.get('body') or '—')
+                tags = _split_tags(note.get('tags'))
+                st.caption(f"Tags: {', '.join(tags) if tags else '—'}")
+
+
 def render_trade_manager(
     trade: Optional[Dict[str, Any]],
     *,
-    mode: str = "edit",
+    mode: str = 'edit',
+    context: str = 'default',
+    default_tab: str = 'View',
 ) -> None:
-    """Универсальный UI: умеет создавать новые сделки и править существующие."""
-
-    if mode not in {"edit", "create"}:
+    if mode not in {'edit', 'create'}:
         raise ValueError("mode должен быть 'edit' или 'create'")
 
-    is_create = mode == "create"
     trade = trade or {}
-    trade_id = trade.get("id")
-    trade_key = str(trade_id or "new")
+    trade_id = trade.get('id')
+    trade_key = str(trade_id or context)
+    is_create = (mode == 'create') and trade_id is None
 
-    # --- Справочные списки (счета, сетапы, анализы) ---
+    # --- Справочные списки (счета / сетапы / анализы) ---
     accounts = _option_with_placeholder(
         list_accounts(),
-        placeholder="— Account not selected —",
+        placeholder='— Account not selected —',
         formatter=lambda acc: f"{acc['name']} (#{acc['id']})",
     )
     setups = _option_with_placeholder(
         list_setups(),
-        placeholder="— Setup not selected —",
+        placeholder='— Setup not selected —',
         formatter=lambda setup: f"{setup['name']} (#{setup['id']})",
     )
     analyses = _option_with_placeholder(
         list_analysis(),
-        placeholder="— Analysis not linked —",
-        formatter=lambda analysis: f"{analysis.get('date_local') or 'No date'} · "
-        f"{analysis.get('asset') or '—'} (#{analysis['id']})",
+        placeholder='— Analysis not linked —',
+        formatter=lambda analysis: f"{analysis.get('date_local') or 'No date'} · {analysis.get('asset') or '—'} (#{analysis['id']})",
     )
     account_labels = list(accounts.keys())
     setup_labels = list(setups.keys())
     analysis_labels = list(analyses.keys())
 
-    # --- Исходные значения для формы ---
-    date_value = _parse_date_value(trade.get("date_local"))
-    time_value = _parse_time_value(trade.get("time_local"))
-    account_label = _current_label(accounts, trade.get("account_id"))
-    analysis_label = _current_label(analyses, trade.get("analysis_id"))
-    setup_label = _current_label(setups, trade.get("setup_id"))
+    date_value = _parse_date_value(trade.get('date_local'))
+    time_value = _parse_time_value(trade.get('time_local'))
+    account_label = _current_label(accounts, trade.get('account_id'))
+    analysis_label = _current_label(analyses, trade.get('analysis_id'))
+    setup_label = _current_label(setups, trade.get('setup_id'))
 
-    asset_candidates = ASSETS or [trade.get("asset") or "—"]
-    asset_default = trade.get("asset") if trade.get(
-        "asset") in asset_candidates else asset_candidates[0]
+    asset_candidates = ASSETS or [trade.get('asset') or '—']
+    asset_default = trade.get('asset') if trade.get(
+        'asset') in asset_candidates else asset_candidates[0]
     assets = asset_candidates if asset_default in asset_candidates else [
         asset_default] + asset_candidates
 
     emotional_defaults = parse_emotional_problems(
-        trade.get("emotional_problems"))
+        trade.get('emotional_problems'))
     closed_defaults = {
-        "result": trade.get("result") or RESULT_PLACEHOLDER,
-        "net_pnl": trade.get("net_pnl") or 0.0,
-        "risk_reward": trade.get("risk_reward") or 0.0,
-        "reward_percent": trade.get("reward_percent") or 0.0,
-        "hot_thoughts": trade.get("hot_thoughts") or "",
+        'result': trade.get('result') or RESULT_PLACEHOLDER,
+        'net_pnl': trade.get('net_pnl') or 0.0,
+        'risk_reward': trade.get('risk_reward') or 0.0,
+        'reward_percent': trade.get('reward_percent') or 0.0,
+        'hot_thoughts': trade.get('hot_thoughts') or '',
     }
     review_defaults = {
-        "cold_thoughts": trade.get("cold_thoughts") or "",
-        "estimation": trade.get("estimation") or 0,
+        'cold_thoughts': trade.get('cold_thoughts') or '',
+        'estimation': trade.get('estimation') or 0,
     }
-
     open_defaults = {
-        "date": date_value,
-        "time": time_value,
-        "account_label": account_label,
-        "asset": asset_default,
-        "analysis_label": analysis_label,
-        "setup_label": setup_label,
-        "risk_pct": float(trade.get("risk_pct") or 1.0),
+        'date': date_value,
+        'time': time_value,
+        'account_label': account_label,
+        'asset': asset_default,
+        'analysis_label': analysis_label,
+        'setup_label': setup_label,
+        'risk_pct': float(trade.get('risk_pct') or 1.0),
     }
 
-    # --- Коллекции заметок/чартов ---
+    # --- Коллекции заметок и графиков ---
     if is_create or not trade_id:
         trade_notes: List[Dict[str, Any]] = []
-        charts_df = _charts_dataframe([])
+        trade_charts: List[Dict[str, Any]] = []
     else:
         trade_notes = list_notes_for_trade(trade_id)
-        charts_df = _charts_dataframe(list_charts_for_trade(trade_id))
+        trade_charts = list_charts_for_trade(trade_id)
+
     observations_df = _notes_dataframe(trade_notes)
     existing_note_ids: Set[int] = {
-        int(note["id"]) for note in trade_notes if note.get("id") is not None
+        int(note['id']) for note in trade_notes if note.get('id') is not None
     }
-    tag_options = sorted({
-        tag for tags in observations_df["tags"].tolist() for tag in tags
-    })
+    tag_options = sorted(
+        {tag for tags in observations_df['tags'].tolist() for tag in tags})
 
+    charts_df = _charts_dataframe(trade_charts)
     charts_state_key = f"tm_charts_state_{trade_key}"
     if charts_state_key not in st.session_state:
         st.session_state[charts_state_key] = charts_df.copy()
     charts_editor = st.session_state[charts_state_key]
 
-    # --- Управление статусами (create-режим ограничен open/missed) ---
-    current_state = trade.get("state") or "open"
+    current_state = trade.get('state') or 'open'
     if is_create and current_state not in CREATE_ALLOWED_STATUSES:
         current_state = CREATE_ALLOWED_STATUSES[0]
-    allowed_states = CREATE_ALLOWED_STATUSES if is_create else _allowed_statuses(
-        current_state)
-    current_state = current_state if current_state in allowed_states else allowed_states[0]
+
+    default_tab = (default_tab or 'Options').lower()
+    # --- Табы Options/View (View скрыт, пока нет созданной сделки) ---
+    if is_create:
+        tab_labels = ['Options']
+    else:
+        tab_labels = ['Options', 'View']
+
+    tabs = st.tabs(tab_labels)
+    tab_map = {label: tab for label, tab in zip(tab_labels, tabs)}
+
+    submitted = False
     selected_state = current_state
+    closed_inputs: Dict[str, Any] = {}
+    review_inputs: Optional[Dict[str, Any]] = None
+    open_values = open_defaults.copy()
+    observations_editor = observations_df.copy()
 
-    header_container = st.container(border=True)
-    header_cols = header_container.columns(
-        [0.2, 0.3, 0.5],
-        gap="large",
-        vertical_alignment="bottom",
-    )
-    status_col, _spacer_col, actions_col = header_cols
-    selected_state = status_col.selectbox(
-        "Trade status",
-        allowed_states,
-        index=allowed_states.index(current_state),
-        help="Statuses move sequentially similar to Jira.",
-        format_func=_state_label,
-        key=f"tm_status_{trade_key}",
-    )
-    with actions_col:
-        submitted, view_clicked = _render_header_actions(
-            trade_key,
-            is_create=is_create,
-        )
+    # --- Вкладка Options: основной редактор ---
+    with tab_map['Options']:
+        header_container = st.container(border=True)
+        with header_container:
+            status_col, _, actions_col = st.columns(
+                [0.2, 0.3, 0.5],
+                gap='large',
+                vertical_alignment='bottom',
+            )
+            with status_col:
+                allowed_states = CREATE_ALLOWED_STATUSES if is_create else _allowed_statuses(
+                    current_state)
+                current_state = current_state if current_state in allowed_states else allowed_states[
+                    0]
+                selected_state = st.selectbox(
+                    'Trade status',
+                    allowed_states,
+                    index=allowed_states.index(current_state),
+                    help='Statuses move sequentially similar to Jira.',
+                    format_func=_state_label,
+                    key=f"tm_status_{trade_key}",
+                )
+            with actions_col:
+                submitted = _render_header_actions(
+                    trade_key, is_create=is_create)
 
-    visible_stages = _visible_stages(selected_state)
-    expanded_stage = STATUS_STAGE.get(selected_state, "open")
+        visible_stages = _visible_stages(selected_state)
+        expanded_stage = STATUS_STAGE.get(selected_state, 'open')
 
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        open_values = _render_open_stage(
-            trade_key=trade_key,
-            visible="open" in visible_stages,
-            expanded=(expanded_stage == "open"),
-            defaults=open_defaults,
-            account_labels=account_labels,
-            assets=assets,
-            analysis_labels=analysis_labels,
-            setup_labels=setup_labels,
-        )
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            open_values = _render_open_stage(
+                trade_key=trade_key,
+                visible='open' in visible_stages,
+                expanded=(expanded_stage == 'open'),
+                defaults=open_defaults,
+                account_labels=account_labels,
+                assets=assets,
+                analysis_labels=analysis_labels,
+                setup_labels=setup_labels,
+            )
 
-        closed_inputs, emotional_defaults = _render_closed_stage(
-            trade_key=trade_key,
-            visible="closed" in visible_stages,
-            expanded=(expanded_stage == "closed"),
-            defaults=closed_defaults,
-            emotional_defaults=emotional_defaults,
-        )
+            closed_inputs, emotional_defaults = _render_closed_stage(
+                trade_key=trade_key,
+                visible='closed' in visible_stages,
+                expanded=(expanded_stage == 'closed'),
+                defaults=closed_defaults,
+                emotional_defaults=emotional_defaults,
+            )
 
-        review_inputs = _render_review_stage(
-            trade_key=trade_key,
-            visible="review" in visible_stages,
-            expanded=(expanded_stage == "review"),
-            defaults=review_defaults,
-        )
+            review_inputs = _render_review_stage(
+                trade_key=trade_key,
+                visible='review' in visible_stages,
+                expanded=(expanded_stage == 'review'),
+                defaults=review_defaults,
+            )
 
-    with col2:
-        charts_editor = _render_charts_block(
-            trade_key=trade_key,
-            charts_editor=charts_editor,
-        )
-        st.session_state[charts_state_key] = charts_editor
+        with col2:
+            charts_editor = _render_charts_block(
+                trade_key=trade_key,
+                charts_editor=charts_editor,
+            )
+            st.session_state[charts_state_key] = charts_editor
 
-        observations_editor = _render_notes_block(
-            trade_key=trade_key,
-            observations_editor=observations_df,
-            tag_options=tag_options,
-        )
-    if view_clicked:
-        st.info("View mode will be available soon.")
+            observations_editor = _render_notes_block(
+                trade_key=trade_key,
+                observations_editor=observations_df,
+                tag_options=tag_options,
+            )
 
+    # --- Вкладка View: только чтение ---
+    if not is_create:
+        with tab_map['View']:
+            _render_view_tab(
+                trade,
+                trade_notes,
+                trade_charts,
+                accounts=accounts,
+                setups=setups,
+                analyses=analyses,
+            )
+
+    # --- Ожидаем клика по кнопке ---
     if not submitted:
         return
 
-    # --- Валидации ---
+    # --- Мини-валидации обязательных блоков ---
     errors: List[str] = []
-    if selected_state in ("closed", "reviewed"):
+    if selected_state in ('closed', 'reviewed'):
         if not closed_inputs:
-            errors.append("Fill in the “After close” block.")
+            errors.append('Fill in the “After close” block.')
         else:
-            if closed_inputs["result"] == RESULT_PLACEHOLDER:
-                errors.append("Select the trade result.")
-            if closed_inputs["net_pnl"] is None:
-                errors.append("Provide Net PnL.")
+            if closed_inputs['result'] == RESULT_PLACEHOLDER:
+                errors.append('Select the trade result.')
+            if closed_inputs['net_pnl'] is None:
+                errors.append('Provide Net PnL.')
     if errors:
         for err in errors:
             st.error(err)
@@ -736,79 +837,83 @@ def render_trade_manager(
 
     # --- Сбор payload для БД ---
     payload: Dict[str, Any] = {
-        "date_local": open_values["date"].isoformat(),
-        "time_local": open_values["time"].strftime("%H:%M:%S"),
-        "account_id": accounts[open_values["account_label"]],
-        "asset": open_values["asset"],
-        "analysis_id": analyses[open_values["analysis_label"]],
-        "setup_id": setups[open_values["setup_label"]],
-        "risk_pct": float(open_values["risk_pct"]),
-        "state": selected_state,
+        'date_local': open_values['date'].isoformat(),
+        'time_local': open_values['time'].strftime('%H:%M:%S'),
+        'account_id': accounts[open_values['account_label']],
+        'asset': open_values['asset'],
+        'analysis_id': analyses[open_values['analysis_label']],
+        'setup_id': setups[open_values['setup_label']],
+        'risk_pct': float(open_values['risk_pct']),
+        'state': selected_state,
     }
 
     if closed_inputs:
         payload.update({
-            "result": None if closed_inputs["result"] == RESULT_PLACEHOLDER else closed_inputs["result"],
-            "net_pnl": float(closed_inputs["net_pnl"]),
-            "risk_reward": float(closed_inputs["risk_reward"]),
-            "reward_percent": float(closed_inputs["reward_percent"]),
-            "hot_thoughts": closed_inputs["hot_thoughts"].strip() or None,
-            "emotional_problems": emotional_defaults,
+            'result': None if closed_inputs['result'] == RESULT_PLACEHOLDER else closed_inputs['result'],
+            'net_pnl': float(closed_inputs['net_pnl']),
+            'risk_reward': float(closed_inputs['risk_reward']),
+            'reward_percent': float(closed_inputs['reward_percent']),
+            'hot_thoughts': closed_inputs['hot_thoughts'].strip() or None,
+            'emotional_problems': emotional_defaults,
         })
     else:
         payload.update({
-            "result": None,
-            "net_pnl": None,
-            "risk_reward": None,
-            "reward_percent": None,
-            "hot_thoughts": None,
-            "emotional_problems": None,
+            'result': None,
+            'net_pnl': None,
+            'risk_reward': None,
+            'reward_percent': None,
+            'hot_thoughts': None,
+            'emotional_problems': None,
         })
 
     if review_inputs:
         payload.update({
-            "cold_thoughts": review_inputs["cold_thoughts"].strip() or None,
-            "estimation": int(review_inputs["estimation"]),
+            'cold_thoughts': review_inputs['cold_thoughts'].strip() or None,
+            'estimation': int(review_inputs['estimation']),
         })
     else:
         payload.update({
-            "cold_thoughts": None if selected_state != "reviewed" else trade.get("cold_thoughts"),
-            "estimation": None if selected_state != "reviewed" else trade.get("estimation"),
+            'cold_thoughts': None if selected_state != 'reviewed' else trade.get('cold_thoughts'),
+            'estimation': None if selected_state != 'reviewed' else trade.get('estimation'),
         })
 
-    if selected_state in ("closed", "reviewed") and not trade.get("closed_at_utc"):
-        payload["closed_at_utc"] = datetime.utcnow().strftime(
-            "%Y-%m-%dT%H:%M:%S")
+    if selected_state in ('closed', 'reviewed') and not trade.get('closed_at_utc'):
+        payload['closed_at_utc'] = datetime.utcnow().strftime(
+            '%Y-%m-%dT%H:%M:%S')
 
-    # --- Сохранение: create или update ---
+    note_records = _prepare_note_records(
+        observations_editor, existing_note_ids)
+    chart_records = _prepare_chart_records(charts_editor)
+
+    # --- Сохранение: создаём новую запись или обновляем существующую ---
     try:
         if is_create:
             new_trade_id = create_trade(payload)
-            replace_trade_notes(
-                new_trade_id,
-                _prepare_note_records(observations_editor, existing_note_ids),
-            )
-            replace_trade_charts(
-                new_trade_id,
-                _prepare_chart_records(charts_editor),
-            )
+            replace_trade_notes(new_trade_id, note_records)
+            replace_trade_charts(new_trade_id, chart_records)
+            st.session_state[f'tm_{context}_created_id'] = new_trade_id
+            st.session_state['selected_trade_id'] = new_trade_id
             st.session_state.pop(charts_state_key, None)
-            st.success("Сделка создана.")
+            st.success('Сделка создана.')
         else:
             if trade_id is None:
                 raise ValueError(
-                    "Не выбран trade_id для режима редактирования")
+                    'Не выбран trade_id для режима редактирования')
             update_trade(trade_id, payload)
-            replace_trade_notes(
-                trade_id,
-                _prepare_note_records(observations_editor, existing_note_ids),
-            )
-            replace_trade_charts(
-                trade_id,
-                _prepare_chart_records(charts_editor),
-            )
+            replace_trade_notes(trade_id, note_records)
+            replace_trade_charts(trade_id, chart_records)
             st.session_state.pop(charts_state_key, None)
-            st.success("Trade updated.")
+            st.success('Trade updated.')
         st.rerun()
-    except Exception as exc:  # pragma: no cover - UI feedback
-        st.error(f"Failed to persist the trade: {exc}")
+    except Exception as exc:
+        st.error(f'Failed to persist the trade: {exc}')
+
+
+def reset_trade_manager_context(context: str, *, trade_id: Optional[int] = None) -> None:
+    """Сбрасываем связанные с менеджером ключи session_state."""
+
+    prefix = f'tm_{context}'
+    st.session_state.pop(f'{prefix}_created_id', None)
+    st.session_state.pop(f'tm_charts_state_{context}', None)
+    if trade_id is not None:
+        st.session_state.pop(f'tm_charts_state_{trade_id}', None)
