@@ -40,8 +40,7 @@ def edit_trade_dialog() -> None:
     context_key = f"edit_{trade_id}"
     render_trade_manager(
         trade,
-        context=context_key,
-        default_tab="View",
+        context=context_key
     )
     if st.button("Отмена", key="edit_trade_cancel", use_container_width=True):
         set_dialog_flag("show_edit_trade", False)

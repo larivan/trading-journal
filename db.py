@@ -372,7 +372,7 @@ def add_note(title: Optional[str], body: str,
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO notes (title, body) VALUES (?, ?)",
-            (title, body, tags, _now_iso_utc())
+            (title, body)
         )
         conn.commit()
         return cur.lastrowid
@@ -419,6 +419,66 @@ def get_note(note_id: int) -> Optional[Dict[str, Any]]:
     finally:
         conn.close()
 
+
+def list_notes() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM notes ORDER BY title IS NULL, title ASC, id ASC"
+        ).fetchall()
+        return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
+def list_trade_notes(trade_id: int) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT n.*
+            FROM trade_notes tn
+            JOIN notes n ON n.id = tn.note_id
+            WHERE tn.trade_id=?
+            ORDER BY n.title IS NULL, n.title ASC, n.id ASC
+            """,
+            (trade_id,),
+        ).fetchall()
+        return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
+def attach_note_to_trade(trade_id: int, note_id: int) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        note_exists = cur.execute(
+            "SELECT 1 FROM notes WHERE id=?", (note_id,)
+        ).fetchone()
+        if not note_exists:
+            raise ValueError(f"Заметка #{note_id} не найдена.")
+        cur.execute(
+            "INSERT OR IGNORE INTO trade_notes (trade_id, note_id) VALUES (?, ?)",
+            (trade_id, note_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def detach_note_from_trade(trade_id: int, note_id: int) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM trade_notes WHERE trade_id=? AND note_id=?",
+            (trade_id, note_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
 # =====================================================================
 # Charts
 # =====================================================================
@@ -430,11 +490,12 @@ def add_chart(chart_url: str, caption: Optional[str] = None) -> int:
 
     conn = get_conn()
     try:
+        _ensure_column(conn, "charts", "caption TEXT")
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO charts (chart_url, caption) "
             "VALUES (?, ?)",
-            (chart_url, caption, _now_iso_utc())
+            (chart_url, caption)
         )
         conn.commit()
         return cur.lastrowid
@@ -448,6 +509,100 @@ def get_chart(chart_id: int) -> Optional[Dict[str, Any]]:
         row = conn.execute("SELECT * FROM charts WHERE id=?",
                            (chart_id,)).fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_chart(chart_id: int, chart_url: str,
+                 caption: Optional[str] = None) -> None:
+    if not chart_url:
+        raise ValueError("chart_url is required.")
+
+    conn = get_conn()
+    try:
+        _ensure_column(conn, "charts", "caption TEXT")
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE charts
+            SET chart_url=?, caption=?
+            WHERE id=?
+            """,
+            (chart_url, caption, chart_id),
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f"Чарт #{chart_id} не найден.")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_chart(chart_id: int) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM charts WHERE id=?", (chart_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_charts() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM charts ORDER BY id DESC"
+        ).fetchall()
+        return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
+def list_trade_charts(trade_id: int) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT c.*
+            FROM trade_charts tc
+            JOIN charts c ON c.id = tc.chart_id
+            WHERE tc.trade_id=?
+            ORDER BY c.id DESC
+            """,
+            (trade_id,),
+        ).fetchall()
+        return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
+def attach_chart_to_trade(trade_id: int, chart_id: int) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        chart_exists = cur.execute(
+            "SELECT 1 FROM charts WHERE id=?", (chart_id,)
+        ).fetchone()
+        if not chart_exists:
+            raise ValueError(f"Чарт #{chart_id} не найден.")
+        cur.execute(
+            "INSERT OR IGNORE INTO trade_charts (trade_id, chart_id) VALUES (?, ?)",
+            (trade_id, chart_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def detach_chart_from_trade(trade_id: int, chart_id: int) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM trade_charts WHERE trade_id=? AND chart_id=?",
+            (trade_id, chart_id),
+        )
+        conn.commit()
     finally:
         conn.close()
 
