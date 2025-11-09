@@ -13,13 +13,6 @@ PAGES = {
         'layout': 'wide',
         'in_nav': True,
     },
-    'add-trade': {
-        'title': 'Add trade',
-        'icon': ':material/inventory:',
-        'default': False,
-        'layout': 'wide',
-        'in_nav': False,
-    },
     'trade': {
         'title': 'Trade manager',
         'icon': ':material/description:',

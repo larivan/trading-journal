@@ -128,17 +128,6 @@ def _ensure_column(conn: sqlite3.Connection, table: str, column_def: str) -> Non
     if not _column_exists(conn, table, column_name):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column_def}")
 
-
-def _run_migrations(conn: sqlite3.Connection) -> None:
-    """Ensure new columns exist for backward compatibility."""
-    _ensure_column(conn, "trades", "estimation INTEGER")
-    _ensure_column(conn, "trades", "emotional_problems TEXT")
-    _ensure_column(
-        conn,
-        "notes",
-        "category TEXT DEFAULT 'general' CHECK (category IN ('general','observation','review'))",
-    )
-
 # =====================================================================
 # Schema (built from constants)
 # =====================================================================
@@ -173,17 +162,12 @@ CREATE TABLE IF NOT EXISTS notes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     title       TEXT,
     body        TEXT,
-    tags        TEXT,
-    created_at  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS charts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    asset        TEXT,
-    timeframe    TEXT,
     chart_url    TEXT NOT NULL,
-    description  TEXT,
-    created_at   TEXT
+    caption  TEXT,
 );
 
 -- =========================
@@ -314,7 +298,6 @@ def init_db() -> None:
     conn = get_conn()
     try:
         conn.executescript(SCHEMA_SQL)
-        _run_migrations(conn)
         conn.commit()
     finally:
         conn.close()
@@ -388,7 +371,7 @@ def add_note(title: Optional[str], body: str,
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO notes (title, body, tags, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO notes (title, body) VALUES (?, ?)",
             (title, body, tags, _now_iso_utc())
         )
         conn.commit()
@@ -405,10 +388,10 @@ def update_note(note_id: int, title: Optional[str], body: str,
         cur.execute(
             """
             UPDATE notes
-            SET title=?, body=?, tags=?
+            SET title=?, body=?
             WHERE id=?
             """,
-            (title, body, tags, note_id)
+            (title, body, note_id)
         )
         if cur.rowcount == 0:
             raise ValueError(f"Заметка #{note_id} не найдена.")
@@ -441,15 +424,7 @@ def get_note(note_id: int) -> Optional[Dict[str, Any]]:
 # =====================================================================
 
 
-def _require_section(section: Optional[str]) -> str:
-    if section is None:
-        raise ValueError("section is required for this operation.")
-    if section not in ANALYSIS_SECTIONS:
-        raise ValueError(f"section must be one of: {ANALYSIS_SECTIONS}")
-    return section
-
-
-def add_chart(chart_url: str, description: Optional[str] = None) -> int:
+def add_chart(chart_url: str, caption: Optional[str] = None) -> int:
     if not chart_url:
         raise ValueError("chart_url is required.")
 
@@ -457,9 +432,9 @@ def add_chart(chart_url: str, description: Optional[str] = None) -> int:
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO charts (chart_url, description, created_at) "
-            "VALUES (?, ?, ?)",
-            (chart_url, description, _now_iso_utc())
+            "INSERT INTO charts (chart_url, caption) "
+            "VALUES (?, ?)",
+            (chart_url, caption, _now_iso_utc())
         )
         conn.commit()
         return cur.lastrowid
@@ -473,274 +448,6 @@ def get_chart(chart_id: int) -> Optional[Dict[str, Any]]:
         row = conn.execute("SELECT * FROM charts WHERE id=?",
                            (chart_id,)).fetchone()
         return dict(row) if row else None
-    finally:
-        conn.close()
-
-
-def link_chart_to_trade(trade_id: int, chart_id: int) -> None:
-    conn = get_conn()
-    try:
-        conn.execute(
-            "INSERT OR IGNORE INTO trade_charts (trade_id, chart_id) VALUES (?, ?)",
-            (trade_id, chart_id)
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def unlink_chart_from_trade(trade_id: int, chart_id: int) -> None:
-    conn = get_conn()
-    try:
-        conn.execute(
-            "DELETE FROM trade_charts WHERE trade_id=? AND chart_id=?",
-            (trade_id, chart_id)
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def link_note_to_trade(trade_id: int, note_id: int) -> None:
-    conn = get_conn()
-    try:
-        conn.execute(
-            "INSERT OR IGNORE INTO trade_notes (trade_id, note_id) VALUES (?, ?)",
-            (trade_id, note_id)
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def unlink_note_from_trade(trade_id: int, note_id: int) -> None:
-    conn = get_conn()
-    try:
-        conn.execute(
-            "DELETE FROM trade_notes WHERE trade_id=? AND note_id=?",
-            (trade_id, note_id)
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def list_charts_for_trade(trade_id: int) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        rows = conn.execute("""
-            SELECT c.* FROM charts c
-            JOIN trade_charts tc ON tc.chart_id = c.id
-            WHERE tc.trade_id = ?
-            ORDER BY c.id ASC
-        """, (trade_id,)).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def delete_chart_if_unused(chart_id: int) -> None:
-    conn = get_conn()
-    try:
-        row = conn.execute("""
-            SELECT
-                (SELECT COUNT(*) FROM trade_charts WHERE chart_id=?) +
-                (SELECT COUNT(*) FROM analysis_charts WHERE chart_id=?) AS cnt
-        """, (chart_id, chart_id)).fetchone()
-        if row and row[0] == 0:
-            conn.execute("DELETE FROM charts WHERE id=?", (chart_id,))
-            conn.commit()
-    finally:
-        conn.close()
-
-
-def replace_trade_charts(trade_id: int, charts: List[Dict[str, Any]]) -> None:
-    existing = list_charts_for_trade(trade_id)
-    for chart in existing:
-        unlink_chart_from_trade(trade_id, chart["id"])
-        delete_chart_if_unused(chart["id"])
-
-    for chart in charts:
-        chart_url = (chart.get("chart_url") or "").strip()
-        if not chart_url:
-            continue
-        chart_id = add_chart(chart_url=chart_url,
-                             description=chart.get("description"))
-        link_chart_to_trade(trade_id, chart_id)
-
-
-def list_notes_for_trade(trade_id: int) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        query = """
-            SELECT n.* FROM notes n
-            JOIN trade_notes tn ON tn.note_id = n.id
-            WHERE tn.trade_id = ?
-        """
-        params: List[Any] = [trade_id]
-        query += " ORDER BY n.id ASC"
-        rows = conn.execute(query, params).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def replace_trade_notes(trade_id: int, notes: List[Dict[str, Any]]) -> None:
-    existing_notes = {
-        note["id"]: note for note in list_notes_for_trade(trade_id)
-    }
-    kept_ids = set()
-
-    for note in notes:
-        body = (note.get("body") or "").strip()
-        title = (note.get("title") or "").strip() or None
-        tags = (note.get("tags") or "").strip() or None
-        if not body:
-            continue
-        raw_id = note.get("id")
-        try:
-            note_id = int(
-                raw_id) if raw_id is not None and raw_id != "" else None
-        except (TypeError, ValueError):
-            note_id = None
-
-        if note_id and note_id in existing_notes:
-            update_note(note_id, title, body, tags=tags)
-            link_note_to_trade(trade_id, note_id)
-            kept_ids.add(note_id)
-        else:
-            new_id = add_note(title, body, tags=tags)
-            link_note_to_trade(trade_id, new_id)
-            kept_ids.add(new_id)
-
-    for note_id in list(existing_notes.keys()):
-        if note_id not in kept_ids:
-            unlink_note_from_trade(trade_id, note_id)
-            delete_note(note_id)
-
-
-def link_chart_to_analysis(analysis_id: int, chart_id: int, section: str) -> None:
-    section_value = _require_section(section)
-    conn = get_conn()
-    try:
-        conn.execute(
-            "INSERT OR IGNORE INTO analysis_charts (analysis_id, chart_id, section) "
-            "VALUES (?, ?, ?)",
-            (analysis_id, chart_id, section_value)
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def link_note_to_analysis(analysis_id: int, note_id: int, section: str) -> None:
-    section_value = _require_section(section)
-    conn = get_conn()
-    try:
-        conn.execute(
-            "INSERT OR IGNORE INTO analysis_notes (analysis_id, note_id, section) "
-            "VALUES (?, ?, ?)",
-            (analysis_id, note_id, section_value)
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def list_charts_for_analysis(analysis_id: int,
-                             section: Optional[str] = None) -> List[Dict[str, Any]]:
-    params: List[Any] = [analysis_id]
-    section_filter = ""
-    if section:
-        if section not in ANALYSIS_SECTIONS:
-            raise ValueError(f"section must be one of: {ANALYSIS_SECTIONS}")
-        section_filter = " AND ac.section = ?"
-        params.append(section)
-
-    conn = get_conn()
-    try:
-        rows = conn.execute(f"""
-            SELECT c.*, ac.section FROM charts c
-            JOIN analysis_charts ac ON ac.chart_id = c.id
-            WHERE ac.analysis_id = ?{section_filter}
-            ORDER BY c.id ASC
-        """, params).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def list_notes_for_analysis(analysis_id: int,
-                            section: Optional[str] = None) -> List[Dict[str, Any]]:
-    params: List[Any] = [analysis_id]
-    section_filter = ""
-    if section:
-        if section not in ANALYSIS_SECTIONS:
-            raise ValueError(f"section must be one of: {ANALYSIS_SECTIONS}")
-        section_filter = " AND an.section = ?"
-        params.append(section)
-
-    conn = get_conn()
-    try:
-        rows = conn.execute(f"""
-            SELECT n.*, an.section FROM notes n
-            JOIN analysis_notes an ON an.note_id = n.id
-            WHERE an.analysis_id = ?{section_filter}
-            ORDER BY n.id ASC
-        """, params).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def link_chart_to_setup(setup_id: int, chart_id: int) -> None:
-    conn = get_conn()
-    try:
-        conn.execute(
-            "INSERT OR IGNORE INTO setup_charts (setup_id, chart_id) VALUES (?, ?)",
-            (setup_id, chart_id)
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def list_charts_for_setup(setup_id: int) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        rows = conn.execute("""
-            SELECT c.* FROM charts c
-            JOIN setup_charts sc ON sc.chart_id = c.id
-            WHERE sc.setup_id = ?
-            ORDER BY c.id ASC
-        """, (setup_id,)).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def link_chart_to_note(note_id: int, chart_id: int) -> None:
-    conn = get_conn()
-    try:
-        conn.execute(
-            "INSERT OR IGNORE INTO note_charts (note_id, chart_id) VALUES (?, ?)",
-            (note_id, chart_id)
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def list_charts_for_note(note_id: int) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        rows = conn.execute("""
-            SELECT c.* FROM charts c
-            JOIN note_charts nc ON nc.chart_id = c.id
-            WHERE nc.note_id = ?
-            ORDER BY c.id ASC
-        """, (note_id,)).fetchall()
-        return _rows_to_dicts(rows)
     finally:
         conn.close()
 
@@ -798,187 +505,10 @@ def list_analysis() -> List[Dict[str, Any]]:
     finally:
         conn.close()
 
-# =====================================================================
-# Trades lifecycle
-# =====================================================================
-
-
-def open_trade(data: Dict[str, Any]) -> int:
-    """
-    Create trade in 'open' state.
-    Common-sense fields to pass: local_tz, date_local, time_local, account_id, asset, risk_pct (+ optional prices).
-    """
-    if data.get("state") and data["state"] != "open":
-        raise ValueError("Initial trade state must be 'open'.")
-    if data.get("result") is not None:
-        raise ValueError("Result must be NULL when opening a trade.")
-
-    if data.get("session") and data["session"] not in SESSION_VALUES:
-        raise ValueError(f"Unknown session value. Allowed: {SESSION_VALUES}")
-    if data.get("risk_pct") is None:
-        raise ValueError("risk_pct is required when opening a trade.")
-
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO trades (
-                local_tz, date_local, time_local,
-                account_id, setup_id, analysis_id, asset,
-                risk_pct, session, state,
-                result, net_pnl, risk_reward, reward_percent,
-                estimation,
-                emotional_problems, hot_thoughts, cold_thoughts
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            data.get("local_tz"),
-            data.get("date_local"),
-            data.get("time_local"),
-            data.get("account_id"),
-            data.get("setup_id"),
-            data.get("analysis_id"),
-            data.get("asset"),
-            float(data.get("risk_pct")) if data.get(
-                "risk_pct") is not None else None,
-            data.get("session"),
-            "open",
-            None,  # result
-            None,  # net_pnl
-            None,  # risk_reward
-            None,  # reward_percent
-            int(data.get("estimation")) if data.get(
-                "estimation") is not None else None,
-            _serialize_emotional_problems(
-                data.get("emotional_problems")
-                or data.get("emotional_problem")),
-            data.get("hot_thoughts"),
-            data.get("cold_thoughts"),
-        ))
-        conn.commit()
-        return cur.lastrowid
-    finally:
-        conn.close()
-
-
-def close_trade(trade_id: int, outcome: Dict[str, Any]) -> None:
-    """
-    Close trade from 'open' -> 'closed' with outcome data.
-    Requires: result in RESULT_VALUES, net_pnl, risk_reward.
-    Optional: reward_percent, closed_at_utc.
-    """
-    result = outcome.get("result")
-    net_pnl = outcome.get("net_pnl")
-    rr = outcome.get("risk_reward")
-
-    if result not in RESULT_VALUES:
-        raise ValueError(f"result must be one of: {RESULT_VALUES}")
-    if net_pnl is None or rr is None:
-        raise ValueError(
-            "net_pnl and risk_reward are required to close a trade.")
-
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        row = cur.execute("SELECT state FROM trades WHERE id=?",
-                          (trade_id,)).fetchone()
-        if not row:
-            raise ValueError(f"Trade #{trade_id} not found.")
-        if row[0] != "open":
-            raise ValueError(
-                f"Trade #{trade_id} can be closed only from 'open' state (current: {row[0]}).")
-
-        cur.execute("""
-            UPDATE trades
-            SET state='closed',
-                closed_at_utc=?,
-                result=?,
-                net_pnl=?,
-                risk_reward=?,
-                reward_percent=COALESCE(?, reward_percent)
-            WHERE id=?
-        """, (
-            outcome.get("closed_at_utc") or _now_iso_utc(),
-            result,
-            float(net_pnl),
-            float(rr),
-            outcome.get("reward_percent"),
-            trade_id
-        ))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def mark_reviewed(trade_id: int, retrospective_note: Optional[str] = None) -> None:
-    """Move closed trade to 'reviewed' state and optionally add retrospective note."""
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        row = cur.execute("SELECT state FROM trades WHERE id=?",
-                          (trade_id,)).fetchone()
-        if not row:
-            raise ValueError(f"Trade #{trade_id} not found.")
-        if row[0] != "closed":
-            raise ValueError(
-                "Only 'closed' trades can be marked as 'reviewed'.")
-        cur.execute("""
-            UPDATE trades
-            SET state='reviewed',
-                retrospective_note=COALESCE(?, retrospective_note)
-            WHERE id=?
-        """, (retrospective_note, trade_id))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def cancel_trade(trade_id: int, note: Optional[str] = None) -> None:
-    """Cancel trade from 'open' -> 'cancelled' (result stays NULL)."""
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        row = cur.execute("SELECT state FROM trades WHERE id=?",
-                          (trade_id,)).fetchone()
-        if not row:
-            raise ValueError(f"Trade #{trade_id} not found.")
-        if row[0] != "open":
-            raise ValueError("Only 'open' trades can be cancelled.")
-        cur.execute("""
-            UPDATE trades
-            SET state='cancelled',
-                retrospective_note=COALESCE(?, retrospective_note)
-            WHERE id=?
-        """, (note, trade_id))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def mark_missed(trade_id: int, note: Optional[str] = None) -> None:
-    """Mark trade from 'open' -> 'missed' (missed opportunity)."""
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        row = cur.execute("SELECT state FROM trades WHERE id=?",
-                          (trade_id,)).fetchone()
-        if not row:
-            raise ValueError(f"Trade #{trade_id} not found.")
-        if row[0] != "open":
-            raise ValueError("Only 'open' trades can be marked as 'missed'.")
-        cur.execute("""
-            UPDATE trades
-            SET state='missed',
-                retrospective_note=COALESCE(?, retrospective_note)
-            WHERE id=?
-        """, (note, trade_id))
-        conn.commit()
-    finally:
-        conn.close()
 
 # =====================================================================
 # Trade queries
 # =====================================================================
-
 
 def get_trade_by_id(trade_id: int) -> Optional[Dict[str, Any]]:
     conn = get_conn()
