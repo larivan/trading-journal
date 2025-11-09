@@ -99,10 +99,17 @@ selection_changed, selected_from_tab = render_trades_table(
     selected_tab_key,
 )
 if selection_changed:
-    st.session_state["selected_trade_id"] = selected_from_tab
-    set_dialog_flag("show_create_trade", False)
-    set_dialog_flag("show_edit_trade", False)
-    set_dialog_flag("show_delete_trade", False)
+    if selected_from_tab is None:
+        if not st.session_state.get("show_edit_trade"):
+            st.session_state["selected_trade_id"] = None
+            set_dialog_flag("show_create_trade", False)
+            set_dialog_flag("show_edit_trade", False)
+            set_dialog_flag("show_delete_trade", False)
+    else:
+        st.session_state["selected_trade_id"] = selected_from_tab
+        set_dialog_flag("show_create_trade", False)
+        set_dialog_flag("show_edit_trade", False)
+        set_dialog_flag("show_delete_trade", False)
 
 # --- Правый блок кнопок (создание / открытие / удаление) ---
 open_disabled = st.session_state.get("selected_trade_id") is None

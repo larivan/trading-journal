@@ -2,7 +2,6 @@
 
 from typing import Any, Dict, List, Optional, Tuple
 
-import pandas as pd
 import streamlit as st
 
 from config import EMOTIONAL_PROBLEMS, RESULT_VALUES
@@ -163,104 +162,25 @@ def render_review_stage(
             value=defaults["cold_thoughts"],
             key=f"tm_cold_{trade_key}",
         )
+        estimation_default = defaults.get("estimation")
+        feedback_kwargs: Dict[str, Any] = {}
+        if estimation_default in (0, 1):
+            feedback_kwargs["default"] = int(estimation_default)
+
         estimation_value = st.feedback(
             "thumbs",
-            default=int(defaults["estimation"] or 0),
             key=f"tm_estimation_{trade_key}",
+            **feedback_kwargs,
         )
+        normalized_estimation = estimation_value if estimation_value in (0, 1) else None
         return {
             "cold_thoughts": cold_thoughts_value,
-            "estimation": estimation_value,
+            "estimation": normalized_estimation,
         }
-
-
-def render_charts_block(*, trade_key: str, charts_editor: pd.DataFrame) -> pd.DataFrame:
-    """Рендерит таблицу с графиками и возвращает обновлённый датафрейм."""
-    st.markdown("#### Charts")
-    st.caption(
-        "Add a chart link (URL) and optional description. Preview is generated automatically."
-    )
-    charts_display_df = charts_editor.copy()
-    charts_display_df["preview"] = charts_display_df["chart_url"]
-    edited_charts = st.data_editor(
-        charts_display_df,
-        hide_index=True,
-        key=f"tm_charts_{trade_key}",
-        num_rows="dynamic",
-        column_config={
-            "chart_url": st.column_config.TextColumn(
-                "Link", help="TradingView, Telegram, etc."),
-            "description": st.column_config.TextColumn(
-                "Description", help="Optional comment"),
-            "preview": st.column_config.ImageColumn(
-                "Preview",
-                help="Thumbnail will load automatically",
-                width="medium",
-            ),
-        },
-        column_order=["chart_url", "description", "preview"],
-    )
-    if edited_charts is None:
-        return charts_editor.copy()
-    return edited_charts.drop(columns=["preview"], errors="ignore").copy()
-
-
-def render_notes_block(
-        *,
-        trade_key: str,
-        notes_state_key: str,
-        observations_editor: pd.DataFrame,
-        tag_options: List[str],
-) -> pd.DataFrame:
-    """Отображает таблицу заметок и отдаёт актуальный датафрейм."""
-    st.markdown("#### Trade observations")
-    st.caption(
-        "Add short observations for the trade. You can keep multiple notes.")
-    edited = st.data_editor(
-        observations_editor,
-        hide_index=True,
-        key=f"tm_observations_{trade_key}",
-        column_config={
-            "id": st.column_config.NumberColumn(
-                "ID", disabled=True, width="small"),
-            "title": st.column_config.TextColumn("Title"),
-            "body": st.column_config.TextColumn(
-                "Note", width="medium"),
-            "tags": st.column_config.MultiselectColumn(
-                "Tags",
-                help="Optional markers for filtering",
-                options=tag_options,
-                accept_new_options=True,
-                default=[],
-            ),
-        },
-        column_order=["id", "title", "body", "tags"],
-    )
-    spacer_col, button_col = st.columns([0.7, 0.3])
-    with button_col:
-        add_clicked = st.button(
-            "Add note",
-            key=f"tm_add_note_{trade_key}",
-            use_container_width=True,
-        )
-    if add_clicked:
-        new_row = {
-            "id": None,
-            "title": "",
-            "body": "",
-            "tags": [],
-        }
-        edited = pd.concat(
-            [edited, pd.DataFrame([new_row])], ignore_index=True)
-        st.session_state[notes_state_key] = edited
-    return edited
-
-
-def render_header_actions(trade_key: str, *, is_create: bool) -> bool:
-    """Кнопка для запуска сохранения/создания сделки."""
-    label = "Create trade" if is_create else "Save changes"
+def render_header_actions(trade_key: str) -> bool:
+    """Кнопка для запуска сохранения изменений."""
     return st.button(
-        label,
+        "Save changes",
         type="primary",
         key=f"tm_submit_{trade_key}",
         use_container_width=True,

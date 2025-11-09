@@ -1,5 +1,6 @@
 import streamlit as st
 
+from components.trade_creator import render_trade_creator
 from components.trade_manager import render_trade_manager, reset_trade_manager_context
 from db import delete_trade, get_trade_by_id
 
@@ -9,27 +10,19 @@ def set_dialog_flag(flag: str, value: bool) -> None:
     st.session_state[flag] = value
 
 
-@st.dialog("Создание сделки", width="large")
+@st.dialog("Создание сделки")
 def create_trade_dialog() -> None:
-    """Модалка создания: собирает данные формы и пишет их в базу."""
+    """Модалка создания: рендерит trade_creator и переходит к трейд-менеджеру."""
     context_key = "create_dialog"
-    created_id = st.session_state.get(f"tm_{context_key}_created_id")
-    if created_id:
-        trade = get_trade_by_id(created_id)
-        if trade is None:
-            reset_trade_manager_context(context_key)
-            render_trade_manager(None, mode="create", context=context_key, default_tab="Options")
-        else:
-            render_trade_manager(
-                trade,
-                mode="edit",
-                context=context_key,
-                default_tab="Options",
-            )
-    else:
-        render_trade_manager(None, mode="create", context=context_key, default_tab="Options")
+    new_trade_id = render_trade_creator(context=context_key)
+    if new_trade_id:
+        st.session_state["selected_trade_id"] = new_trade_id
+        reset_trade_manager_context(f"edit_{new_trade_id}", trade_id=new_trade_id)
+        set_dialog_flag("show_create_trade", False)
+        set_dialog_flag("show_edit_trade", True)
+        st.rerun()
+
     if st.button("Отмена", key="create_trade_cancel", use_container_width=True):
-        reset_trade_manager_context(context_key, trade_id=created_id)
         set_dialog_flag("show_create_trade", False)
         st.rerun()
 
@@ -48,7 +41,6 @@ def edit_trade_dialog() -> None:
     context_key = f"edit_{trade_id}"
     render_trade_manager(
         trade,
-        mode="edit",
         context=context_key,
         default_tab="View",
     )

@@ -1,6 +1,6 @@
 """Вкладка View для отображения сделки в удобном виде."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import streamlit as st
 
@@ -21,8 +21,6 @@ def _format_view_value(value: Optional[Any], placeholder: str = "—") -> str:
 
 def render_view_tab(
     trade: Dict[str, Any],
-    trade_notes: List[Dict[str, Any]],
-    trade_charts: List[Dict[str, Any]],
     *,
     account_label: str,
     setup_label: str,
@@ -53,27 +51,3 @@ def render_view_tab(
     st.markdown("#### Review")
     st.write(f"**Cold thoughts:** {_format_view_value(trade.get('cold_thoughts'))}")
     st.write(f"**Estimation:** {_format_view_value(trade.get('estimation'))}")
-
-    st.divider()
-    st.markdown("#### Charts")
-    if not trade_charts:
-        st.caption("Charts not attached")
-    else:
-        for idx, chart in enumerate(trade_charts, start=1):
-            url = chart.get('chart_url') or '—'
-            desc = chart.get('description') or chart.get('title') or ''
-            st.markdown(f"{idx}. [{url}]({url}) — {desc}")
-
-    st.divider()
-    st.markdown("#### Notes")
-    if not trade_notes:
-        st.caption("No observations yet")
-    else:
-        for note in trade_notes:
-            title = note.get('title') or f"Note #{note.get('id') or ''}".strip()
-            with st.expander(title):
-                st.write(note.get('body') or '—')
-                tags = note.get('tags') or []
-                if isinstance(tags, str):
-                    tags = [tag.strip() for tag in tags.split(',') if tag.strip()]
-                st.caption(f"Tags: {', '.join(tags) if tags else '—'}")
