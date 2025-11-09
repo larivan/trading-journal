@@ -24,7 +24,7 @@ from helpers import (
     parse_trade_time,
 )
 
-from .constants import CREATE_ALLOWED_STATUSES, RESULT_PLACEHOLDER
+from .constants import CREATE_ALLOWED_STATUSES, RESULT_PLACEHOLDER, STATUS_STAGE
 from .notes import (
     build_charts_dataframe,
     build_notes_dataframe,
@@ -51,7 +51,8 @@ def _trade_defaults(trade: Dict[str, Any], accounts, analyses, setups) -> Dict[s
     analysis_label = current_option_label(analyses, trade.get("analysis_id"))
     setup_label = current_option_label(setups, trade.get("setup_id"))
     asset_candidates = ASSETS or [trade.get("asset") or "—"]
-    asset_default = trade.get("asset") if trade.get("asset") in asset_candidates else asset_candidates[0]
+    asset_default = trade.get("asset") if trade.get(
+        "asset") in asset_candidates else asset_candidates[0]
     if asset_default not in asset_candidates:
         asset_candidates = [asset_default] + asset_candidates
     return {
@@ -120,7 +121,8 @@ def render_trade_manager(
     closed_defaults = defaults["closed"].copy()
     review_defaults = defaults["review"].copy()
 
-    emotional_defaults = parse_emotional_problems(closed_defaults.pop("emotional"))
+    emotional_defaults = parse_emotional_problems(
+        closed_defaults.pop("emotional"))
 
     if trade_id:
         trade_notes = list_notes_for_trade(trade_id)
@@ -133,12 +135,17 @@ def render_trade_manager(
     existing_note_ids: Set[int] = {
         int(note["id"]) for note in trade_notes if note.get("id") is not None
     }
-    tag_options = sorted({tag for tags in observations_df["tags"].tolist() for tag in tags})
+    tag_options = sorted(
+        {tag for tags in observations_df["tags"].tolist() for tag in tags})
     charts_df = build_charts_dataframe(trade_charts)
     charts_state_key = f"tm_charts_state_{trade_key}"
     if charts_state_key not in st.session_state:
         st.session_state[charts_state_key] = charts_df.copy()
     charts_editor = st.session_state[charts_state_key]
+    notes_state_key = f"tm_notes_state_{trade_key}"
+    if notes_state_key not in st.session_state:
+        st.session_state[notes_state_key] = observations_df.copy()
+    observations_editor = st.session_state[notes_state_key]
 
     current_state = trade.get("state") or "open"
     if is_create and current_state not in CREATE_ALLOWED_STATUSES:
@@ -148,17 +155,7 @@ def render_trade_manager(
         tab_labels: List[str] = ["Options"]
     else:
         tab_labels = ["Options", "View"]
-    st.markdown(
-        """
-        <style>
-        div[data-baseweb="tab"] button {
-            font-size: 1.05rem;
-            font-weight: 600;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+
     tabs = st.tabs(tab_labels)
     tab_map = {label: tab for label, tab in zip(tab_labels, tabs)}
 
@@ -166,7 +163,7 @@ def render_trade_manager(
     closed_inputs: Dict[str, Any] = {}
     review_inputs: Optional[Dict[str, Any]] = None
     open_values = open_defaults.copy()
-    observations_editor = observations_df.copy()
+    observations_editor = st.session_state[notes_state_key]
     submitted = False
 
     with tab_map["Options"]:
@@ -178,7 +175,8 @@ def render_trade_manager(
                 vertical_alignment="bottom",
             )
             with status_col:
-                allowed = CREATE_ALLOWED_STATUSES if is_create else allowed_statuses(current_state)
+                allowed = CREATE_ALLOWED_STATUSES if is_create else allowed_statuses(
+                    current_state)
                 current_state = current_state if current_state in allowed else allowed[0]
                 selected_state = st.selectbox(
                     "Trade status",
@@ -188,10 +186,13 @@ def render_trade_manager(
                     key=f"tm_status_{trade_key}",
                 )
             with actions_col:
-                submitted = render_header_actions(trade_key, is_create=is_create)
+                submitted = render_header_actions(
+                    trade_key, is_create=is_create)
 
         stages = visible_stages(selected_state)
-        expanded_stage = selected_state if selected_state in stages else stages[0]
+        expanded_stage = STATUS_STAGE.get(selected_state, stages[0])
+        if expanded_stage not in stages:
+            expanded_stage = stages[0]
 
         col1, col2 = st.columns([1, 2])
         with col1:
@@ -230,9 +231,11 @@ def render_trade_manager(
 
             observations_editor = render_notes_block(
                 trade_key=trade_key,
-                observations_editor=observations_df,
+                notes_state_key=notes_state_key,
+                observations_editor=observations_editor,
                 tag_options=tag_options,
             )
+            st.session_state[notes_state_key] = observations_editor
 
     if not is_create:
         with tab_map["View"]:
@@ -317,7 +320,8 @@ def render_trade_manager(
             st.success("Сделка создана.")
         else:
             if trade_id is None:
-                raise ValueError("Не выбран trade_id для режима редактирования")
+                raise ValueError(
+                    "Не выбран trade_id для режима редактирования")
             update_trade(trade_id, payload)
             replace_trade_notes(trade_id, note_records)
             replace_trade_charts(trade_id, chart_records)

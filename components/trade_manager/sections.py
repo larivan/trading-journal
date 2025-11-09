@@ -98,9 +98,11 @@ def render_closed_stage(
         result_value = cc1.selectbox(
             "Result",
             result_options,
-            index=result_options.index(defaults["result"]) if defaults["result"] in result_options else 0,
+            index=result_options.index(
+                defaults["result"]) if defaults["result"] in result_options else 0,
             key=f"tm_result_{trade_key}",
-            format_func=lambda value: value if value == RESULT_PLACEHOLDER else value.replace('_', ' ').title(),
+            format_func=lambda value: value if value == RESULT_PLACEHOLDER else value.replace(
+                '_', ' ').title(),
         )
         net_pnl_value = cc2.number_input(
             "Net PnL, $",
@@ -206,17 +208,18 @@ def render_charts_block(*, trade_key: str, charts_editor: pd.DataFrame) -> pd.Da
 def render_notes_block(
         *,
         trade_key: str,
+        notes_state_key: str,
         observations_editor: pd.DataFrame,
         tag_options: List[str],
 ) -> pd.DataFrame:
     """Отображает таблицу заметок и отдаёт актуальный датафрейм."""
     st.markdown("#### Trade observations")
-    st.caption("Add short observations for the trade. You can keep multiple notes.")
-    return st.data_editor(
+    st.caption(
+        "Add short observations for the trade. You can keep multiple notes.")
+    edited = st.data_editor(
         observations_editor,
         hide_index=True,
         key=f"tm_observations_{trade_key}",
-        num_rows="dynamic",
         column_config={
             "id": st.column_config.NumberColumn(
                 "ID", disabled=True, width="small"),
@@ -233,6 +236,24 @@ def render_notes_block(
         },
         column_order=["id", "title", "body", "tags"],
     )
+    spacer_col, button_col = st.columns([0.7, 0.3])
+    with button_col:
+        add_clicked = st.button(
+            "Add note",
+            key=f"tm_add_note_{trade_key}",
+            use_container_width=True,
+        )
+    if add_clicked:
+        new_row = {
+            "id": None,
+            "title": "",
+            "body": "",
+            "tags": [],
+        }
+        edited = pd.concat(
+            [edited, pd.DataFrame([new_row])], ignore_index=True)
+        st.session_state[notes_state_key] = edited
+    return edited
 
 
 def render_header_actions(trade_key: str, *, is_create: bool) -> bool:
