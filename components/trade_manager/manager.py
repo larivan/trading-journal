@@ -1,5 +1,6 @@
 """Основной компонент трейд-менеджера."""
 
+import math
 from typing import Any, Dict, List, Optional, Sequence, Set
 
 import streamlit as st
@@ -94,14 +95,17 @@ def render_trade_manager(
     open_values = open_defaults.copy()
     submitted = False
     trade_charts = list_trade_charts(trade_id)
+    chart_rows_source = _chart_table_rows(trade_charts)
     trade_notes = list_trade_notes(trade_id)
     all_notes = list_notes()
+
+    chart_editor_value: Optional[Any] = None
 
     with tab_map["Options"]:
         header_container = st.container(border=True)
         with header_container:
             status_col, _, actions_col = st.columns(
-                [0.2, 0.3, 0.5],
+                [0.2, 0.4, 0.4],
                 gap="large",
                 vertical_alignment="bottom",
             )
@@ -116,9 +120,9 @@ def render_trade_manager(
                     key=f"tm_status_{trade_key}",
                 )
             with actions_col:
-                submitted = render_header_actions(trade_key)
+                submitted = render_header_actions(trade_key, trade_id=trade_id)
 
-        stages_col, side_col = st.columns([1, 2], gap="large")
+        stages_col, side_col = st.columns([1, 2])
 
         with stages_col:
             stages = visible_stages(selected_state)
@@ -153,10 +157,9 @@ def render_trade_manager(
             )
 
         with side_col:
-            _render_charts_section(
-                trade_id=trade_id,
+            chart_editor_value = _render_charts_section(
                 trade_key=trade_key,
-                attached_charts=trade_charts,
+                base_rows=chart_rows_source,
             )
             st.divider()
             _render_notes_section(
@@ -234,7 +237,15 @@ def render_trade_manager(
             "estimation": existing_estimation if selected_state == "reviewed" and existing_estimation in (0, 1) else None,
         })
 
+    chart_state_payload = chart_editor_value if chart_editor_value is not None else chart_rows_source
+    chart_editor_rows = _normalize_editor_rows(chart_state_payload)
+
     try:
+        _persist_chart_editor(
+            trade_id=trade_id,
+            attached_charts=trade_charts,
+            editor_rows=chart_editor_rows,
+        )
         update_trade(trade_id, payload)
         st.success("Trade updated.")
         st.rerun()
@@ -244,27 +255,19 @@ def render_trade_manager(
 
 def _render_charts_section(
     *,
-    trade_id: int,
     trade_key: str,
-    attached_charts: List[Dict[str, Any]],
-) -> None:
+    base_rows: List[Dict[str, Any]],
+) -> Any:
     st.subheader("Charts")
-
-    state_key = f"tm_chart_editor_state_{trade_key}"
-    signature_key = f"{state_key}_signature"
-    seed_signature = _chart_signature(attached_charts)
-    if state_key not in st.session_state or st.session_state.get(signature_key) != seed_signature:
-        st.session_state[state_key] = _charts_to_editor_rows(attached_charts)
-        st.session_state[signature_key] = seed_signature
-
-    editor_value = st.data_editor(
-        st.session_state[state_key],
-        key=f"{state_key}_widget",
+    widget_key = f"tm_chart_editor_{trade_key}"
+    return st.data_editor(
+        base_rows,
+        key=widget_key,
         num_rows="dynamic",
         hide_index=True,
-        column_order=["chart_url", "caption", "preview"],
+        column_order=["chart_url", "caption"],
         column_config={
-            "chart_url": st.column_config.TextColumn(
+            "chart_url": st.column_config.LinkColumn(
                 "Chart URL",
                 required=True,
                 help="Paste a direct image link.",
@@ -273,30 +276,14 @@ def _render_charts_section(
                 "Caption",
                 required=False,
             ),
-            "preview": st.column_config.ImageColumn(
-                "Preview",
-                help="Preview refreshes after editing the URL.",
+            "id": st.column_config.Column(
+                "ID",
+                disabled=True,
+                required=False,
+                width="small"
             ),
-            "id": st.column_config.Column("ID", disabled=True, required=False, width="small"),
         },
     )
-    st.session_state[state_key] = _normalize_editor_rows(editor_value)
-
-    if st.button(
-        "Save charts",
-        key=f"{state_key}_save",
-        use_container_width=True,
-    ):
-        try:
-            _persist_chart_editor(
-                trade_id=trade_id,
-                attached_charts=attached_charts,
-                editor_rows=st.session_state[state_key],
-            )
-            st.success("Charts updated.")
-            st.rerun()
-        except Exception as exc:  # pragma: no cover - UI feedback
-            st.error(f"Failed to update charts: {exc}")
 
 
 def _render_notes_section(
@@ -315,8 +302,9 @@ def _render_notes_section(
             note_ids.append(note["id"])
     selected_default = [note["id"] for note in attached_notes]
 
+    c1, c2 = st.columns([0.6, 0.4], vertical_alignment="bottom")
     note_key = f"tm_note_select_{trade_key}"
-    selected_note_ids = st.multiselect(
+    selected_note_ids = c1.multiselect(
         "Linked notes",
         options=note_ids,
         default=selected_default,
@@ -330,7 +318,7 @@ def _render_notes_section(
         selected_ids=set(selected_note_ids),
     )
 
-    with st.popover("Add", use_container_width=True):
+    with c2.popover("Add", use_container_width=True):
         new_note_title = st.text_input(
             "Title",
             key=f"tm_note_title_{trade_key}",
@@ -361,30 +349,22 @@ def _render_notes_section(
                     st.error(f"Failed to add note: {exc}")
 
 
-def _chart_signature(charts: List[Dict[str, Any]]) -> List[tuple]:
-    return [
-        (chart.get("id"), chart.get("chart_url"), chart.get("caption"))
-        for chart in charts
-    ]
-
-
-def _charts_to_editor_rows(charts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    rows: List[Dict[str, Any]] = []
-    for chart in charts:
-        rows.append({
+def _chart_table_rows(charts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    rows = [
+        {
             "id": chart.get("id"),
             "chart_url": chart.get("chart_url") or "",
             "caption": chart.get("caption") or "",
-            "preview": chart.get("chart_url") or "",
-        })
-    if not rows:
-        return [{
-            "id": None,
-            "chart_url": "",
-            "caption": "",
-            "preview": "",
-        }]
-    return rows
+        }
+        for chart in charts
+    ]
+    if rows:
+        return rows
+    return [{
+        "id": None,
+        "chart_url": "",
+        "caption": "",
+    }]
 
 
 def _normalize_editor_rows(editor_value: Any) -> List[Dict[str, Any]]:
@@ -402,9 +382,19 @@ def _normalize_editor_rows(editor_value: Any) -> List[Dict[str, Any]]:
             "id": row.get("id"),
             "chart_url": chart_url,
             "caption": row.get("caption") or "",
-            "preview": chart_url,
         })
     return normalized
+
+
+def _clean_chart_id(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _persist_chart_editor(
@@ -419,13 +409,13 @@ def _persist_chart_editor(
         if not chart_url:
             continue
         desired_rows.append({
-            "id": row.get("id"),
+            "id": _clean_chart_id(row.get("id")),
             "chart_url": chart_url,
             "caption": (row.get("caption") or "").strip() or None,
         })
 
     current_by_id = {chart["id"]: chart for chart in attached_charts}
-    desired_ids = {row["id"] for row in desired_rows if row.get("id")}
+    desired_ids = {row["id"] for row in desired_rows if row["id"] is not None}
 
     # Removed charts
     for chart_id in set(current_by_id.keys()) - desired_ids:
@@ -445,7 +435,7 @@ def _persist_chart_editor(
 
     # New charts
     for row in desired_rows:
-        if row.get("id"):
+        if row.get("id") is not None:
             continue
         chart_id = add_chart(row["chart_url"], row["caption"])
         attach_chart_to_trade(trade_id, chart_id)

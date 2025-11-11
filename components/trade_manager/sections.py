@@ -172,16 +172,29 @@ def render_review_stage(
             key=f"tm_estimation_{trade_key}",
             **feedback_kwargs,
         )
-        normalized_estimation = estimation_value if estimation_value in (0, 1) else None
+        normalized_estimation = estimation_value if estimation_value in (
+            0, 1) else None
         return {
             "cold_thoughts": cold_thoughts_value,
             "estimation": normalized_estimation,
         }
-def render_header_actions(trade_key: str) -> bool:
-    """Кнопка для запуска сохранения изменений."""
-    return st.button(
+
+
+def render_header_actions(trade_key: str, trade_id: Optional[int] = None) -> bool:
+    """Кнопки действия в заголовке: открыть сделку и сохранить изменения."""
+    col_save, col_open = st.columns(2, gap="small")
+    submitted = col_save.button(
         "Save changes",
         type="primary",
         key=f"tm_submit_{trade_key}",
         use_container_width=True,
     )
+    with col_open:
+        trade_url = f"/trade?id={trade_id}" if trade_id is not None else None
+        col_open.link_button(
+            "Open in new tab",
+            url=trade_url or "#",
+            disabled=trade_url is None,
+            use_container_width=True,
+        )
+    return submitted
