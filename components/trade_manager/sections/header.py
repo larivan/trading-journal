@@ -8,26 +8,18 @@ import streamlit as st
 def render_header_actions(
     trade_key: str,
     *,
-    trade_id: Optional[int] = None,
     on_cancel: Optional[Callable[[], None]] = None,
 ) -> bool:
-    """Кнопки действия в заголовке: открыть сделку, сохранить или отменить изменения."""
+    """Кнопки действия в заголовке: сохранить или отменить изменения."""
     if on_cancel:
-        col_save, col_open, col_cancel = st.columns([2, 1, 1], gap="small")
+        col_save, col_cancel = st.columns(2, gap="small")
     else:
-        col_save, col_open = st.columns([2, 1], gap="small")
+        col_save = st.columns(1)[0]
         col_cancel = None
     submitted = col_save.button(
         "Save changes",
         type="primary",
         key=f"tm_submit_{trade_key}",
-        use_container_width=True,
-    )
-    trade_url = f"/trade?id={trade_id}" if trade_id is not None else None
-    col_open.link_button(
-        "Open in new tab",
-        url=trade_url or "#",
-        disabled=trade_url is None,
         use_container_width=True,
     )
     if col_cancel is not None:

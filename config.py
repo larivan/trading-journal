@@ -12,13 +12,6 @@ PAGES = {
         'default': False,
         'layout': 'wide',
         'in_nav': True,
-    },
-    'trade': {
-        'title': 'Trade manager',
-        'icon': ':material/description:',
-        'default': False,
-        'layout': 'wide',
-        'in_nav': False,
     }
 }
 

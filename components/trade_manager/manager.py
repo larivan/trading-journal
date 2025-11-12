@@ -108,7 +108,6 @@ def render_trade_manager(
         with actions_col:
             submitted = render_header_actions(
                 trade_key,
-                trade_id=trade_id,
                 on_cancel=on_cancel,
             )
 
