@@ -1,6 +1,6 @@
 """Упрощённая форма создания сделки (trade_creator)."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 import streamlit as st
 
@@ -87,3 +87,26 @@ def render_trade_creator(*, context: str = "default") -> Optional[int]:
     except Exception as exc:  # pragma: no cover - UI feedback
         st.error(f"Failed to create the trade: {exc}")
         return None
+
+
+def render_trade_creator_dialog(
+    *,
+    on_created: Optional[Callable[[int], None]] = None,
+    on_cancel: Optional[Callable[[], None]] = None,
+) -> None:
+    """Модалка создания сделки, использующая форму trade_creator."""
+
+    @st.dialog("Создание сделки")
+    def _dialog() -> None:
+        new_trade_id = render_trade_creator(context="dialog")
+        cancel = st.button(
+            "Отмена",
+            key="tc_dialog_cancel",
+            use_container_width=True,
+        )
+        if new_trade_id and on_created:
+            on_created(new_trade_id)
+        if cancel and on_cancel:
+            on_cancel()
+
+    _dialog()

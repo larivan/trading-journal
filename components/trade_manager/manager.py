@@ -1,10 +1,11 @@
 """Основной компонент трейд-менеджера."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import streamlit as st
 
 from db import (
+    get_trade_by_id,
     list_accounts,
     list_analysis,
     list_notes,
@@ -38,6 +39,7 @@ def render_trade_manager(
     trade: Dict[str, Any],
     *,
     context: Optional[str] = None,
+    on_cancel: Optional[Callable[[], None]] = None,
 ) -> None:
     """Главный UI-компонент трейд-менеджера для существующих сделок."""
 
@@ -101,11 +103,14 @@ def render_trade_manager(
                 "Trade status",
                 allowed,
                 index=allowed.index(current_state),
-                help="Statuses move sequentially similar to Jira.",
                 key=f"tm_status_{trade_key}",
             )
         with actions_col:
-            submitted = render_header_actions(trade_key, trade_id=trade_id)
+            submitted = render_header_actions(
+                trade_key,
+                trade_id=trade_id,
+                on_cancel=on_cancel,
+            )
 
     stages_col, side_col = st.columns([1, 2])
 
@@ -228,3 +233,28 @@ def render_trade_manager(
         st.rerun()
     except Exception as exc:  # pragma: no cover - UI feedback
         st.error(f"Failed to persist the trade: {exc}")
+
+
+def render_trade_manager_dialog(
+    *,
+    trade_id: Optional[int],
+    on_close: Optional[Callable[[], None]] = None,
+) -> None:
+    """Показывает модалку редактирования сделки."""
+
+    @st.dialog("Редактирование сделки", width="large")
+    def _dialog() -> None:
+        if not trade_id:
+            st.info("Сделка не выбрана.")
+            return
+        trade = get_trade_by_id(trade_id)
+        if not trade:
+            st.error("Сделка не найдена.")
+            return
+        render_trade_manager(
+            trade,
+            context=f"edit_{trade_id}",
+            on_cancel=on_close,
+        )
+
+    _dialog()

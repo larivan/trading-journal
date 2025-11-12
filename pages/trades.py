@@ -2,12 +2,6 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from components.trade_dialogs import (
-    create_trade_dialog,
-    delete_trade_dialog,
-    edit_trade_dialog,
-    set_dialog_flag,
-)
 from components.trade_filters import (
     TAB_DEFINITIONS,
     account_options,
@@ -15,6 +9,9 @@ from components.trade_filters import (
     tab_date_range,
 )
 from components.trades_table import render_trades_table
+from components.trade_creator import render_trade_creator_dialog
+from components.trade_manager import render_trade_manager_dialog
+from components.trade_remover import render_trade_remove_dialog
 from db import list_trades
 from helpers import apply_page_config_from_file
 
@@ -40,6 +37,11 @@ st.session_state.setdefault("selected_trade_id", None)
 st.session_state.setdefault("show_create_trade", False)
 st.session_state.setdefault("show_edit_trade", False)
 st.session_state.setdefault("show_delete_trade", False)
+
+
+def set_dialog_flag(flag: str, value: bool) -> None:
+    st.session_state[flag] = value
+
 
 # --- Верхняя панель: слева фильтр периода, справа кнопки действий ---
 period_col, actions_col = st.columns([0.7, 0.3], vertical_alignment="bottom")
@@ -139,10 +141,49 @@ if delete_clicked:
     set_dialog_flag("show_create_trade", False)
     set_dialog_flag("show_edit_trade", False)
 
+
+def _close_create_dialog() -> None:
+    set_dialog_flag("show_create_trade", False)
+    st.rerun()
+
+
+def _handle_trade_created(new_trade_id: int) -> None:
+    st.session_state["selected_trade_id"] = new_trade_id
+    set_dialog_flag("show_create_trade", False)
+    set_dialog_flag("show_edit_trade", True)
+    st.rerun()
+
+
+def _close_edit_dialog() -> None:
+    set_dialog_flag("show_edit_trade", False)
+    st.rerun()
+
+
+def _close_delete_dialog() -> None:
+    set_dialog_flag("show_delete_trade", False)
+    st.rerun()
+
+
+def _handle_trade_deleted() -> None:
+    st.session_state["selected_trade_id"] = None
+    set_dialog_flag("show_delete_trade", False)
+    st.rerun()
+
+
 # --- В зависимости от флагов показываем нужные модалки ---
 if st.session_state.get("show_create_trade"):
-    create_trade_dialog()
+    render_trade_creator_dialog(
+        on_created=_handle_trade_created,
+        on_cancel=_close_create_dialog,
+    )
 if st.session_state.get("show_edit_trade"):
-    edit_trade_dialog()
+    render_trade_manager_dialog(
+        trade_id=st.session_state.get("selected_trade_id"),
+        on_close=_close_edit_dialog,
+    )
 if st.session_state.get("show_delete_trade"):
-    delete_trade_dialog()
+    render_trade_remove_dialog(
+        trade_id=st.session_state.get("selected_trade_id"),
+        on_deleted=_handle_trade_deleted,
+        on_cancel=_close_delete_dialog,
+    )
