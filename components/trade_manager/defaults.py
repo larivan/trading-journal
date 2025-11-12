@@ -1,4 +1,4 @@
-"""Shared default values for trade manager forms."""
+"""Общие дефолтные значения для трейд-менеджера"""
 
 from typing import Any, Dict
 
@@ -14,7 +14,7 @@ def build_trade_defaults(
     analyses: Dict[str, Any],
     setups: Dict[str, Any],
 ) -> Dict[str, Dict[str, Any]]:
-    """Return default values for the blocks rendered on the Options tab."""
+    """Возвращает дефолтные значения"""
 
     date_value = parse_trade_date(trade.get("date_local"))
     time_value = parse_trade_time(trade.get("time_local"))

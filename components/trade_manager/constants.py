@@ -4,11 +4,11 @@ from typing import Dict, List
 
 # --- Допустимые переходы между статусами сделки ---
 STATUS_TRANSITIONS: Dict[str, List[str]] = {
-    "open": ["open", "closed", "cancelled", "missed"],
+    "open": ["open", "closed", "cancelled"],
     "closed": ["closed", "reviewed"],
     "reviewed": ["reviewed"],
-    "cancelled": ["cancelled"],
-    "missed": ["missed"],
+    "cancelled": ["cancelled", "reviewed"],
+    "missed": ["missed", "reviewed"],
 }
 
 # --- Карта статусов к визуальным стадиям (какие блоки формы показывать) ---

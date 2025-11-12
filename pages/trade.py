@@ -56,6 +56,5 @@ st.session_state["selected_trade_id"] = trade_id
 context_key = f"page_trade_{trade_id}"
 render_trade_manager(
     trade,
-    context=context_key,
-    default_tab="Options",
+    context=context_key
 )
