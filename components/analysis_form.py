@@ -14,7 +14,6 @@ def build_analysis_form_defaults(
     return {
         "date": parse_trade_date(analysis.get("date_local")),
         "time": parse_trade_time(analysis.get("time_local")),
-        "local_tz": analysis.get("local_tz") or LOCAL_TZ,
         "asset": analysis.get("asset") or (ASSETS[0] if ASSETS else ""),
         "day_result": analysis.get("day_result") or "Не указано",
         "pre_market_summary": analysis.get("pre_market_summary") or "",
@@ -40,11 +39,6 @@ def render_analysis_form(
         value=defaults["time"],
         key=f"{form_key}_time",
         step=300,
-    )
-    tz_value = tz_col.text_input(
-        "Часовой пояс",
-        value=defaults["local_tz"],
-        key=f"{form_key}_tz",
     )
 
     asset_value = st.text_input(
@@ -90,7 +84,7 @@ def render_analysis_form(
     return {
         "date": date_value,
         "time": time_value,
-        "local_tz": tz_value,
+        "local_tz": LOCAL_TZ,
         "asset": asset_value,
         "day_result": day_result_value,
         "pre_market_summary": pre_summary,

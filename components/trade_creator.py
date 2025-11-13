@@ -9,6 +9,7 @@ from .trade_manager.defaults import build_trade_defaults
 from .trade_manager.sections import render_open_stage
 from db import create_trade, list_accounts, list_analysis, list_setups
 from helpers import option_with_placeholder
+from config import LOCAL_TZ
 
 
 def render_trade_creator(*, context: str = "default") -> Optional[int]:
@@ -72,6 +73,7 @@ def render_trade_creator(*, context: str = "default") -> Optional[int]:
     payload: Dict[str, Any] = {
         "date_local": open_values["date"].isoformat(),
         "time_local": open_values["time"].strftime("%H:%M:%S"),
+        "local_tz": LOCAL_TZ,
         "account_id": accounts[open_values["account_label"]],
         "asset": open_values["asset"],
         "analysis_id": analyses[open_values["analysis_label"]],
