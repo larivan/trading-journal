@@ -23,10 +23,12 @@ PAGES = {
 }
 
 # --- Справочники (энумы) ---
-STATE_VALUES = ["open", "closed", "reviewed", "cancelled", "missed"]
-RESULT_VALUES = ["win", "loss", "be"]
-SESSION_VALUES = ["Frankfurt", "LOKZ", "Lunch", "Pre-NY", "NYKZ", "Other"]
-ANALYSIS_SECTIONS = ["pre", "plan", "post"]
+TRADE_STATE_VALUES = ["open", "closed", "reviewed", "cancelled", "missed"]
+TRADE_RESULT_VALUES = ["win", "loss", "be"]
+TRADE_SESSION_VALUES = ["Frankfurt", "LOKZ",
+                        "Lunch", "Pre-NY", "NYKZ", "Other"]
+
+ANALYSIS_STATE_VALUES = ["pre-market", "plan", "post-market"]
 
 # --- Дополнительные справочники для UI ---
 ASSETS = ["EUR/USD", "GBP/USD", "XAU/USD", "XAG/USD"]

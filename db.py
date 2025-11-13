@@ -8,11 +8,11 @@ from typing import Any, Dict, List, Optional
 # Справочники вынесены в config.py
 from config import (
     ASSETS,
-    ANALYSIS_SECTIONS,
+    ANALYSIS_STATE_VALUES,
     EMOTIONAL_PROBLEMS,
-    RESULT_VALUES,
-    SESSION_VALUES,
-    STATE_VALUES,
+    TRADE_RESULT_VALUES,
+    TRADE_SESSION_VALUES,
+    TRADE_STATE_VALUES,
 )
 
 # =====================================================================
@@ -45,15 +45,13 @@ TRADE_ORDER_COLUMNS = {
     "reward_percent",
 }
 
-NOTE_CATEGORIES = ("general", "observation", "review")
-
 ANALYSIS_COLUMNS = [
     "id",
-    "created_at_utc",
     "local_tz",
     "date_local",
     "time_local",
     "asset",
+    "daily_bias",
     "pre_market_summary",
     "plan_summary",
     "post_market_summary",
@@ -61,11 +59,11 @@ ANALYSIS_COLUMNS = [
 ]
 
 ANALYSIS_WRITABLE_FIELDS = [
-    "created_at_utc",
     "local_tz",
     "date_local",
     "time_local",
     "asset",
+    "daily_bias",
     "pre_market_summary",
     "plan_summary",
     "post_market_summary",
@@ -228,11 +226,12 @@ CREATE TABLE IF NOT EXISTS charts (
 
 CREATE TABLE IF NOT EXISTS analyses (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    created_at_utc       TEXT,
     local_tz             TEXT,
     date_local           TEXT,
     time_local           TEXT,
+    state                TEXT CHECK (state IN ({_enum_sql(ANALYSIS_STATE_VALUES)})),
     asset                TEXT,
+    daily_bias           TEXT,
     pre_market_summary   TEXT,
     plan_summary         TEXT,
     post_market_summary  TEXT,
@@ -297,6 +296,14 @@ CREATE TABLE IF NOT EXISTS analysis_notes (
     FOREIGN KEY (note_id)     REFERENCES notes(id)    ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS analisys_trades (
+    note_id   INTEGER,
+    chart_id  INTEGER,
+    PRIMARY KEY (note_id, chart_id),
+    FOREIGN KEY (note_id)  REFERENCES notes(id)  ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (chart_id) REFERENCES charts(id)  ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS trade_charts (
     trade_id  INTEGER,
     chart_id  INTEGER,
@@ -318,14 +325,6 @@ CREATE TABLE IF NOT EXISTS setup_charts (
     chart_id  INTEGER,
     PRIMARY KEY (setup_id, chart_id),
     FOREIGN KEY (setup_id) REFERENCES setups(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (chart_id) REFERENCES charts(id)  ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS note_charts (
-    note_id   INTEGER,
-    chart_id  INTEGER,
-    PRIMARY KEY (note_id, chart_id),
-    FOREIGN KEY (note_id)  REFERENCES notes(id)  ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (chart_id) REFERENCES charts(id)  ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -663,13 +662,22 @@ def detach_chart_from_trade(trade_id: int, chart_id: int) -> None:
 # =====================================================================
 
 
+ANALYSIS_ORDER_COLUMNS = {
+    "id",
+    "date_local",
+    "time_local",
+    "asset",
+    "daily_bias",
+    "day_result",
+}
+
+
 def add_analysis(data: Dict[str, Any]) -> int:
     """
-    data keys: created_at_utc, local_tz, date_local, time_local, asset,
+    data keys: local_tz, date_local, time_local, asset, daily_bias,
                pre_market_summary, plan_summary, post_market_summary, day_result
     """
     payload = _normalize_analysis_payload(data)
-    payload["created_at_utc"] = payload.get("created_at_utc") or _now_iso_utc()
     if not payload:
         raise ValueError("Нет данных для создания анализа.")
 
@@ -710,6 +718,7 @@ def list_analysis(filters: Optional[Dict[str, Any]] = None,
 
     mapping = {
         "asset": "asset",
+        "daily_bias": "daily_bias",
         "day_result": "day_result",
         "date_from": "date_local >= ?",
         "date_to": "date_local <= ?",
@@ -1032,11 +1041,3 @@ def seed_test_trades(count: int = 10) -> None:
 if __name__ == "__main__":
     init_db()
     print("DB initialized at:", DB_PATH)
-ANALYSIS_ORDER_COLUMNS = {
-    "id",
-    "date_local",
-    "time_local",
-    "asset",
-    "day_result",
-    "created_at_utc",
-}
