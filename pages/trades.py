@@ -2,6 +2,10 @@ from datetime import date, timedelta
 
 import streamlit as st
 
+from components.database_toolbar import (
+    render_action_buttons,
+    render_database_toolbar,
+)
 from components.trade_filters import (
     TAB_DEFINITIONS,
     account_options,
@@ -44,27 +48,13 @@ def set_dialog_flag(flag: str, value: bool) -> None:
 
 
 # --- Верхняя панель: слева фильтр периода, справа кнопки действий ---
-period_col, actions_col = st.columns([0.7, 0.3], vertical_alignment="bottom")
-
-with period_col:
-    period_labels = [label for label, _ in TAB_DEFINITIONS]
-    default_label = st.session_state.get(
-        "trades_active_period", period_labels[0])
-    selected_label = st.segmented_control(
-        "Период",
-        options=period_labels,
-        default=default_label if default_label in period_labels else period_labels[0],
-        key="trades_period_control",
-    )
-
-# Кнопки рендерим после таблицы, поэтому создаём placeholder заранее
-actions_placeholder = actions_col.container()
+selected_label, selected_tab_key, tab_changed, actions_placeholder = render_database_toolbar(
+    tab_definitions=TAB_DEFINITIONS,
+    session_prefix="trades",
+)
 
 # --- Фиксируем выбранный период и обнуляем выбор при переключении ---
-label_to_key = {label: key for label, key in TAB_DEFINITIONS}
-selected_tab_key = label_to_key.get(selected_label, TAB_DEFINITIONS[0][1])
-previous_tab_key = st.session_state.get("trades_visible_tab")
-if previous_tab_key != selected_tab_key:
+if tab_changed:
     st.session_state["selected_trade_id"] = None
     set_dialog_flag("show_create_trade", False)
     set_dialog_flag("show_edit_trade", False)
@@ -115,18 +105,11 @@ if selection_changed:
 
 # --- Правый блок кнопок (создание / открытие / удаление) ---
 open_disabled = st.session_state.get("selected_trade_id") is None
-with actions_placeholder:
-    create_col, open_col, delete_col = st.columns(
-        3, vertical_alignment="bottom")
-    with create_col:
-        create_clicked = st.button(
-            "Создать", type="primary", key="trades_btn_create", width="stretch")
-    with open_col:
-        open_clicked = st.button(
-            "Открыть", disabled=open_disabled, key="trades_btn_open", width="stretch")
-    with delete_col:
-        delete_clicked = st.button(
-            "Удалить", disabled=open_disabled, key="trades_btn_delete", width="stretch")
+create_clicked, open_clicked, delete_clicked = render_action_buttons(
+    actions_container=actions_placeholder,
+    session_prefix="trades",
+    open_disabled=open_disabled,
+)
 
 if create_clicked:
     set_dialog_flag("show_create_trade", True)

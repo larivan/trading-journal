@@ -11,6 +11,10 @@ from components.analysis_filters import (
 from components.analysis_manager import render_analysis_manager_dialog
 from components.analysis_remover import render_analysis_remove_dialog
 from components.analysis_table import render_analysis_table
+from components.database_toolbar import (
+    render_action_buttons,
+    render_database_toolbar,
+)
 from db import list_analysis
 from helpers import apply_page_config_from_file
 
@@ -36,25 +40,12 @@ def _set_flag(flag: str, value: bool) -> None:
     st.session_state[flag] = value
 
 
-period_col, actions_col = st.columns([0.7, 0.3], vertical_alignment="bottom")
-with period_col:
-    period_labels = [label for label, _ in TAB_DEFINITIONS]
-    default_label = st.session_state.get(
-        "analysis_active_period", period_labels[0])
-    selected_label = st.segmented_control(
-        "Период",
-        options=period_labels,
-        default=default_label if default_label in period_labels else period_labels[0],
-        key="analysis_period_control",
-    )
+selected_label, selected_tab_key, tab_changed, actions_placeholder = render_database_toolbar(
+    tab_definitions=TAB_DEFINITIONS,
+    session_prefix="analysis",
+)
 
-
-actions_placeholder = actions_col.container()
-
-label_to_key = {label: key for label, key in TAB_DEFINITIONS}
-selected_tab_key = label_to_key.get(selected_label, TAB_DEFINITIONS[0][1])
-previous_tab_key = st.session_state.get("analysis_visible_tab")
-if previous_tab_key != selected_tab_key:
+if tab_changed:
     st.session_state["selected_analysis_id"] = None
     _set_flag("show_analysis_create", False)
     _set_flag("show_analysis_edit", False)
@@ -103,18 +94,11 @@ if selection_changed:
 
 
 open_disabled = st.session_state.get("selected_analysis_id") is None
-with actions_placeholder:
-    create_col, open_col, delete_col = st.columns(
-        3, vertical_alignment="bottom")
-    with create_col:
-        create_clicked = st.button(
-            "Создать", type="primary", key="analysis_btn_create", width="stretch")
-    with open_col:
-        open_clicked = st.button(
-            "Открыть", disabled=open_disabled, key="analysis_btn_open", width="stretch")
-    with delete_col:
-        delete_clicked = st.button(
-            "Удалить", disabled=open_disabled, key="analysis_btn_delete", width="stretch")
+create_clicked, open_clicked, delete_clicked = render_action_buttons(
+    actions_container=actions_placeholder,
+    session_prefix="analysis",
+    open_disabled=open_disabled,
+)
 
 if create_clicked:
     _set_flag("show_analysis_create", True)
