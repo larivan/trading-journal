@@ -40,9 +40,6 @@ def render_trades_table(
             "Время",
             pd.to_datetime(df["time_local"], errors="coerce").dt.time,
         )
-    table["Открыть"] = df["id"].apply(
-        lambda tid: f"/trade-detail?trade_id={tid}"
-    )
 
     # Храним отдельный ключ таблицы для каждого периода, чтобы isolировать выбор
     table_key = f"trades_table_{tab_key}"
@@ -57,17 +54,13 @@ def render_trades_table(
             "Время": st.column_config.TimeColumn("Время"),
             "PnL": st.column_config.NumberColumn("PnL", format="%.2f"),
             "R:R": st.column_config.NumberColumn("R:R", format="%.2f"),
-            "Открыть": st.column_config.LinkColumn(
-                "Открыть",
-                help="Перейти на отдельную страницу сделки",
-                display_text="Страница",
-            ),
         },
     )
 
     # Анализируем state, чтобы понять изменилась ли выделенная строка
     table_state = st.session_state.get(table_key, {})
-    selected_rows = table_state.get("selection", {}).get("rows") if table_state else None
+    selected_rows = table_state.get("selection", {}).get(
+        "rows") if table_state else None
 
     selection_key = f"{table_key}_selection"
     current_selection = tuple(selected_rows) if selected_rows else ()
