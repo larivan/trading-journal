@@ -52,6 +52,7 @@ ANALYSIS_COLUMNS = [
     "time_local",
     "asset",
     "daily_bias",
+    "fact_bias",
     "pre_market_summary",
     "plan_summary",
     "post_market_summary",
@@ -64,6 +65,7 @@ ANALYSIS_WRITABLE_FIELDS = [
     "time_local",
     "asset",
     "daily_bias",
+    "fact_bias",
     "pre_market_summary",
     "plan_summary",
     "post_market_summary",
@@ -232,6 +234,7 @@ CREATE TABLE IF NOT EXISTS analyses (
     state                TEXT CHECK (state IN ({_enum_sql(ANALYSIS_STATE_VALUES)})),
     asset                TEXT,
     daily_bias           TEXT,
+    fact_bias            TEXT,
     pre_market_summary   TEXT,
     plan_summary         TEXT,
     post_market_summary  TEXT,
@@ -669,13 +672,14 @@ ANALYSIS_ORDER_COLUMNS = {
     "state",
     "asset",
     "daily_bias",
+    "fact_bias",
     "day_result",
 }
 
 
 def add_analysis(data: Dict[str, Any]) -> int:
     """
-    data keys: local_tz, date_local, time_local, state, asset, daily_bias,
+    data keys: local_tz, date_local, time_local, state, asset, daily_bias, fact_bias,
                pre_market_summary, plan_summary, post_market_summary, day_result
     """
     payload = _normalize_analysis_payload(data)
@@ -720,6 +724,7 @@ def list_analysis(filters: Optional[Dict[str, Any]] = None,
     mapping = {
         "asset": "asset",
         "daily_bias": "daily_bias",
+        "fact_bias": "fact_bias",
         "day_result": "day_result",
         "date_from": "date_local >= ?",
         "date_to": "date_local <= ?",
