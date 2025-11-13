@@ -254,10 +254,10 @@ CREATE TABLE IF NOT EXISTS trades (
     analysis_id        INTEGER,
     asset              TEXT,
 
-    session            TEXT CHECK (session IN ({_enum_sql(SESSION_VALUES)})),
+    session            TEXT CHECK (session IN ({_enum_sql(TRADE_SESSION_VALUES)})),
 
-    state              TEXT CHECK (state IN ({_enum_sql(STATE_VALUES)})),
-    result             TEXT CHECK (result IN ({_enum_sql(RESULT_VALUES)})),
+    state              TEXT CHECK (state IN ({_enum_sql(TRADE_STATE_VALUES)})),
+    result             TEXT CHECK (result IN ({_enum_sql(TRADE_RESULT_VALUES)})),
 
     net_pnl            REAL,
     risk_pct           REAL,
@@ -281,8 +281,8 @@ CREATE TABLE IF NOT EXISTS trades (
 CREATE TABLE IF NOT EXISTS analysis_charts (
     analysis_id  INTEGER,
     chart_id     INTEGER,
-    section      TEXT CHECK (section IN ({_enum_sql(ANALYSIS_SECTIONS)})),
-    PRIMARY KEY (analysis_id, chart_id, section),
+    state      TEXT CHECK (state IN ({_enum_sql(ANALYSIS_STATE_VALUES)})),
+    PRIMARY KEY (analysis_id, chart_id, state),
     FOREIGN KEY (analysis_id) REFERENCES analyses(id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (chart_id)    REFERENCES charts(id)    ON DELETE CASCADE ON UPDATE CASCADE
 );
@@ -290,8 +290,8 @@ CREATE TABLE IF NOT EXISTS analysis_charts (
 CREATE TABLE IF NOT EXISTS analysis_notes (
     analysis_id  INTEGER,
     note_id      INTEGER,
-    section      TEXT CHECK (section IN ({_enum_sql(ANALYSIS_SECTIONS)})),
-    PRIMARY KEY (analysis_id, note_id, section),
+    state      TEXT CHECK (state IN ({_enum_sql(ANALYSIS_STATE_VALUES)})),
+    PRIMARY KEY (analysis_id, note_id, state),
     FOREIGN KEY (analysis_id) REFERENCES analyses(id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (note_id)     REFERENCES notes(id)    ON DELETE CASCADE ON UPDATE CASCADE
 );
@@ -666,6 +666,7 @@ ANALYSIS_ORDER_COLUMNS = {
     "id",
     "date_local",
     "time_local",
+    "state",
     "asset",
     "daily_bias",
     "day_result",
@@ -674,7 +675,7 @@ ANALYSIS_ORDER_COLUMNS = {
 
 def add_analysis(data: Dict[str, Any]) -> int:
     """
-    data keys: local_tz, date_local, time_local, asset, daily_bias,
+    data keys: local_tz, date_local, time_local, state, asset, daily_bias,
                pre_market_summary, plan_summary, post_market_summary, day_result
     """
     payload = _normalize_analysis_payload(data)
@@ -976,7 +977,7 @@ def seed_test_trades(count: int = 10) -> None:
     if count <= 0:
         return
 
-    sessions = SESSION_VALUES or ["Other"]
+    sessions = TRADE_SESSION_VALUES or ["Other"]
     now = datetime.utcnow()
 
     conn = get_conn()
@@ -989,8 +990,8 @@ def seed_test_trades(count: int = 10) -> None:
 
             state = "reviewed" if is_reviewed else (
                 "closed" if is_closed else "open")
-            result = RESULT_VALUES[idx %
-                                   len(RESULT_VALUES)] if is_closed else None
+            result = TRADE_RESULT_VALUES[idx %
+                                         len(TRADE_RESULT_VALUES)] if is_closed else None
             net_pnl = float((idx + 1) * 50) if is_closed else None
             risk_reward = round(1.0 + (idx % 4) * 0.5,
                                 2) if is_closed else None
