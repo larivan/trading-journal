@@ -2,7 +2,7 @@
 import json
 import os
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional
 
 # Справочники вынесены в config.py
@@ -47,6 +47,31 @@ TRADE_ORDER_COLUMNS = {
 
 NOTE_CATEGORIES = ("general", "observation", "review")
 
+ANALYSIS_COLUMNS = [
+    "id",
+    "created_at_utc",
+    "local_tz",
+    "date_local",
+    "time_local",
+    "asset",
+    "pre_market_summary",
+    "plan_summary",
+    "post_market_summary",
+    "day_result",
+]
+
+ANALYSIS_WRITABLE_FIELDS = [
+    "created_at_utc",
+    "local_tz",
+    "date_local",
+    "time_local",
+    "asset",
+    "pre_market_summary",
+    "plan_summary",
+    "post_market_summary",
+    "day_result",
+]
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "journal.db")
@@ -71,6 +96,33 @@ def _now_iso_utc() -> str:
 
 def _rows_to_dicts(rows: List[sqlite3.Row]) -> List[Dict[str, Any]]:
     return [dict(r) for r in rows]
+
+
+def _normalize_analysis_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    for key in ANALYSIS_WRITABLE_FIELDS:
+        if key not in data:
+            continue
+        value = data[key]
+        if value is None:
+            payload[key] = None
+            continue
+        if key == "date_local" and isinstance(value, date):
+            payload[key] = value.isoformat()
+            continue
+        if key == "time_local":
+            if isinstance(value, time):
+                payload[key] = value.strftime("%H:%M:%S")
+            elif isinstance(value, datetime):
+                payload[key] = value.strftime("%H:%M:%S")
+            else:
+                payload[key] = value
+            continue
+        if isinstance(value, datetime) and key == "created_at_utc":
+            payload[key] = value.strftime("%Y-%m-%dT%H:%M:%S")
+            continue
+        payload[key] = value
+    return payload
 
 
 def _serialize_emotional_problems(value: Optional[Any]) -> Optional[str]:
@@ -614,26 +666,24 @@ def detach_chart_from_trade(trade_id: int, chart_id: int) -> None:
 def add_analysis(data: Dict[str, Any]) -> int:
     """
     data keys: created_at_utc, local_tz, date_local, time_local, asset,
-               pre_market_summary, plan_summary, post_market_summary
+               pre_market_summary, plan_summary, post_market_summary, day_result
     """
+    payload = _normalize_analysis_payload(data)
+    payload["created_at_utc"] = payload.get("created_at_utc") or _now_iso_utc()
+    if not payload:
+        raise ValueError("Нет данных для создания анализа.")
+
+    columns = ", ".join(payload.keys())
+    placeholders = ", ".join(["?"] * len(payload))
+    values = list(payload.values())
+
     conn = get_conn()
     try:
         cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO analyses (
-                created_at_utc, local_tz, date_local, time_local,
-                pre_market_summary, plan_summary, post_market_summary, asset
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            data.get("created_at_utc") or _now_iso_utc(),
-            data.get("local_tz"),
-            data.get("date_local"),
-            data.get("time_local"),
-            data.get("pre_market_summary"),
-            data.get("plan_summary"),
-            data.get("post_market_summary"),
-            data.get("asset"),
-        ))
+        cur.execute(
+            f"INSERT INTO analyses ({columns}) VALUES ({placeholders})",
+            values,
+        )
         conn.commit()
         return cur.lastrowid
     finally:
@@ -650,13 +700,76 @@ def get_analysis(analysis_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def list_analysis() -> List[Dict[str, Any]]:
+def list_analysis(filters: Optional[Dict[str, Any]] = None,
+                  order_by: Optional[str] = None,
+                  ascending: bool = False) -> List[Dict[str, Any]]:
+    filters = filters or {}
+    select_clause = ", ".join(ANALYSIS_COLUMNS)
+    q = f"SELECT {select_clause} FROM analyses WHERE 1=1"
+    p: List[Any] = []
+
+    mapping = {
+        "asset": "asset",
+        "day_result": "day_result",
+        "date_from": "date_local >= ?",
+        "date_to": "date_local <= ?",
+    }
+    for key, value in filters.items():
+        if value is None:
+            continue
+        if key in ("date_from", "date_to"):
+            q += f" AND {mapping[key]}"
+            p.append(value)
+        elif key in mapping:
+            q += f" AND {mapping[key]} = ?"
+            p.append(value)
+
+    if order_by:
+        if order_by not in ANALYSIS_ORDER_COLUMNS:
+            raise ValueError(
+                f"order_by must be one of: {sorted(ANALYSIS_ORDER_COLUMNS)}")
+        q += f" ORDER BY {order_by} {'ASC' if ascending else 'DESC'}"
+    else:
+        q += " ORDER BY date_local DESC, time_local DESC, id DESC"
+
     conn = get_conn()
     try:
-        rows = conn.execute(
-            "SELECT * FROM analyses ORDER BY date_local DESC, time_local DESC, id DESC"
-        ).fetchall()
+        rows = conn.execute(q, p).fetchall()
         return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
+def update_analysis(analysis_id: int, data: Dict[str, Any]) -> None:
+    payload = _normalize_analysis_payload(data)
+    if not payload:
+        return
+
+    assignments = ", ".join(f"{col}=?" for col in payload.keys())
+    values = list(payload.values())
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE analyses SET {assignments} WHERE id=?",
+            values + [analysis_id],
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f"Анализ #{analysis_id} не найден.")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_analysis(analysis_id: int) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM analyses WHERE id=?", (analysis_id,))
+        if cur.rowcount == 0:
+            raise ValueError(f"Анализ #{analysis_id} не найден.")
+        conn.commit()
     finally:
         conn.close()
 
@@ -919,3 +1032,11 @@ def seed_test_trades(count: int = 10) -> None:
 if __name__ == "__main__":
     init_db()
     print("DB initialized at:", DB_PATH)
+ANALYSIS_ORDER_COLUMNS = {
+    "id",
+    "date_local",
+    "time_local",
+    "asset",
+    "day_result",
+    "created_at_utc",
+}

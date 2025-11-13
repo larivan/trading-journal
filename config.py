@@ -12,7 +12,14 @@ PAGES = {
         'default': False,
         'layout': 'wide',
         'in_nav': True,
-    }
+    },
+    'market_analysis': {
+        'title': 'Market analysis',
+        'icon': ':material/insights:',
+        'default': False,
+        'layout': 'wide',
+        'in_nav': True,
+    },
 }
 
 # --- Справочники (энумы) ---
