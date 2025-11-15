@@ -4,12 +4,11 @@ from typing import Any, Callable, Dict, Optional
 
 import streamlit as st
 
-from .trade_manager.constants import CREATE_ALLOWED_STATUSES
+from config import CREATE_ALLOWED_STATUSES, LOCAL_TZ
 from .trade_manager.defaults import build_trade_defaults
 from .trade_manager.sections import render_open_stage
 from db import create_trade, list_accounts, list_analysis, list_setups
 from helpers import option_with_placeholder
-from config import LOCAL_TZ
 
 
 def render_trade_creator(*, context: str = "default") -> Optional[int]:
