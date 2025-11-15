@@ -3,7 +3,7 @@ from typing import Dict, Optional, Tuple
 
 import streamlit as st
 
-from config import ASSETS, RESULT_VALUES, SESSION_VALUES, STATE_VALUES
+from config import ASSETS, TRADE_RESULT_VALUES, TRADE_SESSION_VALUES, TRADE_STATE_VALUES
 from db import list_accounts
 
 TAB_DEFINITIONS = [
@@ -50,11 +50,11 @@ def build_filters(
 
     asset_options = ["Все"] + ASSETS
     asset_default = initial_filters.get("asset", "Все")
-    state_options = ["Все"] + STATE_VALUES
+    state_options = ["Все"] + TRADE_STATE_VALUES
     state_default = initial_filters.get("state", "Все")
-    result_options = ["Все"] + RESULT_VALUES
+    result_options = ["Все"] + TRADE_RESULT_VALUES
     result_default = initial_filters.get("result", "Все")
-    session_options = ["Все"] + SESSION_VALUES
+    session_options = ["Все"] + TRADE_SESSION_VALUES
     session_default = initial_filters.get("session", "Все")
 
     # Блок UI-контролов сгруппирован, чтобы визуально связать фильтры
