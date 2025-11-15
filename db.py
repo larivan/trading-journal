@@ -45,31 +45,40 @@ TRADE_ORDER_COLUMNS = {
     "reward_percent",
 }
 
-ANALYSIS_COLUMNS = [
+ANALYSIS_TYPE_VALUES = ANALYSIS_STATE_VALUES
+
+TRADING_DAY_COLUMNS = [
     "id",
-    "local_tz",
     "date_local",
-    "time_local",
-    "asset",
-    "daily_bias",
-    "fact_bias",
-    "pre_market_summary",
-    "plan_summary",
-    "post_market_summary",
     "day_result",
 ]
 
-ANALYSIS_WRITABLE_FIELDS = [
-    "local_tz",
+TRADING_DAY_WRITABLE_FIELDS = [
     "date_local",
+    "day_result",
+]
+
+ANALYSIS_COLUMNS = [
+    "a.id AS id",
+    "a.trading_day_id",
+    "td.date_local AS date_local",
+    "td.day_result AS day_result",
+    "a.time_local",
+    "a.asset",
+    "a.type",
+    "a.daily_bias",
+    "a.fact_bias",
+    "a.summary",
+]
+
+ANALYSIS_WRITABLE_FIELDS = [
+    "trading_day_id",
     "time_local",
     "asset",
+    "type",
     "daily_bias",
     "fact_bias",
-    "pre_market_summary",
-    "plan_summary",
-    "post_market_summary",
-    "day_result",
+    "summary",
 ]
 
 
@@ -107,8 +116,11 @@ def _normalize_analysis_payload(data: Dict[str, Any]) -> Dict[str, Any]:
         if value is None:
             payload[key] = None
             continue
-        if key == "date_local" and isinstance(value, date):
-            payload[key] = value.isoformat()
+        if key == "trading_day_id":
+            try:
+                payload[key] = int(value)
+            except (TypeError, ValueError):
+                raise ValueError("trading_day_id должно быть целым числом.")
             continue
         if key == "time_local":
             if isinstance(value, time):
@@ -118,8 +130,28 @@ def _normalize_analysis_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 payload[key] = value
             continue
+        if key == "type" and value not in ANALYSIS_TYPE_VALUES:
+            raise ValueError(
+                f"type должно быть одним из: {', '.join(ANALYSIS_TYPE_VALUES)}"
+            )
         if isinstance(value, datetime) and key == "created_at_utc":
             payload[key] = value.strftime("%Y-%m-%dT%H:%M:%S")
+            continue
+        payload[key] = value
+    return payload
+
+
+def _normalize_trading_day_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    for key in TRADING_DAY_WRITABLE_FIELDS:
+        if key not in data:
+            continue
+        value = data[key]
+        if value is None:
+            payload[key] = None
+            continue
+        if key == "date_local" and isinstance(value, date):
+            payload[key] = value.isoformat()
             continue
         payload[key] = value
     return payload
@@ -175,6 +207,14 @@ def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
     return any(row[1] == column for row in cur.fetchall())
 
 
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    cur = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table,),
+    )
+    return cur.fetchone() is not None
+
+
 def _ensure_column(conn: sqlite3.Connection, table: str, column_def: str) -> None:
     column_name = column_def.split()[0]
     if not _column_exists(conn, table, column_name):
@@ -189,61 +229,26 @@ SCHEMA_SQL = f"""
 PRAGMA foreign_keys = ON;
 
 -- =========================
--- ОСНОВНЫЕ ТАБЛИЦЫ
+-- ТАБЛИЦЫ
 -- =========================
 
-CREATE TABLE IF NOT EXISTS accounts (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    name              TEXT NOT NULL,
-    broker            TEXT,
-    currency          TEXT DEFAULT 'USD',
-    starting_balance  REAL,
-    is_prop           INTEGER DEFAULT 0,
-    created_at        TEXT,
-    archived          INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS setups (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    name         TEXT NOT NULL UNIQUE,
-    description  TEXT,
-    created_at   TEXT
-);
-
-CREATE TABLE IF NOT EXISTS notes (
+CREATE TABLE IF NOT EXISTS trading_days (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    title       TEXT,
-    body        TEXT
+    date_local  TEXT NOT NULL UNIQUE,
+    day_result  TEXT
 );
-
-CREATE TABLE IF NOT EXISTS charts (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    chart_url    TEXT NOT NULL,
-    caption      TEXT
-);
-
--- =========================
--- АНАЛИЗЫ
--- =========================
 
 CREATE TABLE IF NOT EXISTS analyses (
-    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    local_tz             TEXT,
-    date_local           TEXT,
-    time_local           TEXT,
-    state                TEXT CHECK (state IN ({_enum_sql(ANALYSIS_STATE_VALUES)})),
-    asset                TEXT,
-    daily_bias           TEXT,
-    fact_bias            TEXT,
-    pre_market_summary   TEXT,
-    plan_summary         TEXT,
-    post_market_summary  TEXT,
-    day_result           TEXT
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    trading_day_id  INTEGER NOT NULL,
+    time_local      TEXT,
+    asset           TEXT,
+    type            TEXT CHECK (type IN ({_enum_sql(ANALYSIS_TYPE_VALUES)})),
+    daily_bias      TEXT,
+    fact_bias       TEXT,
+    summary         TEXT,
+    FOREIGN KEY (trading_day_id) REFERENCES trading_days(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
-
--- =========================
--- СДЕЛКИ
--- =========================
 
 CREATE TABLE IF NOT EXISTS trades (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -277,6 +282,36 @@ CREATE TABLE IF NOT EXISTS trades (
     FOREIGN KEY (analysis_id) REFERENCES analyses(id)  ON DELETE SET NULL   ON UPDATE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS accounts (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    name              TEXT NOT NULL,
+    broker            TEXT,
+    currency          TEXT DEFAULT 'USD',
+    starting_balance  REAL,
+    is_prop           INTEGER DEFAULT 0,
+    created_at        TEXT,
+    archived          INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS setups (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT NOT NULL UNIQUE,
+    description  TEXT,
+    created_at   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS notes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT,
+    body        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS charts (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    chart_url    TEXT NOT NULL,
+    caption      TEXT
+);
+
 -- =========================
 -- СВЯЗИ (отношения многие-ко-многим)
 -- =========================
@@ -297,14 +332,6 @@ CREATE TABLE IF NOT EXISTS analysis_notes (
     PRIMARY KEY (analysis_id, note_id, state),
     FOREIGN KEY (analysis_id) REFERENCES analyses(id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (note_id)     REFERENCES notes(id)    ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS analisys_trades (
-    note_id   INTEGER,
-    chart_id  INTEGER,
-    PRIMARY KEY (note_id, chart_id),
-    FOREIGN KEY (note_id)  REFERENCES notes(id)  ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (chart_id) REFERENCES charts(id)  ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS trade_charts (
@@ -341,8 +368,9 @@ CREATE INDEX IF NOT EXISTS idx_trades_asset        ON trades(asset);
 CREATE INDEX IF NOT EXISTS idx_trades_result       ON trades(result);
 CREATE INDEX IF NOT EXISTS idx_trades_setup        ON trades(setup_id);
 
-CREATE INDEX IF NOT EXISTS idx_analyses_date_local ON analyses(date_local);
-CREATE INDEX IF NOT EXISTS idx_analyses_asset      ON analyses(asset);
+CREATE INDEX IF NOT EXISTS idx_trading_days_date_local ON trading_days(date_local);
+CREATE INDEX IF NOT EXISTS idx_analyses_trading_day   ON analyses(trading_day_id);
+CREATE INDEX IF NOT EXISTS idx_analyses_asset         ON analyses(asset);
 """
 
 
@@ -410,6 +438,90 @@ def list_setups() -> List[Dict[str, Any]]:
         rows = conn.execute(
             "SELECT * FROM setups ORDER BY name ASC").fetchall()
         return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+# =====================================================================
+# Trading days
+# =====================================================================
+
+
+def add_trading_day(data: Dict[str, Any]) -> int:
+    payload = _normalize_trading_day_payload(data)
+    if "date_local" not in payload:
+        raise ValueError("date_local обязательно для trading_day.")
+
+    columns = ", ".join(payload.keys())
+    placeholders = ", ".join(["?"] * len(payload))
+    values = list(payload.values())
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT INTO trading_days ({columns}) VALUES ({placeholders})",
+            values,
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def list_trading_days(order_desc: bool = True) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            f"SELECT {', '.join(TRADING_DAY_COLUMNS)} FROM trading_days "
+            f"ORDER BY date_local {'DESC' if order_desc else 'ASC'}"
+        ).fetchall()
+        return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
+def get_trading_day(day_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            f"SELECT {', '.join(TRADING_DAY_COLUMNS)} FROM trading_days WHERE id=?",
+            (day_id,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_trading_day(day_id: int, data: Dict[str, Any]) -> None:
+    payload = _normalize_trading_day_payload(data)
+    if not payload:
+        return
+
+    assignments = ", ".join(f"{col}=?" for col in payload.keys())
+    values = list(payload.values())
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE trading_days SET {assignments} WHERE id=?",
+            values + [day_id],
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f"Trading day #{day_id} не найден.")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_trading_day(day_id: int) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM trading_days WHERE id=?", (day_id,))
+        if cur.rowcount == 0:
+            raise ValueError(f"Trading day #{day_id} не найден.")
+        conn.commit()
     finally:
         conn.close()
 
@@ -666,21 +778,20 @@ def detach_chart_from_trade(trade_id: int, chart_id: int) -> None:
 
 
 ANALYSIS_ORDER_COLUMNS = {
-    "id",
-    "date_local",
-    "time_local",
-    "state",
-    "asset",
-    "daily_bias",
-    "fact_bias",
-    "day_result",
+    "id": "a.id",
+    "date_local": "td.date_local",
+    "time_local": "a.time_local",
+    "asset": "a.asset",
+    "daily_bias": "a.daily_bias",
+    "fact_bias": "a.fact_bias",
+    "day_result": "td.day_result",
+    "type": "a.type",
 }
 
 
 def add_analysis(data: Dict[str, Any]) -> int:
     """
-    data keys: local_tz, date_local, time_local, state, asset, daily_bias, fact_bias,
-               pre_market_summary, plan_summary, post_market_summary, day_result
+    data keys: trading_day_id, time_local, asset, type, daily_bias, fact_bias, summary
     """
     payload = _normalize_analysis_payload(data)
     if not payload:
@@ -706,8 +817,13 @@ def add_analysis(data: Dict[str, Any]) -> int:
 def get_analysis(analysis_id: int) -> Optional[Dict[str, Any]]:
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM analyses WHERE id=?",
-                           (analysis_id,)).fetchone()
+        row = conn.execute(
+            f"SELECT {', '.join(ANALYSIS_COLUMNS)} "
+            "FROM analyses a "
+            "JOIN trading_days td ON td.id = a.trading_day_id "
+            "WHERE a.id=?",
+            (analysis_id,),
+        ).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
@@ -718,16 +834,24 @@ def list_analysis(filters: Optional[Dict[str, Any]] = None,
                   ascending: bool = False) -> List[Dict[str, Any]]:
     filters = filters or {}
     select_clause = ", ".join(ANALYSIS_COLUMNS)
-    q = f"SELECT {select_clause} FROM analyses WHERE 1=1"
+    q = (
+        f"SELECT {select_clause} "
+        "FROM analyses a "
+        "JOIN trading_days td ON td.id = a.trading_day_id "
+        "WHERE 1=1"
+    )
     p: List[Any] = []
 
     mapping = {
-        "asset": "asset",
-        "daily_bias": "daily_bias",
-        "fact_bias": "fact_bias",
-        "day_result": "day_result",
-        "date_from": "date_local >= ?",
-        "date_to": "date_local <= ?",
+        "asset": "a.asset",
+        "daily_bias": "a.daily_bias",
+        "fact_bias": "a.fact_bias",
+        "day_result": "td.day_result",
+        "type": "a.type",
+        "trading_day_id": "a.trading_day_id",
+        "date_from": "td.date_local >= ?",
+        "date_to": "td.date_local <= ?",
+        "date_local": "td.date_local",
     }
     for key, value in filters.items():
         if value is None:
@@ -743,9 +867,12 @@ def list_analysis(filters: Optional[Dict[str, Any]] = None,
         if order_by not in ANALYSIS_ORDER_COLUMNS:
             raise ValueError(
                 f"order_by must be one of: {sorted(ANALYSIS_ORDER_COLUMNS)}")
-        q += f" ORDER BY {order_by} {'ASC' if ascending else 'DESC'}"
+        q += (
+            f" ORDER BY {ANALYSIS_ORDER_COLUMNS[order_by]} "
+            f"{'ASC' if ascending else 'DESC'}"
+        )
     else:
-        q += " ORDER BY date_local DESC, time_local DESC, id DESC"
+        q += " ORDER BY td.date_local DESC, a.time_local DESC, a.id DESC"
 
     conn = get_conn()
     try:
