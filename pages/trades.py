@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from typing import Dict, Optional, Tuple
 
 import streamlit as st
 
@@ -6,24 +7,21 @@ from components.database_toolbar import (
     render_action_buttons,
     render_database_toolbar,
 )
-from components.trade_filters import (
+from components.entity_filters import (
     TAB_DEFINITIONS,
-    account_options,
-    build_filters,
+    ensure_custom_range,
     tab_date_range,
 )
+from config import ASSETS, TRADE_RESULT_VALUES, TRADE_SESSION_VALUES, TRADE_STATE_VALUES
 from components.trades_table import render_trades_table
 from components.trade_creator import render_trade_creator_dialog
 from components.trade_manager import render_trade_manager_dialog
 from components.trade_remover import render_trade_remove_dialog
-from db import list_trades
+from db import list_trades, list_accounts
 from helpers import apply_page_config_from_file
 
 # --- Базовая настройка страницы под Streamlit ---
 apply_page_config_from_file(__file__)
-
-# --- Загружаем список счетов и настраиваем state для форм ---
-account_map = account_options()
 
 # --- Первичные значения фильтров и диапазона дат ---
 today = date.today()
@@ -41,6 +39,100 @@ st.session_state.setdefault("selected_trade_id", None)
 st.session_state.setdefault("show_create_trade", False)
 st.session_state.setdefault("show_edit_trade", False)
 st.session_state.setdefault("show_delete_trade", False)
+
+
+def account_options() -> Dict[str, Optional[int]]:
+    """Формирует удобный для отображения список счетов с их ID."""
+    options: Dict[str, Optional[int]] = {"Все счета": None}
+    for account in list_accounts():
+        options[f"{account['name']} (#{account['id']})"] = account["id"]
+    return options
+
+
+# --- Загружаем список счетов и настраиваем state для форм ---
+account_map = account_options()
+
+
+def _render_trades_custom_filters(
+    account_map: Dict[str, Optional[int]],
+    initial_filters: Optional[Dict[str, Optional[str]]],
+    initial_range: Optional[Tuple[Optional[date], Optional[date]]],
+) -> Tuple[Dict[str, Optional[str]], Tuple[Optional[date], Optional[date]]]:
+    """Отрисовывает контролы для таба Custom на странице сделок."""
+    initial_filters = initial_filters or {}
+    default_from, default_to = ensure_custom_range(initial_range)
+
+    account_labels = list(account_map.keys())
+    account_default_label = next(
+        (label for label, val in account_map.items()
+         if val == initial_filters.get("account_id")),
+        account_labels[0],
+    )
+
+    asset_options = ["Все"] + ASSETS
+    asset_default = initial_filters.get("asset", "Все")
+    state_options = ["Все"] + TRADE_STATE_VALUES
+    state_default = initial_filters.get("state", "Все")
+    result_options = ["Все"] + TRADE_RESULT_VALUES
+    result_default = initial_filters.get("result", "Все")
+    session_options = ["Все"] + TRADE_SESSION_VALUES
+    session_default = initial_filters.get("session", "Все")
+
+    with st.container():
+        fc1, fc2, fc3, fc4, fc5, fc6 = st.columns(6)
+        date_from, date_to = fc1.date_input(
+            "Диапазон дат",
+            value=(default_from, default_to),
+            format="DD.MM.YYYY",
+        )
+        account_choice = fc2.selectbox(
+            "Счёт",
+            account_labels,
+            index=account_labels.index(account_default_label),
+        )
+        asset_choice = fc3.selectbox(
+            "Инструмент",
+            asset_options,
+            index=asset_options.index(asset_default)
+            if asset_default in asset_options else 0,
+        )
+        state_choice = fc4.selectbox(
+            "Состояние",
+            state_options,
+            index=state_options.index(state_default)
+            if state_default in state_options else 0,
+        )
+        result_choice = fc5.selectbox(
+            "Результат",
+            result_options,
+            index=result_options.index(result_default)
+            if result_default in result_options else 0,
+        )
+        session_choice = fc6.selectbox(
+            "Сессия",
+            session_options,
+            index=session_options.index(session_default)
+            if session_default in session_options else 0,
+        )
+
+    filters: Dict[str, Optional[str]] = {}
+    account_id = account_map.get(account_choice)
+    if account_id:
+        filters["account_id"] = account_id
+    if state_choice != "Все":
+        filters["state"] = state_choice
+    if result_choice != "Все":
+        filters["result"] = result_choice
+    if asset_choice != "Все":
+        filters["asset"] = asset_choice
+    if session_choice != "Все":
+        filters["session"] = session_choice
+
+    date_range = (
+        date_from if isinstance(date_from, date) else default_from,
+        date_to if isinstance(date_to, date) else default_to,
+    )
+    return filters, date_range
 
 
 def set_dialog_flag(flag: str, value: bool) -> None:
@@ -67,7 +159,7 @@ st.session_state["trades_active_period"] = selected_label
 
 # --- Собираем итоговый фильтр для таблицы ---
 if selected_tab_key == "custom":
-    filters, custom_range = build_filters(
+    filters, custom_range = _render_trades_custom_filters(
         account_map,
         st.session_state.get("trades_active_filters"),
         st.session_state.get("trades_custom_range"),

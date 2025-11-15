@@ -1,13 +1,9 @@
 from datetime import date, timedelta
+from typing import Dict, Optional, Tuple
 
 import streamlit as st
 
 from components.analysis_creator import render_analysis_creator_dialog
-from components.analysis_filters import (
-    TAB_DEFINITIONS,
-    build_analysis_filters,
-    tab_date_range,
-)
 from components.analysis_manager import render_analysis_manager_dialog
 from components.analysis_remover import render_analysis_remove_dialog
 from components.analysis_table import render_analysis_table
@@ -15,6 +11,12 @@ from components.database_toolbar import (
     render_action_buttons,
     render_database_toolbar,
 )
+from components.entity_filters import (
+    TAB_DEFINITIONS,
+    ensure_custom_range,
+    tab_date_range,
+)
+from config import ASSETS, DAILY_BIAS
 from db import list_analysis
 from helpers import apply_page_config_from_file
 
@@ -34,6 +36,51 @@ st.session_state.setdefault("selected_analysis_id", None)
 st.session_state.setdefault("show_analysis_create", False)
 st.session_state.setdefault("show_analysis_edit", False)
 st.session_state.setdefault("show_analysis_delete", False)
+
+
+def _render_analysis_custom_filters(
+    initial_filters: Optional[Dict[str, Optional[str]]],
+    initial_range: Optional[Tuple[Optional[date], Optional[date]]],
+) -> Tuple[Dict[str, Optional[str]], Tuple[Optional[date], Optional[date]]]:
+    """Отрисовывает контролы фильтра Custom для анализов."""
+    initial_filters = initial_filters or {}
+    default_from, default_to = ensure_custom_range(initial_range)
+
+    asset_options = ["Все"] + ASSETS
+    asset_default = initial_filters.get("asset", "Все")
+    day_options = ["Все"] + DAILY_BIAS if DAILY_BIAS else ["Все"]
+    day_default = initial_filters.get("day_result", "Все")
+
+    fc1, fc2, fc3 = st.columns([0.5, 0.25, 0.25])
+    date_from, date_to = fc1.date_input(
+        "Диапазон дат",
+        value=(default_from, default_to),
+        format="DD.MM.YYYY",
+    )
+    asset_choice = fc2.selectbox(
+        "Инструмент",
+        asset_options,
+        index=asset_options.index(asset_default)
+        if asset_default in asset_options else 0,
+    )
+    day_choice = fc3.selectbox(
+        "Day result",
+        day_options,
+        index=day_options.index(day_default)
+        if day_default in day_options else 0,
+    )
+
+    filters: Dict[str, Optional[str]] = {}
+    if asset_choice != "Все":
+        filters["asset"] = asset_choice
+    if day_choice != "Все":
+        filters["day_result"] = day_choice
+
+    date_range = (
+        date_from if isinstance(date_from, date) else default_from,
+        date_to if isinstance(date_to, date) else default_to,
+    )
+    return filters, date_range
 
 
 def _set_flag(flag: str, value: bool) -> None:
@@ -57,7 +104,7 @@ st.session_state["analysis_visible_tab"] = selected_tab_key
 st.session_state["analysis_active_period"] = selected_label
 
 if selected_tab_key == "custom":
-    filters, custom_range = build_analysis_filters(
+    filters, custom_range = _render_analysis_custom_filters(
         st.session_state.get("analysis_active_filters"),
         st.session_state.get("analysis_custom_range"),
     )
