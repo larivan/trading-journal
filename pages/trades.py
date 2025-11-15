@@ -14,9 +14,12 @@ from components.entity_filters import (
 )
 from config import ASSETS, TRADE_RESULT_VALUES, TRADE_SESSION_VALUES, TRADE_STATE_VALUES
 from components.trades_table import render_trades_table
-from components.trade_creator import render_trade_creator_dialog
-from components.trade_manager import render_trade_manager_dialog
-from components.trade_remover import render_trade_remove_dialog
+from components.trade_manager import (
+    render_trade_creator,
+    render_trade_editor,
+    render_trade_remover,
+
+)
 from db import list_trades, list_accounts
 from helpers import apply_page_config_from_file
 
@@ -247,17 +250,17 @@ def _handle_trade_deleted() -> None:
 
 # --- В зависимости от флагов показываем нужные модалки ---
 if st.session_state.get("show_create_trade"):
-    render_trade_creator_dialog(
+    render_trade_creator(
         on_created=_handle_trade_created,
         on_cancel=_close_create_dialog,
     )
 if st.session_state.get("show_edit_trade"):
-    render_trade_manager_dialog(
+    render_trade_editor(
         trade_id=st.session_state.get("selected_trade_id"),
         on_close=_close_edit_dialog,
     )
 if st.session_state.get("show_delete_trade"):
-    render_trade_remove_dialog(
+    render_trade_remover(
         trade_id=st.session_state.get("selected_trade_id"),
         on_deleted=_handle_trade_deleted,
         on_cancel=_close_delete_dialog,
