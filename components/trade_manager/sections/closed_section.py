@@ -6,8 +6,7 @@ import streamlit as st
 
 from config import (
     EMOTIONAL_PROBLEMS,
-    TRADE_RESULT_VALUES,
-    RESULT_PLACEHOLDER
+    TRADE_RESULT_VALUES
 )
 
 
@@ -25,7 +24,7 @@ def render_closed_stage(
 
     with st.expander("After close", expanded=expanded):
         cc1, cc2 = st.columns(2)
-        result_options = [RESULT_PLACEHOLDER] + TRADE_RESULT_VALUES
+        result_options = ['— Not set —'] + TRADE_RESULT_VALUES
         result_value = cc1.selectbox(
             "Result",
             result_options,
@@ -33,7 +32,7 @@ def render_closed_stage(
                 defaults["result"]) if defaults["result"] in result_options else 0,
             key=f"tm_result_{trade_key}",
             format_func=lambda value: (
-                value if value == RESULT_PLACEHOLDER else value.replace(
+                value if value == '— Not set —' else value.replace(
                     '_', ' ').title()
             ),
         )

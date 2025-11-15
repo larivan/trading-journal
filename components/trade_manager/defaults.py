@@ -2,7 +2,8 @@
 
 from typing import Any, Dict
 
-from config import ASSETS, RESULT_PLACEHOLDER
+from config import ASSETS
+from .constants import RESULT_PLACEHOLDER
 from helpers import current_option_label, parse_trade_date, parse_trade_time
 
 

@@ -36,31 +36,11 @@ from .sections import (
 )
 from .sections.notes import render_notes_section
 from .state import allowed_statuses, visible_stages
-
-
-# --- Допустимые переходы между статусами сделки ---
-STATUS_TRANSITIONS: Dict[str, List[str]] = {
-    "open": ["open", "closed", "cancelled"],
-    "closed": ["closed", "reviewed"],
-    "reviewed": ["reviewed"],
-    "cancelled": ["cancelled", "reviewed"],
-    "missed": ["missed", "reviewed"],
-}
-
-# --- Карта статусов к визуальным стадиям (какие блоки формы показывать) ---
-STATUS_STAGE = {
-    "open": "open",
-    "closed": "closed",
-    "reviewed": "review",
-    "cancelled": "open",
-    "missed": "open",
-}
-
-# --- Значение-заглушка для селекта результата ---
-RESULT_PLACEHOLDER = "— Not set —"
-
-# --- Статусы, доступные при создании сделки ---
-CREATE_ALLOWED_STATUSES = ["open", "missed"]
+from .constants import (
+    STATUS_STAGE,
+    RESULT_PLACEHOLDER,
+    CREATE_ALLOWED_STATUSES
+)
 
 
 def render_trade_creator(
