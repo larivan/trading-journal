@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional
 import streamlit as st
 
 from db import (
+    attach_chart_to_trade,
     get_trade_by_id,
     list_accounts,
     list_analysis,
@@ -15,6 +16,12 @@ from db import (
     parse_emotional_problems,
     update_trade,
 )
+from components.chart_editor import (
+    chart_table_rows,
+    normalize_editor_rows,
+    persist_chart_editor,
+    render_chart_editor,
+)
 from helpers import option_with_placeholder
 
 from config import RESULT_PLACEHOLDER, STATUS_STAGE
@@ -24,12 +31,6 @@ from .sections import (
     render_header_actions,
     render_open_stage,
     render_review_stage,
-)
-from .sections.charts import (
-    chart_table_rows,
-    normalize_editor_rows,
-    persist_chart_editor,
-    render_charts_section,
 )
 from .sections.notes import render_notes_section
 from .state import allowed_statuses, visible_stages
@@ -146,8 +147,8 @@ def render_trade_manager(
         )
 
     with side_col:
-        chart_editor_value = render_charts_section(
-            trade_key=trade_key,
+        chart_editor_value = render_chart_editor(
+            key=f"tm_chart_editor_{trade_key}",
             base_rows=chart_rows_source,
         )
         st.divider()
@@ -223,9 +224,9 @@ def render_trade_manager(
 
     try:
         persist_chart_editor(
-            trade_id=trade_id,
             attached_charts=trade_charts,
             editor_rows=chart_editor_rows,
+            attach_chart=lambda chart_id, trade_id=trade_id: attach_chart_to_trade(trade_id, chart_id),
         )
         update_trade(trade_id, payload)
         st.success("Trade updated.")

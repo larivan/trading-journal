@@ -1,28 +1,29 @@
-"""Секция чартов и работа с их состоянием."""
+"""Переиспользуемые UI-хелперы для работы с чартами и их привязками."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import streamlit as st
 
-from db import (
-    add_chart,
-    attach_chart_to_trade,
-    delete_chart,
-    update_chart,
-)
+from db import add_chart, delete_chart, update_chart
+
+ChartRow = Dict[str, Any]
 
 
-def render_charts_section(
+def render_chart_editor(
     *,
-    trade_key: str,
-    base_rows: List[Dict[str, Any]],
+    key: str,
+    base_rows: List[ChartRow],
+    title: str = "Charts",
+    caption: Optional[str] = "Paste links to your TradingView snapshots so they stay linked to this record.",
 ) -> Any:
-    """Отрисовывает редактор чартов и возвращает его значение."""
-    st.subheader("Charts")
-    st.caption("Paste links to your TradingView snapshots so they stay linked to this trade.")
+    """Отрисовывает универсальный редактор чартов и возвращает его значение."""
+    if title:
+        st.subheader(title)
+    if caption:
+        st.caption(caption)
     return st.data_editor(
         base_rows,
-        key=f"tm_chart_editor_{trade_key}",
+        key=key,
         num_rows="dynamic",
         hide_index=True,
         column_order=["chart_url", "caption"],
@@ -31,7 +32,7 @@ def render_charts_section(
                 "Chart URL",
                 required=True,
                 help="Paste a direct image link.",
-                validate=r"^https?:\/\/(?:www\.)?tradingview\.com\/.+\/?$"
+                validate=r"^https?:\/\/(?:www\.)?tradingview\.com\/.+\/?$",
             ),
             "caption": st.column_config.TextColumn(
                 "Caption",
@@ -41,14 +42,14 @@ def render_charts_section(
                 "ID",
                 disabled=True,
                 required=False,
-                width="small"
+                width="small",
             ),
         },
     )
 
 
-def chart_table_rows(charts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Готовит данные для data_editor даже если чартов нет."""
+def chart_table_rows(charts: List[ChartRow]) -> List[ChartRow]:
+    """Готовит строки чарта для data_editor, даже если данных нет."""
     rows = [
         {
             "id": chart.get("id"),
@@ -66,7 +67,7 @@ def chart_table_rows(charts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     }]
 
 
-def normalize_editor_rows(editor_value: Any) -> List[Dict[str, Any]]:
+def normalize_editor_rows(editor_value: Any) -> List[ChartRow]:
     """Приводит ответ data_editor к списку словарей."""
     if isinstance(editor_value, list):
         raw_rows = editor_value
@@ -75,7 +76,7 @@ def normalize_editor_rows(editor_value: Any) -> List[Dict[str, Any]]:
     else:
         raw_rows = []
 
-    normalized: List[Dict[str, Any]] = []
+    normalized: List[ChartRow] = []
     for row in raw_rows:
         chart_url = (row.get("chart_url") or "").strip()
         normalized.append({
@@ -88,12 +89,12 @@ def normalize_editor_rows(editor_value: Any) -> List[Dict[str, Any]]:
 
 def persist_chart_editor(
     *,
-    trade_id: int,
-    attached_charts: List[Dict[str, Any]],
-    editor_rows: List[Dict[str, Any]],
+    attached_charts: List[ChartRow],
+    editor_rows: List[ChartRow],
+    attach_chart: Callable[[int], None],
 ) -> None:
-    """Синхронизирует таблицу чартов с БД."""
-    desired_rows: List[Dict[str, Any]] = []
+    """Синхронизирует таблицу чартов с данными из редактора."""
+    desired_rows: List[ChartRow] = []
     for row in editor_rows:
         chart_url = (row.get("chart_url") or "").strip()
         if not chart_url:
@@ -107,12 +108,10 @@ def persist_chart_editor(
     current_by_id = {chart["id"]: chart for chart in attached_charts}
     desired_ids = {row["id"] for row in desired_rows if row["id"] is not None}
 
-    # Removed charts
     for chart_id in set(current_by_id.keys()) - desired_ids:
         if chart_id is not None:
             delete_chart(chart_id)
 
-    # Updated charts
     for row in desired_rows:
         chart_id = row.get("id")
         if chart_id is None or chart_id not in current_by_id:
@@ -123,21 +122,18 @@ def persist_chart_editor(
         if row["chart_url"] != existing_url or row["caption"] != existing_caption:
             update_chart(chart_id, row["chart_url"], row["caption"])
 
-    # New charts
     for row in desired_rows:
         if row.get("id") is not None:
             continue
         chart_id = add_chart(row["chart_url"], row["caption"])
-        attach_chart_to_trade(trade_id, chart_id)
+        attach_chart(chart_id)  # Внешняя функция решает, к какой сущности привязать чарт.
 
 
 def _clean_chart_id(value: Any) -> Optional[int]:
     if value is None:
         return None
-    if isinstance(value, float):
-        # NaN не равен сам себе
-        if value != value:
-            return None
+    if isinstance(value, float) and value != value:
+        return None
     try:
         return int(value)
     except (TypeError, ValueError):
