@@ -47,39 +47,59 @@ TRADE_ORDER_COLUMNS = {
 
 ANALYSIS_TYPE_VALUES = ANALYSIS_STATE_VALUES
 
-TRADING_DAY_COLUMNS = [
+ANALYSIS_COLUMNS = [
     "id",
     "date_local",
+    "asset",
+    "daily_bias",
+    "fact_bias",
     "day_result",
-]
-
-TRADING_DAY_WRITABLE_FIELDS = [
-    "date_local",
-    "day_result",
-]
-
-ANALYSIS_COLUMNS = [
-    "a.id AS id",
-    "a.trading_day_id",
-    "td.date_local AS date_local",
-    "td.day_result AS day_result",
-    "a.time_local",
-    "a.asset",
-    "a.type",
-    "a.daily_bias",
-    "a.fact_bias",
-    "a.summary",
 ]
 
 ANALYSIS_WRITABLE_FIELDS = [
-    "trading_day_id",
-    "time_local",
+    "date_local",
     "asset",
-    "type",
     "daily_bias",
     "fact_bias",
+    "day_result",
+]
+
+ANALYSIS_STAGE_COLUMNS = [
+    "s.id AS id",
+    "s.analysis_id",
+    "a.date_local AS date_local",
+    "a.asset AS asset",
+    "a.day_result AS day_result",
+    "a.daily_bias AS daily_bias",
+    "a.fact_bias AS fact_bias",
+    "s.time_local",
+    "s.type",
+    "s.summary",
+]
+
+ANALYSIS_STAGE_WRITABLE_FIELDS = [
+    "analysis_id",
+    "time_local",
+    "type",
     "summary",
 ]
+
+ANALYSIS_ORDER_COLUMNS = {
+    "id": "id",
+    "date_local": "date_local",
+    "asset": "asset",
+    "daily_bias": "daily_bias",
+    "fact_bias": "fact_bias",
+    "day_result": "day_result",
+}
+
+ANALYSIS_STAGE_ORDER_COLUMNS = {
+    "id": "s.id",
+    "analysis_id": "s.analysis_id",
+    "date_local": "a.date_local",
+    "time_local": "s.time_local",
+    "type": "s.type",
+}
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -116,11 +136,27 @@ def _normalize_analysis_payload(data: Dict[str, Any]) -> Dict[str, Any]:
         if value is None:
             payload[key] = None
             continue
-        if key == "trading_day_id":
+        if key == "date_local" and isinstance(value, date):
+            payload[key] = value.isoformat()
+            continue
+        payload[key] = value
+    return payload
+
+
+def _normalize_analysis_stage_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    for key in ANALYSIS_STAGE_WRITABLE_FIELDS:
+        if key not in data:
+            continue
+        value = data[key]
+        if value is None:
+            payload[key] = None
+            continue
+        if key == "analysis_id":
             try:
                 payload[key] = int(value)
             except (TypeError, ValueError):
-                raise ValueError("trading_day_id должно быть целым числом.")
+                raise ValueError("analysis_id должно быть целым числом.")
             continue
         if key == "time_local":
             if isinstance(value, time):
@@ -134,25 +170,6 @@ def _normalize_analysis_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             raise ValueError(
                 f"type должно быть одним из: {', '.join(ANALYSIS_TYPE_VALUES)}"
             )
-        if isinstance(value, datetime) and key == "created_at_utc":
-            payload[key] = value.strftime("%Y-%m-%dT%H:%M:%S")
-            continue
-        payload[key] = value
-    return payload
-
-
-def _normalize_trading_day_payload(data: Dict[str, Any]) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {}
-    for key in TRADING_DAY_WRITABLE_FIELDS:
-        if key not in data:
-            continue
-        value = data[key]
-        if value is None:
-            payload[key] = None
-            continue
-        if key == "date_local" and isinstance(value, date):
-            payload[key] = value.isoformat()
-            continue
         payload[key] = value
     return payload
 
@@ -214,12 +231,6 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
     )
     return cur.fetchone() is not None
 
-
-def _ensure_column(conn: sqlite3.Connection, table: str, column_def: str) -> None:
-    column_name = column_def.split()[0]
-    if not _column_exists(conn, table, column_name):
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column_def}")
-
 # =====================================================================
 # Schema (built from constants)
 # =====================================================================
@@ -232,22 +243,22 @@ PRAGMA foreign_keys = ON;
 -- ТАБЛИЦЫ
 -- =========================
 
-CREATE TABLE IF NOT EXISTS trading_days (
+CREATE TABLE IF NOT EXISTS analysis (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    date_local  TEXT NOT NULL UNIQUE,
+    date_local  TEXT NOT NULL,
+    asset       TEXT,
+    daily_bias  TEXT,
+    fact_bias   TEXT,
     day_result  TEXT
 );
 
-CREATE TABLE IF NOT EXISTS analyses (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    trading_day_id  INTEGER NOT NULL,
-    time_local      TEXT,
-    asset           TEXT,
-    type            TEXT CHECK (type IN ({_enum_sql(ANALYSIS_TYPE_VALUES)})),
-    daily_bias      TEXT,
-    fact_bias       TEXT,
-    summary         TEXT,
-    FOREIGN KEY (trading_day_id) REFERENCES trading_days(id) ON DELETE CASCADE ON UPDATE CASCADE
+CREATE TABLE IF NOT EXISTS analysis_stages (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    analysis_id  INTEGER NOT NULL,
+    time_local   TEXT,
+    type         TEXT CHECK (type IN ({_enum_sql(ANALYSIS_TYPE_VALUES)})),
+    summary      TEXT,
+    FOREIGN KEY (analysis_id) REFERENCES analysis(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS trades (
@@ -279,7 +290,7 @@ CREATE TABLE IF NOT EXISTS trades (
 
     FOREIGN KEY (account_id)  REFERENCES accounts(id)  ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (setup_id)    REFERENCES setups(id)    ON DELETE SET NULL   ON UPDATE CASCADE,
-    FOREIGN KEY (analysis_id) REFERENCES analyses(id)  ON DELETE SET NULL   ON UPDATE CASCADE
+    FOREIGN KEY (analysis_id) REFERENCES analysis(id)  ON DELETE SET NULL   ON UPDATE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS accounts (
@@ -307,21 +318,21 @@ CREATE TABLE IF NOT EXISTS notes (
 );
 
 CREATE TABLE IF NOT EXISTS charts (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    chart_url    TEXT NOT NULL,
-    caption      TEXT,
-    trade_id     INTEGER,
-    analysis_id  INTEGER,
-    setup_id     INTEGER,
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    chart_url         TEXT NOT NULL,
+    caption           TEXT,
+    trade_id          INTEGER,
+    analysis_stage_id INTEGER,
+    setup_id          INTEGER,
     CHECK (
         (CASE WHEN trade_id IS NOT NULL THEN 1 ELSE 0 END) +
-        (CASE WHEN analysis_id IS NOT NULL THEN 1 ELSE 0 END) +
+        (CASE WHEN analysis_stage_id IS NOT NULL THEN 1 ELSE 0 END) +
         (CASE WHEN setup_id IS NOT NULL THEN 1 ELSE 0 END)
         <= 1
     ),
-    FOREIGN KEY (trade_id)    REFERENCES trades(id)    ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (analysis_id) REFERENCES analyses(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (setup_id)    REFERENCES setups(id)    ON DELETE CASCADE ON UPDATE CASCADE
+    FOREIGN KEY (trade_id)          REFERENCES trades(id)           ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (analysis_stage_id) REFERENCES analysis_stages(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (setup_id)          REFERENCES setups(id)          ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- =========================
@@ -333,7 +344,7 @@ CREATE TABLE IF NOT EXISTS analysis_notes (
     note_id      INTEGER,
     state      TEXT CHECK (state IN ({_enum_sql(ANALYSIS_STATE_VALUES)})),
     PRIMARY KEY (analysis_id, note_id, state),
-    FOREIGN KEY (analysis_id) REFERENCES analyses(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (analysis_id) REFERENCES analysis(id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (note_id)     REFERENCES notes(id)    ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -355,12 +366,12 @@ CREATE INDEX IF NOT EXISTS idx_trades_asset        ON trades(asset);
 CREATE INDEX IF NOT EXISTS idx_trades_result       ON trades(result);
 CREATE INDEX IF NOT EXISTS idx_trades_setup        ON trades(setup_id);
 
-CREATE INDEX IF NOT EXISTS idx_trading_days_date_local ON trading_days(date_local);
-CREATE INDEX IF NOT EXISTS idx_analyses_trading_day   ON analyses(trading_day_id);
-CREATE INDEX IF NOT EXISTS idx_analyses_asset         ON analyses(asset);
-CREATE INDEX IF NOT EXISTS idx_charts_trade_id        ON charts(trade_id);
-CREATE INDEX IF NOT EXISTS idx_charts_analysis_id     ON charts(analysis_id);
-CREATE INDEX IF NOT EXISTS idx_charts_setup_id        ON charts(setup_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_date_local         ON analysis(date_local);
+CREATE INDEX IF NOT EXISTS idx_analysis_asset              ON analysis(asset);
+CREATE INDEX IF NOT EXISTS idx_analysis_stages_analysis_id ON analysis_stages(analysis_id);
+CREATE INDEX IF NOT EXISTS idx_charts_trade_id             ON charts(trade_id);
+CREATE INDEX IF NOT EXISTS idx_charts_analysis_stage_id    ON charts(analysis_stage_id);
+CREATE INDEX IF NOT EXISTS idx_charts_setup_id             ON charts(setup_id);
 """
 
 
@@ -369,6 +380,8 @@ def init_db() -> None:
     _ensure_dirs()
     conn = get_conn()
     try:
+        _migrate_analysis_tables(conn)
+        _migrate_chart_links(conn)
         conn.executescript(SCHEMA_SQL)
         conn.commit()
     finally:
@@ -432,14 +445,14 @@ def list_setups() -> List[Dict[str, Any]]:
         conn.close()
 
 # =====================================================================
-# Trading days
+# Analysis (daily overview)
 # =====================================================================
 
 
-def add_trading_day(data: Dict[str, Any]) -> int:
-    payload = _normalize_trading_day_payload(data)
+def add_analysis(data: Dict[str, Any]) -> int:
+    payload = _normalize_analysis_payload(data)
     if "date_local" not in payload:
-        raise ValueError("date_local обязательно для trading_day.")
+        raise ValueError("date_local обязательно для анализа.")
 
     columns = ", ".join(payload.keys())
     placeholders = ", ".join(["?"] * len(payload))
@@ -449,7 +462,7 @@ def add_trading_day(data: Dict[str, Any]) -> int:
     try:
         cur = conn.cursor()
         cur.execute(
-            f"INSERT INTO trading_days ({columns}) VALUES ({placeholders})",
+            f"INSERT INTO analysis ({columns}) VALUES ({placeholders})",
             values,
         )
         conn.commit()
@@ -458,32 +471,65 @@ def add_trading_day(data: Dict[str, Any]) -> int:
         conn.close()
 
 
-def list_trading_days(order_desc: bool = True) -> List[Dict[str, Any]]:
+def list_analysis(filters: Optional[Dict[str, Any]] = None,
+                  order_by: Optional[str] = None,
+                  ascending: bool = False) -> List[Dict[str, Any]]:
+    filters = filters or {}
+    select_clause = ", ".join(ANALYSIS_COLUMNS)
+    q = f"SELECT {select_clause} FROM analysis WHERE 1=1"
+    params: List[Any] = []
+
+    mapping = {
+        "asset": "asset",
+        "daily_bias": "daily_bias",
+        "fact_bias": "fact_bias",
+        "day_result": "day_result",
+        "date_from": "date_local >= ?",
+        "date_to": "date_local <= ?",
+    }
+    for key, value in filters.items():
+        if value is None:
+            continue
+        if key in ("date_from", "date_to"):
+            q += f" AND {mapping[key]}"
+            params.append(value)
+        elif key in mapping:
+            q += f" AND {mapping[key]} = ?"
+            params.append(value)
+
+    if order_by:
+        if order_by not in ANALYSIS_ORDER_COLUMNS:
+            raise ValueError(
+                f"order_by must be one of: {sorted(ANALYSIS_ORDER_COLUMNS)}")
+        q += (
+            f" ORDER BY {ANALYSIS_ORDER_COLUMNS[order_by]} "
+            f"{'ASC' if ascending else 'DESC'}"
+        )
+    else:
+        q += " ORDER BY date_local DESC, id DESC"
+
     conn = get_conn()
     try:
-        rows = conn.execute(
-            f"SELECT {', '.join(TRADING_DAY_COLUMNS)} FROM trading_days "
-            f"ORDER BY date_local {'DESC' if order_desc else 'ASC'}"
-        ).fetchall()
+        rows = conn.execute(q, params).fetchall()
         return _rows_to_dicts(rows)
     finally:
         conn.close()
 
 
-def get_trading_day(day_id: int) -> Optional[Dict[str, Any]]:
+def get_analysis(analysis_id: int) -> Optional[Dict[str, Any]]:
     conn = get_conn()
     try:
         row = conn.execute(
-            f"SELECT {', '.join(TRADING_DAY_COLUMNS)} FROM trading_days WHERE id=?",
-            (day_id,),
+            f"SELECT {', '.join(ANALYSIS_COLUMNS)} FROM analysis WHERE id=?",
+            (analysis_id,),
         ).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
 
 
-def update_trading_day(day_id: int, data: Dict[str, Any]) -> None:
-    payload = _normalize_trading_day_payload(data)
+def update_analysis(analysis_id: int, data: Dict[str, Any]) -> None:
+    payload = _normalize_analysis_payload(data)
     if not payload:
         return
 
@@ -494,23 +540,23 @@ def update_trading_day(day_id: int, data: Dict[str, Any]) -> None:
     try:
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE trading_days SET {assignments} WHERE id=?",
-            values + [day_id],
+            f"UPDATE analysis SET {assignments} WHERE id=?",
+            values + [analysis_id],
         )
         if cur.rowcount == 0:
-            raise ValueError(f"Trading day #{day_id} не найден.")
+            raise ValueError(f"Анализ #{analysis_id} не найден.")
         conn.commit()
     finally:
         conn.close()
 
 
-def delete_trading_day(day_id: int) -> None:
+def delete_analysis(analysis_id: int) -> None:
     conn = get_conn()
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM trading_days WHERE id=?", (day_id,))
+        cur.execute("DELETE FROM analysis WHERE id=?", (analysis_id,))
         if cur.rowcount == 0:
-            raise ValueError(f"Trading day #{day_id} не найден.")
+            raise ValueError(f"Анализ #{analysis_id} не найден.")
         conn.commit()
     finally:
         conn.close()
@@ -729,17 +775,17 @@ def attach_chart_to_trade(trade_id: int, chart_id: int) -> None:
     try:
         cur = conn.cursor()
         chart_row = cur.execute(
-            "SELECT id, trade_id, analysis_id, setup_id FROM charts WHERE id=?",
+            "SELECT id, trade_id, analysis_stage_id, setup_id FROM charts WHERE id=?",
             (chart_id,),
         ).fetchone()
         if not chart_row:
             raise ValueError(f"Чарт #{chart_id} не найден.")
-        if chart_row["analysis_id"] or chart_row["setup_id"]:
+        if chart_row["analysis_stage_id"] or chart_row["setup_id"]:
             raise ValueError("Чарт уже привязан к другой сущности.")
         if chart_row["trade_id"] not in (None, trade_id):
             raise ValueError("Чарт уже привязан к другой сделке.")
         cur.execute(
-            "UPDATE charts SET trade_id=?, analysis_id=NULL, setup_id=NULL WHERE id=?",
+            "UPDATE charts SET trade_id=?, analysis_stage_id=NULL, setup_id=NULL WHERE id=?",
             (trade_id, chart_id),
         )
         conn.commit()
@@ -759,30 +805,63 @@ def detach_chart_from_trade(trade_id: int, chart_id: int) -> None:
     finally:
         conn.close()
 
+
+def list_analysis_stage_charts(stage_id: int) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM charts WHERE analysis_stage_id=? ORDER BY id DESC",
+            (stage_id,),
+        ).fetchall()
+        return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
+def attach_chart_to_analysis_stage(stage_id: int, chart_id: int) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        chart_row = cur.execute(
+            "SELECT id, trade_id, analysis_stage_id, setup_id FROM charts WHERE id=?",
+            (chart_id,),
+        ).fetchone()
+        if not chart_row:
+            raise ValueError(f"Чарт #{chart_id} не найден.")
+        if chart_row["trade_id"] or chart_row["setup_id"]:
+            raise ValueError("Чарт уже привязан к другой сущности.")
+        if chart_row["analysis_stage_id"] not in (None, stage_id):
+            raise ValueError("Чарт уже привязан к другому этапу анализа.")
+        cur.execute(
+            "UPDATE charts SET analysis_stage_id=?, trade_id=NULL, setup_id=NULL WHERE id=?",
+            (stage_id, chart_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def detach_chart_from_analysis_stage(stage_id: int, chart_id: int) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE charts SET analysis_stage_id=NULL WHERE analysis_stage_id=? AND id=?",
+            (stage_id, chart_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
 # =====================================================================
-# Analyses
+# Analysis stages
 # =====================================================================
 
 
-ANALYSIS_ORDER_COLUMNS = {
-    "id": "a.id",
-    "date_local": "td.date_local",
-    "time_local": "a.time_local",
-    "asset": "a.asset",
-    "daily_bias": "a.daily_bias",
-    "fact_bias": "a.fact_bias",
-    "day_result": "td.day_result",
-    "type": "a.type",
-}
-
-
-def add_analysis(data: Dict[str, Any]) -> int:
-    """
-    data keys: trading_day_id, time_local, asset, type, daily_bias, fact_bias, summary
-    """
-    payload = _normalize_analysis_payload(data)
+def add_analysis_stage(data: Dict[str, Any]) -> int:
+    payload = _normalize_analysis_stage_payload(data)
     if not payload:
-        raise ValueError("Нет данных для создания анализа.")
+        raise ValueError("Нет данных для создания этапа анализа.")
 
     columns = ", ".join(payload.keys())
     placeholders = ", ".join(["?"] * len(payload))
@@ -792,7 +871,7 @@ def add_analysis(data: Dict[str, Any]) -> int:
     try:
         cur = conn.cursor()
         cur.execute(
-            f"INSERT INTO analyses ({columns}) VALUES ({placeholders})",
+            f"INSERT INTO analysis_stages ({columns}) VALUES ({placeholders})",
             values,
         )
         conn.commit()
@@ -801,76 +880,76 @@ def add_analysis(data: Dict[str, Any]) -> int:
         conn.close()
 
 
-def get_analysis(analysis_id: int) -> Optional[Dict[str, Any]]:
+def get_analysis_stage(stage_id: int) -> Optional[Dict[str, Any]]:
     conn = get_conn()
     try:
         row = conn.execute(
-            f"SELECT {', '.join(ANALYSIS_COLUMNS)} "
-            "FROM analyses a "
-            "JOIN trading_days td ON td.id = a.trading_day_id "
-            "WHERE a.id=?",
-            (analysis_id,),
+            f"SELECT {', '.join(ANALYSIS_STAGE_COLUMNS)} "
+            "FROM analysis_stages s "
+            "JOIN analysis a ON a.id = s.analysis_id "
+            "WHERE s.id=?",
+            (stage_id,),
         ).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
 
 
-def list_analysis(filters: Optional[Dict[str, Any]] = None,
-                  order_by: Optional[str] = None,
-                  ascending: bool = False) -> List[Dict[str, Any]]:
+def list_analysis_stages(filters: Optional[Dict[str, Any]] = None,
+                         order_by: Optional[str] = None,
+                         ascending: bool = False) -> List[Dict[str, Any]]:
     filters = filters or {}
-    select_clause = ", ".join(ANALYSIS_COLUMNS)
+    select_clause = ", ".join(ANALYSIS_STAGE_COLUMNS)
     q = (
         f"SELECT {select_clause} "
-        "FROM analyses a "
-        "JOIN trading_days td ON td.id = a.trading_day_id "
+        "FROM analysis_stages s "
+        "JOIN analysis a ON a.id = s.analysis_id "
         "WHERE 1=1"
     )
-    p: List[Any] = []
+    params: List[Any] = []
 
     mapping = {
+        "analysis_id": "s.analysis_id",
+        "type": "s.type",
+        "date_from": "a.date_local >= ?",
+        "date_to": "a.date_local <= ?",
+        "date_local": "a.date_local",
         "asset": "a.asset",
+        "day_result": "a.day_result",
         "daily_bias": "a.daily_bias",
         "fact_bias": "a.fact_bias",
-        "day_result": "td.day_result",
-        "type": "a.type",
-        "trading_day_id": "a.trading_day_id",
-        "date_from": "td.date_local >= ?",
-        "date_to": "td.date_local <= ?",
-        "date_local": "td.date_local",
     }
     for key, value in filters.items():
         if value is None:
             continue
         if key in ("date_from", "date_to"):
             q += f" AND {mapping[key]}"
-            p.append(value)
+            params.append(value)
         elif key in mapping:
             q += f" AND {mapping[key]} = ?"
-            p.append(value)
+            params.append(value)
 
     if order_by:
-        if order_by not in ANALYSIS_ORDER_COLUMNS:
+        if order_by not in ANALYSIS_STAGE_ORDER_COLUMNS:
             raise ValueError(
-                f"order_by must be one of: {sorted(ANALYSIS_ORDER_COLUMNS)}")
+                f"order_by must be one of: {sorted(ANALYSIS_STAGE_ORDER_COLUMNS)}")
         q += (
-            f" ORDER BY {ANALYSIS_ORDER_COLUMNS[order_by]} "
+            f" ORDER BY {ANALYSIS_STAGE_ORDER_COLUMNS[order_by]} "
             f"{'ASC' if ascending else 'DESC'}"
         )
     else:
-        q += " ORDER BY td.date_local DESC, a.time_local DESC, a.id DESC"
+        q += " ORDER BY a.date_local DESC, s.time_local DESC, s.id DESC"
 
     conn = get_conn()
     try:
-        rows = conn.execute(q, p).fetchall()
+        rows = conn.execute(q, params).fetchall()
         return _rows_to_dicts(rows)
     finally:
         conn.close()
 
 
-def update_analysis(analysis_id: int, data: Dict[str, Any]) -> None:
-    payload = _normalize_analysis_payload(data)
+def update_analysis_stage(stage_id: int, data: Dict[str, Any]) -> None:
+    payload = _normalize_analysis_stage_payload(data)
     if not payload:
         return
 
@@ -881,23 +960,23 @@ def update_analysis(analysis_id: int, data: Dict[str, Any]) -> None:
     try:
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE analyses SET {assignments} WHERE id=?",
-            values + [analysis_id],
+            f"UPDATE analysis_stages SET {assignments} WHERE id=?",
+            values + [stage_id],
         )
         if cur.rowcount == 0:
-            raise ValueError(f"Анализ #{analysis_id} не найден.")
+            raise ValueError(f"Этап анализа #{stage_id} не найден.")
         conn.commit()
     finally:
         conn.close()
 
 
-def delete_analysis(analysis_id: int) -> None:
+def delete_analysis_stage(stage_id: int) -> None:
     conn = get_conn()
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM analyses WHERE id=?", (analysis_id,))
+        cur.execute("DELETE FROM analysis_stages WHERE id=?", (stage_id,))
         if cur.rowcount == 0:
-            raise ValueError(f"Анализ #{analysis_id} не найден.")
+            raise ValueError(f"Этап анализа #{stage_id} не найден.")
         conn.commit()
     finally:
         conn.close()
