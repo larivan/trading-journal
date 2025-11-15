@@ -14,6 +14,13 @@ PAGES = {
         'default': False,
         'layout': 'wide',
         'in_nav': True,
+    },
+    'analysis': {
+        'title': 'Analysis Database',
+        'icon': ':material/insights:',
+        'default': False,
+        'layout': 'wide',
+        'in_nav': True,
     }
 }
 
