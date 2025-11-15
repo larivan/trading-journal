@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional
 
 # Справочники вынесены в config.py
 from config import (
-    ASSETS,
     ANALYSIS_STATE_VALUES,
     EMOTIONAL_PROBLEMS,
     TRADE_RESULT_VALUES,
@@ -45,8 +44,6 @@ TRADE_ORDER_COLUMNS = {
     "reward_percent",
 }
 
-ANALYSIS_TYPE_VALUES = ANALYSIS_STATE_VALUES
-
 ANALYSIS_COLUMNS = [
     "id",
     "date_local",
@@ -54,6 +51,7 @@ ANALYSIS_COLUMNS = [
     "daily_bias",
     "fact_bias",
     "day_result",
+    "state",
 ]
 
 ANALYSIS_WRITABLE_FIELDS = [
@@ -62,6 +60,7 @@ ANALYSIS_WRITABLE_FIELDS = [
     "daily_bias",
     "fact_bias",
     "day_result",
+    "state",
 ]
 
 ANALYSIS_STAGE_COLUMNS = [
@@ -91,6 +90,7 @@ ANALYSIS_ORDER_COLUMNS = {
     "daily_bias": "daily_bias",
     "fact_bias": "fact_bias",
     "day_result": "day_result",
+    "state": "state",
 }
 
 ANALYSIS_STAGE_ORDER_COLUMNS = {
@@ -139,6 +139,10 @@ def _normalize_analysis_payload(data: Dict[str, Any]) -> Dict[str, Any]:
         if key == "date_local" and isinstance(value, date):
             payload[key] = value.isoformat()
             continue
+        if key == "state" and value not in ANALYSIS_STATE_VALUES:
+            raise ValueError(
+                f"state должно быть одним из: {', '.join(ANALYSIS_STATE_VALUES)}"
+            )
         payload[key] = value
     return payload
 
@@ -166,9 +170,9 @@ def _normalize_analysis_stage_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 payload[key] = value
             continue
-        if key == "type" and value not in ANALYSIS_TYPE_VALUES:
+        if key == "type" and value not in ANALYSIS_STATE_VALUES:
             raise ValueError(
-                f"type должно быть одним из: {', '.join(ANALYSIS_TYPE_VALUES)}"
+                f"type должно быть одним из: {', '.join(ANALYSIS_STATE_VALUES)}"
             )
         payload[key] = value
     return payload
@@ -249,14 +253,15 @@ CREATE TABLE IF NOT EXISTS analysis (
     asset       TEXT,
     daily_bias  TEXT,
     fact_bias   TEXT,
-    day_result  TEXT
+    day_result  TEXT,
+    state       TEXT CHECK (state IN ({_enum_sql(ANALYSIS_STATE_VALUES)}))
 );
 
 CREATE TABLE IF NOT EXISTS analysis_stages (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     analysis_id  INTEGER NOT NULL,
     time_local   TEXT,
-    type         TEXT CHECK (type IN ({_enum_sql(ANALYSIS_TYPE_VALUES)})),
+    type         TEXT CHECK (type IN ({_enum_sql(ANALYSIS_STATE_VALUES)})),
     summary      TEXT,
     FOREIGN KEY (analysis_id) REFERENCES analysis(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
@@ -340,12 +345,11 @@ CREATE TABLE IF NOT EXISTS charts (
 -- =========================
 
 CREATE TABLE IF NOT EXISTS analysis_notes (
-    analysis_id  INTEGER,
-    note_id      INTEGER,
-    state      TEXT CHECK (state IN ({_enum_sql(ANALYSIS_STATE_VALUES)})),
-    PRIMARY KEY (analysis_id, note_id, state),
-    FOREIGN KEY (analysis_id) REFERENCES analysis(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (note_id)     REFERENCES notes(id)    ON DELETE CASCADE ON UPDATE CASCADE
+    analysis_stage_id INTEGER,
+    note_id           INTEGER,
+    PRIMARY KEY (analysis_stage_id, note_id),
+    FOREIGN KEY (analysis_stage_id) REFERENCES analysis_stages(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (note_id)           REFERENCES notes(id)           ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS trade_notes (
@@ -380,8 +384,6 @@ def init_db() -> None:
     _ensure_dirs()
     conn = get_conn()
     try:
-        _migrate_analysis_tables(conn)
-        _migrate_chart_links(conn)
         conn.executescript(SCHEMA_SQL)
         conn.commit()
     finally:
@@ -484,6 +486,7 @@ def list_analysis(filters: Optional[Dict[str, Any]] = None,
         "daily_bias": "daily_bias",
         "fact_bias": "fact_bias",
         "day_result": "day_result",
+        "state": "state",
         "date_from": "date_local >= ?",
         "date_to": "date_local <= ?",
     }
