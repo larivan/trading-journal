@@ -2,7 +2,7 @@
 
 from typing import List
 
-from .constants import STATUS_STAGE, STATUS_TRANSITIONS
+from config import STATUS_STAGE, STATUS_TRANSITIONS
 
 
 def allowed_statuses(current_state: str) -> List[str]:

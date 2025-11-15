@@ -1,3 +1,5 @@
+from typing import Dict, List
+
 PAGES = {
     'dashboard': {
         'title': 'Dashboard',
@@ -33,8 +35,34 @@ ANALYSIS_STATE_VALUES = ["pre-market", "plan", "trading", "post-market"]
 # --- Дополнительные справочники для UI ---
 ASSETS = ["EUR/USD", "GBP/USD", "XAU/USD", "XAG/USD"]
 DAILY_BIAS = ["Bullish", "Bearish", "Neutral"]
+DAY_RESULT_VALUES = ["profit", "loss", "null"]
 SETUPS = ["POI→confirmation", "Lq→confirmation", "POI→trigger→confirmation"]
 EMOTIONAL_PROBLEMS = ["emotional management",
                       "premature exit", "fear of entry"]
 
 LOCAL_TZ = 'UTC+3'  # Москва
+
+
+# --- Допустимые переходы между статусами сделки ---
+STATUS_TRANSITIONS: Dict[str, List[str]] = {
+    "open": ["open", "closed", "cancelled"],
+    "closed": ["closed", "reviewed"],
+    "reviewed": ["reviewed"],
+    "cancelled": ["cancelled", "reviewed"],
+    "missed": ["missed", "reviewed"],
+}
+
+# --- Карта статусов к визуальным стадиям (какие блоки формы показывать) ---
+STATUS_STAGE = {
+    "open": "open",
+    "closed": "closed",
+    "reviewed": "review",
+    "cancelled": "open",
+    "missed": "open",
+}
+
+# --- Значение-заглушка для селекта результата ---
+RESULT_PLACEHOLDER = "— Not set —"
+
+# --- Статусы, доступные при создании сделки ---
+CREATE_ALLOWED_STATUSES = ["open", "missed"]

@@ -17,7 +17,7 @@ from db import (
 )
 from helpers import option_with_placeholder
 
-from .constants import RESULT_PLACEHOLDER, STATUS_STAGE
+from config import RESULT_PLACEHOLDER, STATUS_STAGE
 from .defaults import build_trade_defaults
 from .sections import (
     render_closed_stage,
