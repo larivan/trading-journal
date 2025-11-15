@@ -309,21 +309,24 @@ CREATE TABLE IF NOT EXISTS notes (
 CREATE TABLE IF NOT EXISTS charts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     chart_url    TEXT NOT NULL,
-    caption      TEXT
+    caption      TEXT,
+    trade_id     INTEGER,
+    analysis_id  INTEGER,
+    setup_id     INTEGER,
+    CHECK (
+        (CASE WHEN trade_id IS NOT NULL THEN 1 ELSE 0 END) +
+        (CASE WHEN analysis_id IS NOT NULL THEN 1 ELSE 0 END) +
+        (CASE WHEN setup_id IS NOT NULL THEN 1 ELSE 0 END)
+        <= 1
+    ),
+    FOREIGN KEY (trade_id)    REFERENCES trades(id)    ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (analysis_id) REFERENCES analyses(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (setup_id)    REFERENCES setups(id)    ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- =========================
 -- СВЯЗИ (отношения многие-ко-многим)
 -- =========================
-
-CREATE TABLE IF NOT EXISTS analysis_charts (
-    analysis_id  INTEGER,
-    chart_id     INTEGER,
-    state      TEXT CHECK (state IN ({_enum_sql(ANALYSIS_STATE_VALUES)})),
-    PRIMARY KEY (analysis_id, chart_id, state),
-    FOREIGN KEY (analysis_id) REFERENCES analyses(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (chart_id)    REFERENCES charts(id)    ON DELETE CASCADE ON UPDATE CASCADE
-);
 
 CREATE TABLE IF NOT EXISTS analysis_notes (
     analysis_id  INTEGER,
@@ -334,28 +337,12 @@ CREATE TABLE IF NOT EXISTS analysis_notes (
     FOREIGN KEY (note_id)     REFERENCES notes(id)    ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS trade_charts (
-    trade_id  INTEGER,
-    chart_id  INTEGER,
-    PRIMARY KEY (trade_id, chart_id),
-    FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (chart_id) REFERENCES charts(id)  ON DELETE CASCADE ON UPDATE CASCADE
-);
-
 CREATE TABLE IF NOT EXISTS trade_notes (
     trade_id  INTEGER,
     note_id   INTEGER,
     PRIMARY KEY (trade_id, note_id),
     FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (note_id)  REFERENCES notes(id)  ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS setup_charts (
-    setup_id  INTEGER,
-    chart_id  INTEGER,
-    PRIMARY KEY (setup_id, chart_id),
-    FOREIGN KEY (setup_id) REFERENCES setups(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (chart_id) REFERENCES charts(id)  ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- =========================
@@ -371,6 +358,9 @@ CREATE INDEX IF NOT EXISTS idx_trades_setup        ON trades(setup_id);
 CREATE INDEX IF NOT EXISTS idx_trading_days_date_local ON trading_days(date_local);
 CREATE INDEX IF NOT EXISTS idx_analyses_trading_day   ON analyses(trading_day_id);
 CREATE INDEX IF NOT EXISTS idx_analyses_asset         ON analyses(asset);
+CREATE INDEX IF NOT EXISTS idx_charts_trade_id        ON charts(trade_id);
+CREATE INDEX IF NOT EXISTS idx_charts_analysis_id     ON charts(analysis_id);
+CREATE INDEX IF NOT EXISTS idx_charts_setup_id        ON charts(setup_id);
 """
 
 
@@ -656,7 +646,6 @@ def add_chart(chart_url: str, caption: Optional[str] = None) -> int:
 
     conn = get_conn()
     try:
-        _ensure_column(conn, "charts", "caption TEXT")
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO charts (chart_url, caption) "
@@ -686,7 +675,6 @@ def update_chart(chart_id: int, chart_url: str,
 
     conn = get_conn()
     try:
-        _ensure_column(conn, "charts", "caption TEXT")
         cur = conn.cursor()
         cur.execute(
             """
@@ -728,13 +716,7 @@ def list_trade_charts(trade_id: int) -> List[Dict[str, Any]]:
     conn = get_conn()
     try:
         rows = conn.execute(
-            """
-            SELECT c.*
-            FROM trade_charts tc
-            JOIN charts c ON c.id = tc.chart_id
-            WHERE tc.trade_id=?
-            ORDER BY c.id DESC
-            """,
+            "SELECT * FROM charts WHERE trade_id=? ORDER BY id DESC",
             (trade_id,),
         ).fetchall()
         return _rows_to_dicts(rows)
@@ -746,13 +728,18 @@ def attach_chart_to_trade(trade_id: int, chart_id: int) -> None:
     conn = get_conn()
     try:
         cur = conn.cursor()
-        chart_exists = cur.execute(
-            "SELECT 1 FROM charts WHERE id=?", (chart_id,)
+        chart_row = cur.execute(
+            "SELECT id, trade_id, analysis_id, setup_id FROM charts WHERE id=?",
+            (chart_id,),
         ).fetchone()
-        if not chart_exists:
+        if not chart_row:
             raise ValueError(f"Чарт #{chart_id} не найден.")
+        if chart_row["analysis_id"] or chart_row["setup_id"]:
+            raise ValueError("Чарт уже привязан к другой сущности.")
+        if chart_row["trade_id"] not in (None, trade_id):
+            raise ValueError("Чарт уже привязан к другой сделке.")
         cur.execute(
-            "INSERT OR IGNORE INTO trade_charts (trade_id, chart_id) VALUES (?, ?)",
+            "UPDATE charts SET trade_id=?, analysis_id=NULL, setup_id=NULL WHERE id=?",
             (trade_id, chart_id),
         )
         conn.commit()
@@ -765,7 +752,7 @@ def detach_chart_from_trade(trade_id: int, chart_id: int) -> None:
     try:
         cur = conn.cursor()
         cur.execute(
-            "DELETE FROM trade_charts WHERE trade_id=? AND chart_id=?",
+            "UPDATE charts SET trade_id=NULL WHERE trade_id=? AND id=?",
             (trade_id, chart_id),
         )
         conn.commit()
@@ -1097,76 +1084,6 @@ def list_trades(filters: Optional[Dict[str, Any]] = None,
     try:
         rows = conn.execute(q, p).fetchall()
         return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def seed_test_trades(count: int = 10) -> None:
-    """
-    Insert synthetic trades for manual testing/demo purposes.
-    Creates `count` rows with alternating states/results.
-    """
-    if count <= 0:
-        return
-
-    sessions = TRADE_SESSION_VALUES or ["Other"]
-    now = datetime.utcnow()
-
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        for idx in range(count):
-            opened_at = now - timedelta(hours=idx * 6)
-            is_closed = idx % 3 != 0  # roughly 2/3 closed
-            is_reviewed = is_closed and idx % 5 == 0
-
-            state = "reviewed" if is_reviewed else (
-                "closed" if is_closed else "open")
-            result = TRADE_RESULT_VALUES[idx %
-                                         len(TRADE_RESULT_VALUES)] if is_closed else None
-            net_pnl = float((idx + 1) * 50) if is_closed else None
-            risk_reward = round(1.0 + (idx % 4) * 0.5,
-                                2) if is_closed else None
-            reward_percent = round(
-                risk_reward * 10, 2) if risk_reward else None
-            estimation = None
-            problems = []
-            if idx % 2 == 0:
-                problems.append(EMOTIONAL_PROBLEMS[0]
-                                if EMOTIONAL_PROBLEMS else "emotional management")
-            if idx % 3 == 0 and len(EMOTIONAL_PROBLEMS) > 1:
-                problems.append(EMOTIONAL_PROBLEMS[1])
-
-            cur.execute("""
-                INSERT INTO trades (
-                    local_tz, date_local, time_local,
-                    account_id, setup_id, analysis_id, asset,
-                    risk_pct, session, state,
-                    result, net_pnl, risk_reward, reward_percent,
-                    estimation,
-                    emotional_problems, hot_thoughts, cold_thoughts
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                "UTC+3",
-                opened_at.strftime("%Y-%m-%d"),
-                opened_at.strftime("%H:%M:%S"),
-                None,  # account_id
-                None,  # setup_id
-                None,  # analysis_id
-                ASSETS[idx % len(ASSETS)] if ASSETS else f"SYMBOL{idx+1}",
-                0.5 + (idx % 5) * 0.1,
-                sessions[idx % len(sessions)],
-                state,
-                result,
-                net_pnl,
-                risk_reward,
-                reward_percent,
-                estimation,
-                json.dumps(problems) if problems else None,
-                "Impulse entry" if idx % 2 == 0 else None,
-                "Calm review" if idx % 3 == 0 else None
-            ))
-        conn.commit()
     finally:
         conn.close()
 
