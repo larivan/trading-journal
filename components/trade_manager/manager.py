@@ -26,12 +26,7 @@ from components.chart_editor import (
 )
 from helpers import option_with_placeholder
 
-from config import (
-    RESULT_PLACEHOLDER,
-    STATUS_STAGE,
-    CREATE_ALLOWED_STATUSES,
-    LOCAL_TZ
-)
+from config import LOCAL_TZ
 from .defaults import build_trade_defaults
 from .sections import (
     render_closed_stage,
@@ -41,6 +36,31 @@ from .sections import (
 )
 from .sections.notes import render_notes_section
 from .state import allowed_statuses, visible_stages
+
+
+# --- Допустимые переходы между статусами сделки ---
+STATUS_TRANSITIONS: Dict[str, List[str]] = {
+    "open": ["open", "closed", "cancelled"],
+    "closed": ["closed", "reviewed"],
+    "reviewed": ["reviewed"],
+    "cancelled": ["cancelled", "reviewed"],
+    "missed": ["missed", "reviewed"],
+}
+
+# --- Карта статусов к визуальным стадиям (какие блоки формы показывать) ---
+STATUS_STAGE = {
+    "open": "open",
+    "closed": "closed",
+    "reviewed": "review",
+    "cancelled": "open",
+    "missed": "open",
+}
+
+# --- Значение-заглушка для селекта результата ---
+RESULT_PLACEHOLDER = "— Not set —"
+
+# --- Статусы, доступные при создании сделки ---
+CREATE_ALLOWED_STATUSES = ["open", "missed"]
 
 
 def render_trade_creator(

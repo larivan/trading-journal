@@ -1,9 +1,7 @@
 """Общие вспомогательные функции для фильтров сущностей."""
 
 from datetime import date, timedelta
-from typing import Dict, Optional, Tuple
-
-from db import list_accounts
+from typing import Optional, Tuple
 
 TAB_DEFINITIONS = [
     ("Today", "today"),
