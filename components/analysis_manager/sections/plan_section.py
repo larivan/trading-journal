@@ -79,8 +79,8 @@ def render_plan_section(
         selected_tab, content_col = render_vertical_tabs(
             key=f"plan_tabs_{analysis_id}",
             tabs=tabs,
-            label="Планы",
-            add_label="Добавить план",
+            label="Plans",
+            add_label="Add new",
             remove_label="×",
             min_tabs=1,
             on_add=_add_plan,
@@ -102,18 +102,17 @@ def render_plan_section(
         editor_values: Dict[int, Any] = {}
 
         with content_col:
-            st.subheader(selected_tab["label"])
-            summary_values[selected_stage["id"]] = st.text_area(
-                "Описание",
-                value=selected_stage.get("summary") or "",
-                height=200,
-                key=summary_key,
-            )
             editor_values[selected_stage["id"]] = render_chart_editor(
                 key=chart_key,
                 base_rows=rows_cache[selected_stage["id"]],
-                title="Чарты",
+                title="Charts",
                 caption=None,
+            )
+            summary_values[selected_stage["id"]] = st.text_area(
+                "Note",
+                value=selected_stage.get("summary") or "",
+                height=200,
+                key=summary_key,
             )
 
         for stage in sorted_stages:

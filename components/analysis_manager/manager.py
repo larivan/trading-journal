@@ -47,7 +47,8 @@ def render_analysis_creator(
         )
 
         col1, col2 = st.columns(2)
-        submitted = col1.button("Create", type="primary", use_container_width=True)
+        submitted = col1.button("Create", type="primary",
+                                use_container_width=True)
         if not submitted:
             if col2.button("Cancel", use_container_width=True):
                 if on_cancel:
@@ -190,11 +191,6 @@ def render_analysis_editor(
                 st.rerun()
             except Exception as exc:  # pragma: no cover
                 st.error(f"Не удалось сохранить: {exc}")
-
-        if st.button("Закрыть", use_container_width=True):
-            if on_close:
-                on_close()
-
     _dialog()
 
 

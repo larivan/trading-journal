@@ -35,7 +35,7 @@ def render_post_stage(
         return
     stage_id = stage_data["id"]
     with st.expander("Post-market", expanded=expanded):
-        col1, col2 = st.columns([1, 2])
+        col1, col2 = st.columns([1, 3], gap="medium")
 
         with col1:
             fact_bias_value = st.selectbox(
@@ -55,7 +55,7 @@ def render_post_stage(
             summary_value = st.text_area(
                 "Note",
                 value=stage_data.get("summary") or "",
-                height=220,
+                height=160,
                 key=f"stage_summary_{stage_id}",
             )
 

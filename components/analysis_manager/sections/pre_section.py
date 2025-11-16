@@ -29,7 +29,7 @@ def render_pre_stage(
         return None
     stage_id = stage_data["id"]
     with st.expander("Pre-market", expanded=expanded):
-        col1, col2 = st.columns([1, 2])
+        col1, col2 = st.columns([1, 3], gap="medium")
         with col1:
             daily_bias_value = st.selectbox(
                 "Daily bias",
