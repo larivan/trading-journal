@@ -1,6 +1,8 @@
 """Переиспользуемые UI-хелперы для работы с чартами и их привязками."""
 
-from typing import Any, Callable, Dict, List, Optional
+from __future__ import annotations
+
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 import streamlit as st
 
@@ -9,48 +11,609 @@ from db import add_chart, delete_chart, update_chart
 ChartRow = Dict[str, Any]
 
 
+def chart_editor_value_state_key(widget_key: str) -> str:
+    """Возвращает ключ session_state для хранения данных редактора."""
+    return f"{widget_key}__value"
+
+
+def _sanitize_chart_rows(
+    rows: Sequence[ChartRow],
+    *,
+    keep_empty: bool = False,
+) -> List[ChartRow]:
+    sanitized: List[ChartRow] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        chart_url = str(row.get("chart_url") or "").strip()
+        cleaned = {
+            "id": row.get("id"),
+            "chart_url": chart_url,
+            "caption": (row.get("caption") or "").strip(),
+        }
+        if chart_url or keep_empty:
+            sanitized.append(cleaned)
+    return sanitized
+
+_COMPONENT_HTML = """
+<div class="st-chart-editor" data-root>
+  <div class="st-chart-editor__form">
+    <div class="st-chart-editor__inputs">
+      <label class="st-chart-editor__field">
+        <span>Image link</span>
+        <input type="url" data-input-url placeholder="https://example.com/chart.png" />
+      </label>
+      <label class="st-chart-editor__field">
+        <span>Caption</span>
+        <input type="text" data-input-caption placeholder="Optional note" />
+      </label>
+      <button type="button" class="st-chart-editor__add" data-add>Добавить</button>
+    </div>
+    <div class="st-chart-editor__layout" data-layout>
+      <span class="st-chart-editor__layout-label">Layout</span>
+      <button type="button" data-mode="column" aria-label="One column">1</button>
+      <button type="button" data-mode="grid2" aria-label="Two columns">2</button>
+      <button type="button" data-mode="grid3" aria-label="Three columns">3</button>
+    </div>
+    <div class="st-chart-editor__error" data-error></div>
+  </div>
+  <div class="st-chart-editor__body">
+    <div class="st-chart-editor__empty" data-empty>Добавьте первый чарт, чтобы увидеть превью.</div>
+    <div class="st-chart-editor__cards" data-cards></div>
+  </div>
+</div>
+""".strip()
+
+_COMPONENT_CSS = """
+:host {
+  width: 100%;
+}
+.st-chart-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+.st-chart-editor__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid var(--st-secondary-background-color);
+  border-radius: 0.75rem;
+  background: var(--st-secondary-background-color);
+}
+.st-chart-editor__inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.st-chart-editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 220px;
+  font-size: 0.85rem;
+  color: var(--st-color-text-light, rgba(49, 51, 63, 0.6));
+}
+.st-chart-editor__field input {
+  width: 100%;
+  appearance: none;
+  border-radius: 0.65rem;
+  border: 1px solid transparent;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.95rem;
+  background: #fff;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.st-chart-editor__field input:focus {
+  border-color: var(--st-primary-color);
+  outline: none;
+  background: rgba(48, 115, 255, 0.08);
+}
+.st-chart-editor__add {
+  align-self: flex-end;
+  margin-left: auto;
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 0.55rem 1.5rem;
+  background: var(--st-primary-color);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+.st-chart-editor__add:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.st-chart-editor__layout {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.25rem 0.35rem;
+  box-shadow: inset 0 0 0 1px rgba(49, 51, 63, 0.08);
+  width: fit-content;
+}
+.st-chart-editor__layout-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--st-color-text-light, rgba(49, 51, 63, 0.6));
+  margin-right: 0.35rem;
+}
+.st-chart-editor__layout button {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--st-color-text, #1c1c1c);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+  font-weight: 600;
+}
+.st-chart-editor__layout button.is-active {
+  background: var(--st-primary-color);
+  color: #fff;
+}
+.st-chart-editor__error {
+  font-size: 0.85rem;
+  color: #e03131;
+  min-height: 1.2rem;
+}
+.st-chart-editor__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.st-chart-editor__empty {
+  border: 2px dashed rgba(49, 51, 63, 0.15);
+  border-radius: 0.85rem;
+  padding: 1.75rem;
+  text-align: center;
+  color: var(--st-color-text-light, rgba(49, 51, 63, 0.6));
+  font-size: 0.95rem;
+}
+.st-chart-editor__cards {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+}
+.st-chart-editor__cards[data-layout="column"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.st-chart-editor__cards[data-layout="grid2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.st-chart-editor__cards[data-layout="grid3"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 900px) {
+  .st-chart-editor__cards[data-layout="grid3"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .st-chart-editor__cards[data-layout="grid2"],
+  .st-chart-editor__cards[data-layout="grid3"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.st-chart-card {
+  position: relative;
+  border-radius: 0.9rem;
+  background: var(--st-secondary-background-color);
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  box-shadow: 0 4px 12px rgba(49, 51, 63, 0.08);
+}
+.st-chart-card__remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+.st-chart-card__image {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(49, 51, 63, 0.08);
+  background: #fff;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.st-chart-card__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.st-chart-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.st-chart-card__input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  padding: 0.2rem 0;
+  font-size: 0.9rem;
+  transition: border-color 120ms ease;
+  color: var(--st-color-text, #1c1c1c);
+}
+.st-chart-card__input:focus {
+  outline: none;
+  border-color: var(--st-primary-color);
+  background: rgba(48, 115, 255, 0.08);
+}
+.st-chart-card__link {
+  font-size: 0.75rem;
+  color: var(--st-primary-color);
+  text-decoration: none;
+  font-weight: 600;
+  word-break: break-all;
+}
+.st-chart-card__caption-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--st-color-text-light, rgba(49, 51, 63, 0.6));
+}
+.st-vtabs__remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  appearance: none;
+  border: none;
+  background: #ff7a66;
+  color: var(--st-color-text, #fff);
+  font-size: 1.1rem;
+  border-radius: 999px;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.st-vtabs__remove:hover {
+  background: #cccccc;
+  color: #000;
+}
+.st-chart-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+""".strip()
+
+_COMPONENT_JS = """
+const template = document.createElement("template");
+template.innerHTML = `
+<div class="st-chart-editor" data-root>
+  <div class="st-chart-editor__form">
+    <div class="st-chart-editor__inputs">
+      <label class="st-chart-editor__field">
+        <span>Image link</span>
+        <input type="url" data-input-url placeholder="https://example.com/chart.png" />
+      </label>
+      <label class="st-chart-editor__field">
+        <span>Caption</span>
+        <input type="text" data-input-caption placeholder="Optional note" />
+      </label>
+      <button type="button" class="st-chart-editor__add" data-add>Добавить</button>
+    </div>
+    <div class="st-chart-editor__layout" data-layout>
+      <span class="st-chart-editor__layout-label">Layout</span>
+      <button type="button" data-mode="column" aria-label="One column">1</button>
+      <button type="button" data-mode="grid2" aria-label="Two columns">2</button>
+      <button type="button" data-mode="grid3" aria-label="Three columns">3</button>
+    </div>
+    <div class="st-chart-editor__error" data-error></div>
+  </div>
+  <div class="st-chart-editor__body">
+    <div class="st-chart-editor__empty" data-empty>Добавьте первый чарт, чтобы увидеть превью.</div>
+    <div class="st-chart-editor__cards" data-cards></div>
+  </div>
+</div>
+`;
+
+const ensureRoot = (parentElement) => {
+  if (!parentElement) {
+    return null;
+  }
+  let root = parentElement.querySelector("[data-root]");
+  if (!root) {
+    parentElement.innerHTML = "";
+    parentElement.appendChild(template.content.cloneNode(true));
+    root = parentElement.querySelector("[data-root]");
+  }
+  return root;
+};
+
+const normalizeCharts = (charts) => {
+  if (!Array.isArray(charts)) {
+    return [];
+  }
+  return charts
+    .map((chart) => ({
+      id: chart?.id ?? null,
+      chart_url: typeof chart?.chart_url === "string" ? chart.chart_url : "",
+      caption: typeof chart?.caption === "string" ? chart.caption : "",
+    }))
+    .filter((chart) => String(chart.chart_url || "").trim() !== "");
+};
+
+const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
+  cardsEl.innerHTML = "";
+  charts.forEach((chart, index) => {
+    const card = document.createElement("div");
+    card.className = "st-chart-card";
+
+    const remove = document.createElement("button");
+    remove.className = "st-vtabs__remove st-chart-card__remove";
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.onclick = (event) => {
+      event.preventDefault();
+      onRemove(index);
+    };
+
+    const imageWrapper = document.createElement("div");
+    imageWrapper.className = "st-chart-card__image";
+    const image = document.createElement("img");
+    image.alt = chart.caption || "Chart";
+    image.src = chart.chart_url;
+    imageWrapper.appendChild(image);
+
+    const meta = document.createElement("div");
+    meta.className = "st-chart-card__meta";
+
+    const link = document.createElement("a");
+    link.className = "st-chart-card__link";
+    link.href = chart.chart_url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = chart.chart_url;
+
+    const urlInput = document.createElement("input");
+    urlInput.type = "url";
+    urlInput.value = chart.chart_url;
+    urlInput.placeholder = "https://example.com/chart.png";
+    urlInput.className = "st-chart-card__input";
+    urlInput.onblur = () => onChange(index, { chart_url: urlInput.value.trim() });
+    urlInput.onkeydown = (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        urlInput.blur();
+      }
+    };
+
+    const captionLabel = document.createElement("div");
+    captionLabel.className = "st-chart-card__caption-label";
+    captionLabel.textContent = "Caption";
+
+    const captionInput = document.createElement("input");
+    captionInput.type = "text";
+    captionInput.value = chart.caption || "";
+    captionInput.placeholder = "Описание";
+    captionInput.className = "st-chart-card__input";
+    captionInput.onblur = () => onChange(index, { caption: captionInput.value });
+    captionInput.onkeydown = (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        captionInput.blur();
+      }
+    };
+
+    meta.appendChild(link);
+    meta.appendChild(urlInput);
+    meta.appendChild(captionLabel);
+    meta.appendChild(captionInput);
+
+    card.appendChild(remove);
+    card.appendChild(imageWrapper);
+    card.appendChild(meta);
+    cardsEl.appendChild(card);
+  });
+};
+
+export default function(component) {
+  const { parentElement, data = {}, setStateValue } = component;
+  const root = ensureRoot(parentElement);
+  if (!root) {
+    return;
+  }
+
+  const urlInput = root.querySelector("[data-input-url]");
+  const captionInput = root.querySelector("[data-input-caption]");
+  const addButton = root.querySelector("[data-add]");
+  const cardsEl = root.querySelector("[data-cards]");
+  const emptyEl = root.querySelector("[data-empty]");
+  const errorEl = root.querySelector("[data-error]");
+  const layoutButtons = root.querySelectorAll("[data-layout] [data-mode]");
+
+  let currentCharts = normalizeCharts(data.charts);
+  let currentLayout = ["grid2", "grid3"].includes(data.layout) ? data.layout : "column";
+
+  const showError = (message) => {
+    errorEl.textContent = message || "";
+  };
+
+  const refreshCards = () => {
+    renderCards(cardsEl, currentCharts, {
+      onChange: updateChart,
+      onRemove: removeChart,
+    });
+    emptyEl.style.display = currentCharts.length ? "none" : "flex";
+  };
+
+  const applyLayout = () => {
+    cardsEl.dataset.layout = currentLayout;
+    layoutButtons.forEach((btn) => {
+      if (btn.dataset.mode === currentLayout) {
+        btn.classList.add("is-active");
+      } else {
+        btn.classList.remove("is-active");
+      }
+    });
+  };
+
+  const commitCharts = (nextCharts, emit = true) => {
+    currentCharts = nextCharts;
+    refreshCards();
+    if (emit) {
+      setStateValue("charts", currentCharts);
+    }
+  };
+
+  const setLayout = (layout, emit = true) => {
+    currentLayout = layout;
+    applyLayout();
+    if (emit) {
+      setStateValue("layout", currentLayout);
+    }
+  };
+
+  const updateChart = (index, payload) => {
+    const next = currentCharts.map((chart, idx) =>
+      idx === index ? { ...chart, ...payload } : chart
+    );
+    commitCharts(next);
+  };
+
+  const removeChart = (index) => {
+    const next = currentCharts.filter((_, idx) => idx !== index);
+    commitCharts(next);
+  };
+
+  const addChart = () => {
+    const url = urlInput.value.trim();
+    const caption = captionInput.value.trim();
+    if (!url) {
+      showError("Вставьте ссылку на изображение.");
+      return;
+    }
+    if (!/^https?:\\/\\//i.test(url)) {
+      showError("Ссылка должна начинаться с http(s).");
+      return;
+    }
+    showError("");
+    const next = [
+      ...currentCharts,
+      {
+        id: null,
+        chart_url: url,
+        caption,
+      },
+    ];
+    urlInput.value = "";
+    captionInput.value = "";
+    commitCharts(next);
+  };
+
+  addButton.onclick = (event) => {
+    event.preventDefault();
+    addChart();
+  };
+
+  urlInput.onkeydown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addChart();
+    }
+  };
+  captionInput.onkeydown = (event) => {
+    if (event.key === "Enter" && urlInput.value.trim()) {
+      event.preventDefault();
+      addChart();
+    }
+  };
+
+  layoutButtons.forEach((btn) => {
+    btn.onclick = (event) => {
+      event.preventDefault();
+      const mode = btn.dataset.mode || "column";
+      setLayout(mode);
+    };
+  });
+
+  refreshCards();
+  applyLayout();
+}
+""".strip()
+
+_chart_editor_component = st.components.v2.component(
+    "chart_editor",
+    html=_COMPONENT_HTML,
+    css=_COMPONENT_CSS,
+    js=_COMPONENT_JS,
+)
+
+
 def render_chart_editor(
     *,
     key: str,
-    base_rows: List[ChartRow],
+    base_rows: Sequence[ChartRow],
     title: str = "Charts",
     caption: Optional[str] = "Paste links to your TradingView snapshots so they stay linked to this record.",
-) -> Any:
+) -> List[ChartRow]:
     """Отрисовывает универсальный редактор чартов и возвращает его значение."""
+    sanitized_rows = _sanitize_chart_rows(base_rows)
     if title:
         st.subheader(title)
     if caption:
         st.caption(caption)
-    return st.data_editor(
-        base_rows,
+
+    layout_state_key = f"{key}_layout"
+    default_layout = st.session_state.get(layout_state_key, "column")
+    value_state_key = chart_editor_value_state_key(key)
+
+    callbacks = {
+        "on_charts_change": lambda: None,
+        "on_layout_change": lambda: None,
+    }
+
+    result = _chart_editor_component(
         key=key,
-        num_rows="dynamic",
-        hide_index=True,
-        column_order=["chart_url", "caption"],
-        column_config={
-            "chart_url": st.column_config.LinkColumn(
-                "Chart URL",
-                required=True,
-                help="Paste a direct image link.",
-                validate=r"^https?:\/\/(?:www\.)?tradingview\.com\/.+\/?$",
-            ),
-            "caption": st.column_config.TextColumn(
-                "Caption",
-                required=False,
-            ),
-            "id": st.column_config.Column(
-                "ID",
-                disabled=True,
-                required=False,
-                width="small",
-            ),
+        data={
+            "charts": sanitized_rows,
+            "layout": default_layout,
         },
+        default={"charts": sanitized_rows, "layout": default_layout},
+        **callbacks,
     )
+
+    layout_value = result.get("layout") if isinstance(result, dict) else None
+    if isinstance(layout_value, str) and layout_value in {"column", "grid2", "grid3"}:
+        st.session_state[layout_state_key] = layout_value
+
+    charts_value = result.get("charts") if isinstance(result, dict) else None
+    if isinstance(charts_value, list):
+        sanitized_value = _sanitize_chart_rows(charts_value, keep_empty=True)
+        st.session_state[value_state_key] = sanitized_value
+        return sanitized_value
+
+    cached_value = st.session_state.get(value_state_key)
+    if isinstance(cached_value, list):
+        sanitized_cached = _sanitize_chart_rows(cached_value, keep_empty=True)
+        st.session_state[value_state_key] = sanitized_cached
+        return sanitized_cached
+
+    st.session_state[value_state_key] = sanitized_rows
+    return sanitized_rows
 
 
 def chart_table_rows(charts: List[ChartRow]) -> List[ChartRow]:
-    """Готовит строки чарта для data_editor, даже если данных нет."""
-    rows = [
+    """Готовит строки чарта для редактора."""
+    return [
         {
             "id": chart.get("id"),
             "chart_url": chart.get("chart_url") or "",
@@ -58,13 +621,6 @@ def chart_table_rows(charts: List[ChartRow]) -> List[ChartRow]:
         }
         for chart in charts
     ]
-    if rows:
-        return rows
-    return [{
-        "id": None,
-        "chart_url": "",
-        "caption": "",
-    }]
 
 
 def normalize_editor_rows(editor_value: Any) -> List[ChartRow]:

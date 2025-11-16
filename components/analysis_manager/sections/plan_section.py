@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 import streamlit as st
 
 from components.chart_editor import (
+    chart_editor_value_state_key,
     chart_table_rows,
     render_chart_editor,
 )
@@ -133,7 +134,9 @@ def render_plan_section(
                         "rows_source": rows_cache.get(stage_id) or [],
                         "editor_value": editor_values.get(
                             stage_id,
-                            st.session_state.get(_chart_editor_key(stage_id)),
+                            st.session_state.get(
+                                chart_editor_value_state_key(_chart_editor_key(stage_id))
+                            ),
                         ),
                     },
                 }
