@@ -39,12 +39,11 @@ _COMPONENT_CSS = """
   gap: 0.35rem;
 }
 .st-vtabs__row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.4rem;
-  align-items: stretch;
+  position: relative;
 }
 .st-vtabs__tab {
+  display: block;
+  width: 100%;
   appearance: none;
   border: 1px solid var(--st-secondary-background-color);
   border-radius: 0.6rem;
@@ -66,20 +65,26 @@ _COMPONENT_CSS = """
   border-color: var(--st-primary-color);
 }
 .st-vtabs__remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   appearance: none;
   border: none;
-  background: transparent;
-  color: var(--st-color-text, #1c1c1c);
+  background: #ff7a66;
+  color: var(--st-color-text, #fff);
   font-size: 1.1rem;
   border-radius: 999px;
-  width: 2rem;
-  height: 2rem;
+  width: 16px;
+  height: 16px;
   cursor: pointer;
+  position: absolute;
+  top: -4px;
+  right: -4px;
   transition: background 120ms ease, color 120ms ease;
 }
 .st-vtabs__remove:hover:not(:disabled) {
-  background: rgba(49, 51, 63, 0.08);
-  color: var(--st-primary-color);
+  background: #cccccc;
+  color: #000;
 }
 .st-vtabs__remove:disabled {
   opacity: 0.4;
