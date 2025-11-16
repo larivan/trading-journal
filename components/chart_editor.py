@@ -43,8 +43,13 @@ def _sanitize_chart_rows(
             sanitized.append(cleaned)
     return sanitized
 
+
 _COMPONENT_HTML = """
 <div class="st-chart-editor" data-root>
+  <div class="st-chart-editor__body">
+    <div class="st-chart-editor__empty" data-empty>Добавьте первый чарт, чтобы увидеть превью.</div>
+    <div class="st-chart-editor__cards" data-cards></div>
+  </div>
   <div class="st-chart-editor__form">
     <div class="st-chart-editor__inputs">
       <label class="st-chart-editor__field">
@@ -58,10 +63,6 @@ _COMPONENT_HTML = """
       <button type="button" class="st-chart-editor__add" data-add>Добавить</button>
     </div>
     <div class="st-chart-editor__error" data-error></div>
-  </div>
-  <div class="st-chart-editor__body">
-    <div class="st-chart-editor__empty" data-empty>Добавьте первый чарт, чтобы увидеть превью.</div>
-    <div class="st-chart-editor__cards" data-cards></div>
   </div>
 </div>
 """.strip()
@@ -101,12 +102,13 @@ _COMPONENT_CSS = """
 .st-chart-editor__field input {
   width: 100%;
   appearance: none;
-  border-radius: 0.65rem;
+  border-radius: 0.5rem;
   border: 1px solid transparent;
-  padding: 0.5rem 0.7rem;
+  padding: 0.5rem 0.5rem;
   font-size: 0.95rem;
   background: #fff;
   transition: border-color 120ms ease, background 120ms ease;
+  box-sizing: border-box;
 }
 .st-chart-editor__field input:focus {
   border-color: var(--st-primary-color);
@@ -118,11 +120,10 @@ _COMPONENT_CSS = """
   margin-left: auto;
   appearance: none;
   border: none;
-  border-radius: 999px;
+  border-radius: 0.5rem;
   padding: 0.55rem 1.5rem;
   background: var(--st-primary-color);
   color: #fff;
-  font-weight: 600;
   cursor: pointer;
   transition: opacity 120ms ease;
 }
@@ -187,6 +188,7 @@ _COMPONENT_CSS = """
   position: absolute;
   top: 8px;
   right: 8px;
+  z-index: 1;
 }
 .st-chart-card__image {
   position: relative;
@@ -268,23 +270,23 @@ _COMPONENT_JS = """
 const template = document.createElement("template");
 template.innerHTML = `
 <div class="st-chart-editor" data-root>
+  <div class="st-chart-editor__body">
+    <div class="st-chart-editor__empty" data-empty>Добавьте первый чарт, чтобы увидеть превью.</div>
+    <div class="st-chart-editor__cards" data-cards></div>
+  </div>
   <div class="st-chart-editor__form">
     <div class="st-chart-editor__inputs">
       <label class="st-chart-editor__field">
         <span>Image link</span>
-        <input type="url" data-input-url placeholder="https://example.com/chart.png" />
+        <input type="url" data-input-url placeholder="Chart link" />
       </label>
       <label class="st-chart-editor__field">
         <span>Caption</span>
         <input type="text" data-input-caption placeholder="Optional note" />
       </label>
-      <button type="button" class="st-chart-editor__add" data-add>Добавить</button>
+      <button type="button" class="st-chart-editor__add" data-add>Add</button>
     </div>
     <div class="st-chart-editor__error" data-error></div>
-  </div>
-  <div class="st-chart-editor__body">
-    <div class="st-chart-editor__empty" data-empty>Добавьте первый чарт, чтобы увидеть превью.</div>
-    <div class="st-chart-editor__cards" data-cards></div>
   </div>
 </div>
 `;
@@ -612,7 +614,8 @@ def persist_chart_editor(
         if row.get("id") is not None:
             continue
         chart_id = add_chart(row["chart_url"], row["caption"])
-        attach_chart(chart_id)  # Внешняя функция решает, к какой сущности привязать чарт.
+        # Внешняя функция решает, к какой сущности привязать чарт.
+        attach_chart(chart_id)
 
 
 def _clean_chart_id(value: Any) -> Optional[int]:
