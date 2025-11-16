@@ -1,4 +1,4 @@
-"""Секция редактирования конкретного этапа анализа."""
+"""Секция редактирования этапа post-market."""
 
 from __future__ import annotations
 
@@ -27,52 +27,33 @@ from db import (
     update_analysis_stage,
 )
 
-from ..constants import STAGE_TITLES
 
-
-def render_stage_section(
+def render_post_stage(
     *,
-    stage_type: str,
     stage_data: Optional[Dict[str, Any]],
     analysis: Dict[str, Any],
     analysis_id: int,
     visible: bool,
     expanded: bool,
 ) -> None:
-    """Показывает блок редактирования этапа вместе с заметками и чартами."""
+    """Редактирование этапа post-market."""
 
     if not visible or not stage_data:
         return
     stage_id = stage_data["id"]
-    label = STAGE_TITLES.get(stage_type, stage_type.title())
-    with st.expander(label, expanded=expanded):
-        analysis_updates: Dict[str, Any] = {}
-        if stage_type == "pre-market":
-            analysis_updates["daily_bias"] = st.selectbox(
-                "Daily bias",
-                options=DAILY_BIAS,
-                index=DAILY_BIAS.index(analysis.get("daily_bias"))
-                if analysis.get("daily_bias") in DAILY_BIAS
-                else 0,
-                key=f"stage_daily_bias_{stage_id}",
-            )
-        if stage_type == "post-market":
-            analysis_updates["fact_bias"] = st.selectbox(
-                "Fact bias",
-                options=DAILY_BIAS,
-                index=DAILY_BIAS.index(analysis.get("fact_bias"))
-                if analysis.get("fact_bias") in DAILY_BIAS
-                else 0,
-                key=f"stage_fact_bias_{stage_id}",
-            )
-            analysis_updates["day_result"] = st.selectbox(
-                "Результат дня",
-                options=DAY_RESULT_VALUES,
-                index=DAY_RESULT_VALUES.index(analysis.get("day_result"))
-                if analysis.get("day_result") in DAY_RESULT_VALUES
-                else 0,
-                key=f"stage_day_result_{stage_id}",
-            )
+    with st.expander("Post-market", expanded=expanded):
+        fact_bias_value = st.selectbox(
+            "Fact bias",
+            options=DAILY_BIAS,
+            index=DAILY_BIAS.index(analysis.get("fact_bias")) if analysis.get("fact_bias") in DAILY_BIAS else 0,
+            key=f"stage_fact_bias_{stage_id}",
+        )
+        day_result_value = st.selectbox(
+            "Результат дня",
+            options=DAY_RESULT_VALUES,
+            index=DAY_RESULT_VALUES.index(analysis.get("day_result")) if analysis.get("day_result") in DAY_RESULT_VALUES else 0,
+            key=f"stage_day_result_{stage_id}",
+        )
         summary_value = st.text_area(
             "Описание",
             value=stage_data.get("summary") or "",
@@ -95,12 +76,8 @@ def render_stage_section(
         render_note_editor(
             key=f"analysis_stage_{stage_id}",
             attached_notes=attached_notes,
-            attach_note=lambda note_id, s_id=stage_id: attach_note_to_analysis_stage(
-                s_id, note_id
-            ),
-            detach_note=lambda note_id, s_id=stage_id: detach_note_from_analysis_stage(
-                s_id, note_id
-            ),
+            attach_note=lambda note_id, s_id=stage_id: attach_note_to_analysis_stage(s_id, note_id),
+            detach_note=lambda note_id, s_id=stage_id: detach_note_from_analysis_stage(s_id, note_id),
             create_note=lambda title, body: add_note(title, body),
             load_notes=list_notes,
             selection_label="Связанные заметки",
@@ -121,17 +98,19 @@ def render_stage_section(
         ):
             stage_payload = {
                 "analysis_id": analysis_id,
-                "type": stage_type,
+                "type": "post-market",
                 "summary": summary_value.strip() or None,
                 "time_local": datetime.now().strftime("%H:%M:%S"),
             }
             try:
                 update_analysis_stage(stage_id, stage_payload)
-                filtered_updates = {
-                    key: value for key, value in analysis_updates.items() if value is not None
-                }
-                if filtered_updates:
-                    update_analysis(analysis_id, filtered_updates)
+                update_analysis(
+                    analysis_id,
+                    {
+                        "fact_bias": fact_bias_value,
+                        "day_result": day_result_value,
+                    },
+                )
                 chart_state_payload = chart_editor_value if chart_editor_value is not None else chart_rows_source
                 editor_rows = normalize_editor_rows(chart_state_payload)
                 persist_chart_editor(
@@ -147,4 +126,4 @@ def render_stage_section(
                 st.error(f"Не удалось сохранить этап: {exc}")
 
 
-__all__ = ["render_stage_section"]
+__all__ = ["render_post_stage"]

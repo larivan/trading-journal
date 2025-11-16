@@ -11,10 +11,16 @@ from config import ANALYSIS_STATE_VALUES
 from db import add_analysis, delete_analysis, get_analysis, update_analysis
 
 from .defaults import build_analysis_defaults
-from .sections import render_primary_fields, render_stage_section
+from .sections import (
+    render_primary_fields,
+    render_plan_section,
+    render_pre_stage,
+    render_post_stage,
+)
 from .state import ensure_stage_records, visible_stage_types
 
 DialogCallback = Optional[Callable[[int], None]]
+
 
 def render_analysis_creator(
     *,
@@ -118,21 +124,37 @@ def render_analysis_editor(
                 ],
             ) or current_stage
 
-        stage_map = ensure_stage_records(analysis_id)
+        single_stages, plan_stages = ensure_stage_records(analysis_id)
         visible_types = visible_stage_types(selected_stage)
 
         for stage_type in ANALYSIS_STATE_VALUES:
-            stage_data = stage_map.get(stage_type)
             render = stage_type in visible_types
             expanded = stage_type == selected_stage
-            render_stage_section(
-                stage_type=stage_type,
-                stage_data=stage_data,
-                analysis=analysis,
-                analysis_id=analysis_id,
-                visible=render,
-                expanded=expanded,
-            )
+            if stage_type == "plan":
+                render_plan_section(
+                    plan_stages=plan_stages,
+                    analysis_id=analysis_id,
+                    visible=render,
+                    expanded=expanded,
+                )
+            else:
+                stage_data = single_stages.get(stage_type)
+                if stage_type == "pre-market":
+                    render_pre_stage(
+                        stage_data=stage_data,
+                        analysis=analysis,
+                        analysis_id=analysis_id,
+                        visible=render,
+                        expanded=expanded,
+                    )
+                elif stage_type == "post-market":
+                    render_post_stage(
+                        stage_data=stage_data,
+                        analysis=analysis,
+                        analysis_id=analysis_id,
+                        visible=render,
+                        expanded=expanded,
+                    )
 
         submitted_primary = st.session_state.pop(
             f"analysis_submit_{analysis_id}", False)

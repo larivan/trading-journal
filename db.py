@@ -263,7 +263,6 @@ CREATE TABLE IF NOT EXISTS analysis_stages (
     time_local   TEXT,
     type         TEXT CHECK (type IN ({_enum_sql(ANALYSIS_STATE_VALUES)})),
     summary      TEXT,
-    UNIQUE (analysis_id, type),
     FOREIGN KEY (analysis_id) REFERENCES analysis(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
