@@ -815,7 +815,7 @@ def list_trade_charts(trade_id: int) -> List[Dict[str, Any]]:
     conn = get_conn()
     try:
         rows = conn.execute(
-            "SELECT * FROM charts WHERE trade_id=? ORDER BY id DESC",
+            "SELECT * FROM charts WHERE trade_id=? ORDER BY id ASC",
             (trade_id,),
         ).fetchall()
         return _rows_to_dicts(rows)
@@ -863,7 +863,7 @@ def list_analysis_stage_charts(stage_id: int) -> List[Dict[str, Any]]:
     conn = get_conn()
     try:
         rows = conn.execute(
-            "SELECT * FROM charts WHERE analysis_stage_id=? ORDER BY id DESC",
+            "SELECT * FROM charts WHERE analysis_stage_id=? ORDER BY id ASC",
             (stage_id,),
         ).fetchall()
         return _rows_to_dicts(rows)
