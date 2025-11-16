@@ -8,6 +8,7 @@ from components.analysis_manager import (
     render_analysis_editor,
     render_analysis_remover,
 )
+from components.entity_table import render_entity_table
 from components.database_toolbar import (
     render_action_buttons,
     render_database_toolbar,
@@ -159,34 +160,37 @@ if date_to:
     tab_filters["date_to"] = date_to.isoformat()
 
 rows = list_analysis(tab_filters)
-
-if rows:
-    st.dataframe(rows, use_container_width=True, hide_index=True)
-    selector_options = ["— Не выбран —"] + [
-        f"{row['date_local']} · {row.get('asset') or '—'} (#{row['id']})"
-        for row in rows
-    ]
-    selected_id = st.session_state.get("selected_analysis_id")
-    default_option = 0
-    if selected_id:
-        for idx, row in enumerate(rows, start=1):
-            if row["id"] == selected_id:
-                default_option = idx
-                break
-    choice = st.radio(
-        "Выберите анализ",
-        selector_options,
-        index=default_option,
-        key="analysis_row_selector",
-    )
-    if choice == selector_options[0]:
-        st.session_state["selected_analysis_id"] = None
+analysis_columns = [
+    {"field": "date_local", "label": "Дата", "type": "date"},
+    {"field": "asset", "label": "Инструмент"},
+    {"field": "daily_bias", "label": "Daily bias"},
+    {"field": "fact_bias", "label": "Fact bias"},
+    {"field": "day_result", "label": "Result"},
+    {"field": "state", "label": "Тип анализа"},
+]
+analysis_column_config = {
+    "Дата": st.column_config.DateColumn("Дата", format="DD.MM.YYYY"),
+}
+selection_changed, selected_from_table = render_entity_table(
+    rows=rows,
+    tab_key=selected_tab_key,
+    session_prefix="analysis",
+    columns=analysis_columns,
+    column_config=analysis_column_config,
+    empty_message="Нет анализов за выбранный период.",
+)
+if selection_changed:
+    if selected_from_table is None:
+        if not st.session_state.get("show_edit_analysis"):
+            st.session_state["selected_analysis_id"] = None
+            set_dialog_flag("show_create_analysis", False)
+            set_dialog_flag("show_edit_analysis", False)
+            set_dialog_flag("show_delete_analysis", False)
     else:
-        choice_index = selector_options.index(choice) - 1
-        st.session_state["selected_analysis_id"] = rows[choice_index]["id"]
-else:
-    st.info("Нет анализов за выбранный период.")
-    st.session_state["selected_analysis_id"] = None
+        st.session_state["selected_analysis_id"] = selected_from_table
+        set_dialog_flag("show_create_analysis", False)
+        set_dialog_flag("show_edit_analysis", False)
+        set_dialog_flag("show_delete_analysis", False)
 
 open_disabled = st.session_state.get("selected_analysis_id") is None
 create_clicked, open_clicked, delete_clicked = render_action_buttons(

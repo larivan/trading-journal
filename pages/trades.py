@@ -13,7 +13,7 @@ from components.entity_filters import (
     tab_date_range,
 )
 from config import ASSETS, TRADE_RESULT_VALUES, TRADE_SESSION_VALUES, TRADE_STATE_VALUES
-from components.trades_table import render_trades_table
+from components.entity_table import render_entity_table
 from components.trade_manager import (
     render_trade_creator,
     render_trade_editor,
@@ -181,9 +181,29 @@ if date_to:
 
 # --- Загружаем сделки и отслеживаем, изменилась ли выделенная строка ---
 rows = list_trades(tab_filters)
-selection_changed, selected_from_tab = render_trades_table(
-    rows,
-    selected_tab_key,
+trade_table_columns = [
+    {"field": "date_local", "label": "Дата", "type": "date"},
+    {"field": "time_local", "label": "Время", "type": "time"},
+    {"field": "asset", "label": "Инструмент"},
+    {"field": "state", "label": "Состояние"},
+    {"field": "result", "label": "Результат"},
+    {"field": "net_pnl", "label": "PnL"},
+    {"field": "risk_reward", "label": "R:R"},
+    {"field": "session", "label": "Сессия"},
+]
+trade_column_config = {
+    "Дата": st.column_config.DateColumn("Дата", format="DD.MM.YYYY"),
+    "Время": st.column_config.TimeColumn("Время"),
+    "PnL": st.column_config.NumberColumn("PnL", format="%.2f"),
+    "R:R": st.column_config.NumberColumn("R:R", format="%.2f"),
+}
+selection_changed, selected_from_tab = render_entity_table(
+    rows=rows,
+    tab_key=selected_tab_key,
+    session_prefix="trades",
+    columns=trade_table_columns,
+    column_config=trade_column_config,
+    empty_message="Нет сделок для выбранного периода.",
 )
 if selection_changed:
     if selected_from_tab is None:
