@@ -198,6 +198,7 @@ _COMPONENT_CSS = """
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 12px rgba(49, 51, 63, 0.08);
+  cursor: zoom-in;
 }
 .st-chart-card__image img {
   width: 100%;
@@ -277,6 +278,98 @@ template.innerHTML = `
 </div>
 `;
 
+const FS_LIGHTBOX_SRC = "https://cdn.jsdelivr.net/npm/fslightbox/index.js";
+let fsLightboxPromise = null;
+
+const loadFsLightbox = () => {
+  if (typeof window !== "undefined" && typeof window.refreshFsLightbox === "function") {
+    return Promise.resolve();
+  }
+  if (fsLightboxPromise) {
+    return fsLightboxPromise;
+  }
+  fsLightboxPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${FS_LIGHTBOX_SRC}"]`);
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("FsLightbox failed to load")), {
+        once: true,
+      });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = FS_LIGHTBOX_SRC;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("FsLightbox failed to load"));
+    document.head.appendChild(script);
+  }).catch((error) => {
+    console.error(error);
+  });
+  return fsLightboxPromise;
+};
+
+const ensureFsLightboxReady = () =>
+  loadFsLightbox().then(() => {
+    if (typeof window !== "undefined" && typeof window.refreshFsLightbox === "function") {
+      window.refreshFsLightbox();
+    }
+  });
+
+const openLightboxLink = (link) =>
+  ensureFsLightboxReady().then(() => {
+    if (!link) {
+      return;
+    }
+    const event = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+    });
+    link.dispatchEvent(event);
+  });
+
+const ensureGalleryId = (element) => {
+  if (!element.dataset.galleryId) {
+    element.dataset.galleryId = `chart-gallery-${Math.random().toString(36).slice(2)}`;
+  }
+  return element.dataset.galleryId;
+};
+
+const ensureLightboxPortal = () => {
+  const attr = "data-chart-editor-lightbox-portal";
+  let portal = document.querySelector(`[${attr}]`);
+  if (!portal) {
+    portal = document.createElement("div");
+    portal.setAttribute(attr, "true");
+    portal.style.position = "fixed";
+    portal.style.top = "-9999px";
+    portal.style.left = "-9999px";
+    portal.style.width = "0";
+    portal.style.height = "0";
+    portal.style.overflow = "hidden";
+    document.body.appendChild(portal);
+  }
+  return portal;
+};
+
+const syncLightboxLinks = (galleryId, charts) => {
+  const portal = ensureLightboxPortal();
+  const selector = `[data-chart-editor-gallery="${galleryId}"]`;
+  portal.querySelectorAll(selector).forEach((node) => node.remove());
+  return charts.map((chart) => {
+    const link = document.createElement("a");
+    link.href = chart.chart_url;
+    link.dataset.fslightbox = galleryId;
+    link.dataset.chartEditorGallery = galleryId;
+    link.dataset.type = "image";
+    link.setAttribute("aria-hidden", "true");
+    link.tabIndex = -1;
+    portal.appendChild(link);
+    return link;
+  });
+};
+
 const ensureRoot = (parentElement) => {
   if (!parentElement) {
     return null;
@@ -306,6 +399,8 @@ const normalizeCharts = (charts) => {
 const CAPTION_PLACEHOLDER = "Дважды кликните, чтобы добавить подпись";
 
 const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
+  const galleryId = ensureGalleryId(cardsEl);
+  const portalLinks = syncLightboxLinks(galleryId, charts);
   cardsEl.innerHTML = "";
   charts.forEach((chart, index) => {
     const card = document.createElement("div");
@@ -320,12 +415,18 @@ const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
       onRemove(index);
     };
 
+    const portalLink = portalLinks[index];
+
     const imageWrapper = document.createElement("div");
     imageWrapper.className = "st-chart-card__image";
     const image = document.createElement("img");
     image.alt = chart.caption || "Chart";
     image.src = chart.chart_url;
     imageWrapper.appendChild(image);
+    imageWrapper.ondblclick = (event) => {
+      event.preventDefault();
+      openLightboxLink(portalLink);
+    };
 
     const caption = document.createElement("div");
     caption.className = "st-chart-card__caption";
@@ -394,6 +495,7 @@ const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
     card.appendChild(caption);
     cardsEl.appendChild(card);
   });
+  ensureFsLightboxReady();
 };
 
 export default function(component) {
