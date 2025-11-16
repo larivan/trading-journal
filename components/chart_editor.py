@@ -134,7 +134,7 @@ _COMPONENT_CSS = """
 .st-chart-editor__error {
   font-size: 0.85rem;
   color: #e03131;
-  min-height: 1.2rem;
+  display: none;
 }
 .st-chart-editor__body {
   display: flex;
@@ -151,7 +151,7 @@ _COMPONENT_CSS = """
 }
 .st-chart-editor__cards {
   display: grid;
-  gap: 1rem;
+  gap: 1.4rem;
   width: 100%;
 }
 .st-chart-editor__cards[data-layout="column"] {
@@ -177,17 +177,14 @@ _COMPONENT_CSS = """
 .st-chart-card {
   position: relative;
   border-radius: 0.9rem;
-  background: var(--st-secondary-background-color);
-  padding: 0.85rem;
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  box-shadow: 0 4px 12px rgba(49, 51, 63, 0.08);
 }
 .st-chart-card__remove {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: -8px;
+  right: -8px;
   z-index: 1;
 }
 .st-chart-card__image {
@@ -200,6 +197,7 @@ _COMPONENT_CSS = """
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 4px 12px rgba(49, 51, 63, 0.08);
 }
 .st-chart-card__image img {
   width: 100%;
@@ -207,38 +205,31 @@ _COMPONENT_CSS = """
   object-fit: cover;
   display: block;
 }
-.st-chart-card__info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+.st-chart-card__caption {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--st-color-text, #1c1c1c);
+  cursor: text;
+  transition: color 120ms ease;
+  min-height: 1.5rem;
 }
-.st-chart-card__input {
+.st-chart-card__caption.is-placeholder {
+  color: var(--st-color-text-light, rgba(49, 51, 63, 0.6));
+  font-style: italic;
+  font-weight: 500;
+}
+.st-chart-card__caption-input {
   width: 100%;
   border: none;
-  border-bottom: 1px solid transparent;
+  border-bottom: 1px solid var(--st-primary-color);
   background: transparent;
-  padding: 0.2rem 0;
   font-size: 0.9rem;
-  transition: border-color 120ms ease;
+  padding: 0.2rem 0.25rem;
+  text-align: center;
   color: var(--st-color-text, #1c1c1c);
 }
-.st-chart-card__input:focus {
+.st-chart-card__caption-input:focus {
   outline: none;
-  border-color: var(--st-primary-color);
-  background: rgba(48, 115, 255, 0.08);
-}
-.st-chart-card__link {
-  font-size: 0.75rem;
-  color: var(--st-primary-color);
-  text-decoration: none;
-  font-weight: 600;
-  word-break: break-all;
-}
-.st-chart-card__caption-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--st-color-text-light, rgba(49, 51, 63, 0.6));
 }
 .st-vtabs__remove {
   display: flex;
@@ -259,11 +250,6 @@ _COMPONENT_CSS = """
   background: #cccccc;
   color: #000;
 }
-.st-chart-card__meta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
 """.strip()
 
 _COMPONENT_JS = """
@@ -278,13 +264,13 @@ template.innerHTML = `
     <div class="st-chart-editor__inputs">
       <label class="st-chart-editor__field">
         <span>Image link</span>
-        <input type="url" data-input-url placeholder="Chart link" />
+        <input type="url" data-input-url placeholder="https://example.com/chart.png" />
       </label>
       <label class="st-chart-editor__field">
         <span>Caption</span>
         <input type="text" data-input-caption placeholder="Optional note" />
       </label>
-      <button type="button" class="st-chart-editor__add" data-add>Add</button>
+      <button type="button" class="st-chart-editor__add" data-add>Добавить</button>
     </div>
     <div class="st-chart-editor__error" data-error></div>
   </div>
@@ -317,6 +303,8 @@ const normalizeCharts = (charts) => {
     .filter((chart) => String(chart.chart_url || "").trim() !== "");
 };
 
+const CAPTION_PLACEHOLDER = "Дважды кликните, чтобы добавить подпись";
+
 const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
   cardsEl.innerHTML = "";
   charts.forEach((chart, index) => {
@@ -339,54 +327,71 @@ const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
     image.src = chart.chart_url;
     imageWrapper.appendChild(image);
 
-    const meta = document.createElement("div");
-    meta.className = "st-chart-card__meta";
+    const caption = document.createElement("div");
+    caption.className = "st-chart-card__caption";
 
-    const link = document.createElement("a");
-    link.className = "st-chart-card__link";
-    link.href = chart.chart_url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = chart.chart_url;
-
-    const urlInput = document.createElement("input");
-    urlInput.type = "url";
-    urlInput.value = chart.chart_url;
-    urlInput.placeholder = "https://example.com/chart.png";
-    urlInput.className = "st-chart-card__input";
-    urlInput.onblur = () => onChange(index, { chart_url: urlInput.value.trim() });
-    urlInput.onkeydown = (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        urlInput.blur();
+    const applyCaptionValue = (value) => {
+      const nextValue = (value || "").trim();
+      if (nextValue) {
+        caption.textContent = nextValue;
+        caption.classList.remove("is-placeholder");
+      } else {
+        caption.textContent = CAPTION_PLACEHOLDER;
+        caption.classList.add("is-placeholder");
       }
     };
 
-    const captionLabel = document.createElement("div");
-    captionLabel.className = "st-chart-card__caption-label";
-    captionLabel.textContent = "Caption";
-
-    const captionInput = document.createElement("input");
-    captionInput.type = "text";
-    captionInput.value = chart.caption || "";
-    captionInput.placeholder = "Описание";
-    captionInput.className = "st-chart-card__input";
-    captionInput.onblur = () => onChange(index, { caption: captionInput.value });
-    captionInput.onkeydown = (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        captionInput.blur();
+    const activateCaptionEdit = () => {
+      if (caption.dataset.editing === "true") {
+        return;
       }
+      caption.dataset.editing = "true";
+      caption.classList.remove("is-placeholder");
+      caption.innerHTML = "";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = chart.caption || "";
+      input.placeholder = "Подпись";
+      input.className = "st-chart-card__caption-input";
+      caption.appendChild(input);
+      input.focus();
+      input.select();
+
+      const finish = (commit) => {
+        if (caption.dataset.editing !== "true") {
+          return;
+        }
+        caption.dataset.editing = "false";
+        const nextValue = commit ? input.value : chart.caption || "";
+        caption.innerHTML = "";
+        applyCaptionValue(nextValue);
+        if (commit) {
+          onChange(index, { caption: nextValue });
+        }
+      };
+
+      input.onblur = () => finish(true);
+      input.onkeydown = (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          finish(true);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          finish(false);
+        }
+      };
     };
 
-    meta.appendChild(link);
-    meta.appendChild(urlInput);
-    meta.appendChild(captionLabel);
-    meta.appendChild(captionInput);
+    caption.ondblclick = (event) => {
+      event.preventDefault();
+      activateCaptionEdit();
+    };
+
+    applyCaptionValue(chart.caption || "");
 
     card.appendChild(remove);
     card.appendChild(imageWrapper);
-    card.appendChild(meta);
+    card.appendChild(caption);
     cardsEl.appendChild(card);
   });
 };
@@ -409,7 +414,9 @@ export default function(component) {
   cardsEl.dataset.layout = currentLayout;
 
   const showError = (message) => {
-    errorEl.textContent = message || "";
+    const text = message || "";
+    errorEl.textContent = text;
+    errorEl.style.display = text ? "block" : "none";
   };
 
   const refreshCards = () => {
