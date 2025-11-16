@@ -16,6 +16,14 @@ def chart_editor_value_state_key(widget_key: str) -> str:
     return f"{widget_key}__value"
 
 
+def _layout_from_columns(columns: int) -> str:
+    if columns >= 3:
+        return "grid3"
+    if columns == 2:
+        return "grid2"
+    return "column"
+
+
 def _sanitize_chart_rows(
     rows: Sequence[ChartRow],
     *,
@@ -48,12 +56,6 @@ _COMPONENT_HTML = """
         <input type="text" data-input-caption placeholder="Optional note" />
       </label>
       <button type="button" class="st-chart-editor__add" data-add>Добавить</button>
-    </div>
-    <div class="st-chart-editor__layout" data-layout>
-      <span class="st-chart-editor__layout-label">Layout</span>
-      <button type="button" data-mode="column" aria-label="One column">1</button>
-      <button type="button" data-mode="grid2" aria-label="Two columns">2</button>
-      <button type="button" data-mode="grid3" aria-label="Three columns">3</button>
     </div>
     <div class="st-chart-editor__error" data-error></div>
   </div>
@@ -127,38 +129,6 @@ _COMPONENT_CSS = """
 .st-chart-editor__add:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-}
-.st-chart-editor__layout {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  background: #fff;
-  border-radius: 999px;
-  padding: 0.25rem 0.35rem;
-  box-shadow: inset 0 0 0 1px rgba(49, 51, 63, 0.08);
-  width: fit-content;
-}
-.st-chart-editor__layout-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--st-color-text-light, rgba(49, 51, 63, 0.6));
-  margin-right: 0.35rem;
-}
-.st-chart-editor__layout button {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 999px;
-  border: none;
-  background: transparent;
-  color: var(--st-color-text, #1c1c1c);
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
-  font-weight: 600;
-}
-.st-chart-editor__layout button.is-active {
-  background: var(--st-primary-color);
-  color: #fff;
 }
 .st-chart-editor__error {
   font-size: 0.85rem;
@@ -310,12 +280,6 @@ template.innerHTML = `
       </label>
       <button type="button" class="st-chart-editor__add" data-add>Добавить</button>
     </div>
-    <div class="st-chart-editor__layout" data-layout>
-      <span class="st-chart-editor__layout-label">Layout</span>
-      <button type="button" data-mode="column" aria-label="One column">1</button>
-      <button type="button" data-mode="grid2" aria-label="Two columns">2</button>
-      <button type="button" data-mode="grid3" aria-label="Three columns">3</button>
-    </div>
     <div class="st-chart-editor__error" data-error></div>
   </div>
   <div class="st-chart-editor__body">
@@ -438,10 +402,9 @@ export default function(component) {
   const cardsEl = root.querySelector("[data-cards]");
   const emptyEl = root.querySelector("[data-empty]");
   const errorEl = root.querySelector("[data-error]");
-  const layoutButtons = root.querySelectorAll("[data-layout] [data-mode]");
-
   let currentCharts = normalizeCharts(data.charts);
-  let currentLayout = ["grid2", "grid3"].includes(data.layout) ? data.layout : "column";
+  const currentLayout = ["grid2", "grid3"].includes(data.layout) ? data.layout : "column";
+  cardsEl.dataset.layout = currentLayout;
 
   const showError = (message) => {
     errorEl.textContent = message || "";
@@ -455,30 +418,11 @@ export default function(component) {
     emptyEl.style.display = currentCharts.length ? "none" : "flex";
   };
 
-  const applyLayout = () => {
-    cardsEl.dataset.layout = currentLayout;
-    layoutButtons.forEach((btn) => {
-      if (btn.dataset.mode === currentLayout) {
-        btn.classList.add("is-active");
-      } else {
-        btn.classList.remove("is-active");
-      }
-    });
-  };
-
   const commitCharts = (nextCharts, emit = true) => {
     currentCharts = nextCharts;
     refreshCards();
     if (emit) {
       setStateValue("charts", currentCharts);
-    }
-  };
-
-  const setLayout = (layout, emit = true) => {
-    currentLayout = layout;
-    applyLayout();
-    if (emit) {
-      setStateValue("layout", currentLayout);
     }
   };
 
@@ -537,16 +481,7 @@ export default function(component) {
     }
   };
 
-  layoutButtons.forEach((btn) => {
-    btn.onclick = (event) => {
-      event.preventDefault();
-      const mode = btn.dataset.mode || "column";
-      setLayout(mode);
-    };
-  });
-
   refreshCards();
-  applyLayout();
 }
 """.strip()
 
@@ -564,6 +499,7 @@ def render_chart_editor(
     base_rows: Sequence[ChartRow],
     title: str = "Charts",
     caption: Optional[str] = "Paste links to your TradingView snapshots so they stay linked to this record.",
+    layout_columns: int = 1,
 ) -> List[ChartRow]:
     """Отрисовывает универсальный редактор чартов и возвращает его значение."""
     sanitized_rows = _sanitize_chart_rows(base_rows)
@@ -572,28 +508,22 @@ def render_chart_editor(
     if caption:
         st.caption(caption)
 
-    layout_state_key = f"{key}_layout"
-    default_layout = st.session_state.get(layout_state_key, "column")
+    layout_mode = _layout_from_columns(layout_columns)
     value_state_key = chart_editor_value_state_key(key)
 
     callbacks = {
         "on_charts_change": lambda: None,
-        "on_layout_change": lambda: None,
     }
 
     result = _chart_editor_component(
         key=key,
         data={
             "charts": sanitized_rows,
-            "layout": default_layout,
+            "layout": layout_mode,
         },
-        default={"charts": sanitized_rows, "layout": default_layout},
+        default={"charts": sanitized_rows},
         **callbacks,
     )
-
-    layout_value = result.get("layout") if isinstance(result, dict) else None
-    if isinstance(layout_value, str) and layout_value in {"column", "grid2", "grid3"}:
-        st.session_state[layout_state_key] = layout_value
 
     charts_value = result.get("charts") if isinstance(result, dict) else None
     if isinstance(charts_value, list):
