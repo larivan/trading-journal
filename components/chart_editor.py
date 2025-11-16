@@ -60,7 +60,7 @@ _COMPONENT_HTML = """
         <span>Caption</span>
         <input type="text" data-input-caption placeholder="Optional note" />
       </label>
-      <button type="button" class="st-chart-editor__add" data-add>Добавить</button>
+      <button type="button" class="st-chart-editor__add" data-add>Add new</button>
     </div>
     <div class="st-chart-editor__error" data-error></div>
   </div>
@@ -270,7 +270,7 @@ template.innerHTML = `
         <span>Caption</span>
         <input type="text" data-input-caption placeholder="Optional note" />
       </label>
-      <button type="button" class="st-chart-editor__add" data-add>Добавить</button>
+      <button type="button" class="st-chart-editor__add" data-add>Add new</button>
     </div>
     <div class="st-chart-editor__error" data-error></div>
   </div>
