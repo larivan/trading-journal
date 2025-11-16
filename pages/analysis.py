@@ -3,6 +3,11 @@ from typing import Dict, Optional, Tuple
 
 import streamlit as st
 
+from components.analysis_manager import (
+    render_analysis_creator,
+    render_analysis_editor,
+    render_analysis_remover,
+)
 from components.database_toolbar import (
     render_action_buttons,
     render_database_toolbar,
@@ -31,6 +36,13 @@ st.session_state.setdefault(
     (today - timedelta(days=7), today),
 )
 st.session_state.setdefault("selected_analysis_id", None)
+st.session_state.setdefault("show_create_analysis", False)
+st.session_state.setdefault("show_edit_analysis", False)
+st.session_state.setdefault("show_delete_analysis", False)
+
+
+def set_dialog_flag(flag: str, value: bool) -> None:
+    st.session_state[flag] = value
 
 
 def _render_analysis_custom_filters(
@@ -121,6 +133,9 @@ selected_label, selected_tab_key, tab_changed, actions_placeholder = render_data
 
 if tab_changed:
     st.session_state["selected_analysis_id"] = None
+    set_dialog_flag("show_create_analysis", False)
+    set_dialog_flag("show_edit_analysis", False)
+    set_dialog_flag("show_delete_analysis", False)
     st.session_state.pop(f"analysis_table_{selected_tab_key}", None)
     st.session_state.pop(f"analysis_table_{selected_tab_key}_selection", None)
 st.session_state["analysis_visible_tab"] = selected_tab_key
@@ -181,8 +196,60 @@ create_clicked, open_clicked, delete_clicked = render_action_buttons(
 )
 
 if create_clicked:
-    st.info("Создание анализа пока недоступно.")
+    set_dialog_flag("show_create_analysis", True)
+    set_dialog_flag("show_edit_analysis", False)
+    set_dialog_flag("show_delete_analysis", False)
 if open_clicked:
-    st.info("Перейти к редактированию анализа пока нельзя.")
+    set_dialog_flag("show_edit_analysis", True)
+    set_dialog_flag("show_create_analysis", False)
+    set_dialog_flag("show_delete_analysis", False)
 if delete_clicked:
-    st.info("Удаление анализа будет добавлено позже.")
+    set_dialog_flag("show_delete_analysis", True)
+    set_dialog_flag("show_create_analysis", False)
+    set_dialog_flag("show_edit_analysis", False)
+
+
+def _close_create_dialog() -> None:
+    set_dialog_flag("show_create_analysis", False)
+    st.rerun()
+
+
+def _close_edit_dialog() -> None:
+    set_dialog_flag("show_edit_analysis", False)
+    st.rerun()
+
+
+def _close_delete_dialog() -> None:
+    set_dialog_flag("show_delete_analysis", False)
+    st.rerun()
+
+
+def _handle_analysis_deleted() -> None:
+    st.session_state["selected_analysis_id"] = None
+    set_dialog_flag("show_delete_analysis", False)
+    st.rerun()
+
+
+def _handle_analysis_created(new_id: int) -> None:
+    st.session_state["selected_analysis_id"] = new_id
+    set_dialog_flag("show_create_analysis", False)
+    set_dialog_flag("show_edit_analysis", True)
+    st.rerun()
+
+
+if st.session_state.get("show_create_analysis"):
+    render_analysis_creator(
+        on_created=_handle_analysis_created,
+        on_cancel=_close_create_dialog,
+    )
+if st.session_state.get("show_edit_analysis"):
+    render_analysis_editor(
+        analysis_id=st.session_state.get("selected_analysis_id"),
+        on_close=_close_edit_dialog,
+    )
+if st.session_state.get("show_delete_analysis"):
+    render_analysis_remover(
+        analysis_id=st.session_state.get("selected_analysis_id"),
+        on_cancel=_close_delete_dialog,
+        on_deleted=_handle_analysis_deleted,
+    )

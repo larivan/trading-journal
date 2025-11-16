@@ -263,6 +263,7 @@ CREATE TABLE IF NOT EXISTS analysis_stages (
     time_local   TEXT,
     type         TEXT CHECK (type IN ({_enum_sql(ANALYSIS_STATE_VALUES)})),
     summary      TEXT,
+    UNIQUE (analysis_id, type),
     FOREIGN KEY (analysis_id) REFERENCES analysis(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -666,6 +667,56 @@ def attach_note_to_trade(trade_id: int, note_id: int) -> None:
         cur.execute(
             "INSERT OR IGNORE INTO trade_notes (trade_id, note_id) VALUES (?, ?)",
             (trade_id, note_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_analysis_stage_notes(stage_id: int) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT n.*
+            FROM analysis_notes an
+            JOIN notes n ON n.id = an.note_id
+            WHERE an.analysis_stage_id=?
+            ORDER BY n.title IS NULL, n.title ASC, n.id ASC
+            """,
+            (stage_id,),
+        ).fetchall()
+        return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
+def attach_note_to_analysis_stage(stage_id: int, note_id: int) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        note_exists = cur.execute(
+            "SELECT 1 FROM notes WHERE id=?",
+            (note_id,)
+        ).fetchone()
+        if not note_exists:
+            raise ValueError(f"Заметка #{note_id} не найдена.")
+        cur.execute(
+            "INSERT OR IGNORE INTO analysis_notes (analysis_stage_id, note_id) VALUES (?, ?)",
+            (stage_id, note_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def detach_note_from_analysis_stage(stage_id: int, note_id: int) -> None:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM analysis_notes WHERE analysis_stage_id=? AND note_id=?",
+            (stage_id, note_id),
         )
         conn.commit()
     finally:
