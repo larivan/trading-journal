@@ -13,16 +13,21 @@ from components.chart_editor import (
     persist_chart_editor,
     render_chart_editor,
 )
+from components.note_editor import render_note_editor
 from config import DAILY_BIAS, DAY_RESULT_VALUES
 from db import (
+    add_note,
     attach_chart_to_analysis_stage,
+    attach_note_to_analysis_stage,
+    detach_note_from_analysis_stage,
     list_analysis_stage_charts,
+    list_analysis_stage_notes,
+    list_notes,
     update_analysis,
     update_analysis_stage,
 )
 
 from ..constants import STAGE_TITLES
-from .stage_notes import render_stage_notes
 
 
 def render_stage_section(
@@ -86,7 +91,27 @@ def render_stage_section(
         )
 
         st.markdown("#### Заметки")
-        render_stage_notes(stage_id=stage_id, stage_key=f"notes_stage_{stage_id}")
+        attached_notes = list_analysis_stage_notes(stage_id)
+        render_note_editor(
+            key=f"analysis_stage_{stage_id}",
+            attached_notes=attached_notes,
+            attach_note=lambda note_id, s_id=stage_id: attach_note_to_analysis_stage(
+                s_id, note_id
+            ),
+            detach_note=lambda note_id, s_id=stage_id: detach_note_from_analysis_stage(
+                s_id, note_id
+            ),
+            create_note=lambda title, body: add_note(title, body),
+            load_notes=list_notes,
+            selection_label="Связанные заметки",
+            popover_label="Создать заметку",
+            create_button_label="Добавить",
+            empty_warning="Текст заметки не может быть пустым.",
+            success_update_message="Список заметок обновлён.",
+            success_create_message="Заметка создана.",
+            error_update_message="Не удалось обновить заметки: {exc}",
+            error_create_message="Не удалось создать заметку: {exc}",
+        )
 
         if st.button(
             "Сохранить этап",

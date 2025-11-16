@@ -5,8 +5,12 @@ from typing import Any, Callable, Dict, List, Optional
 import streamlit as st
 
 from db import (
-    create_trade,
+    add_note,
     attach_chart_to_trade,
+    attach_note_to_trade,
+    create_trade,
+    delete_trade,
+    detach_note_from_trade,
     get_trade_by_id,
     list_accounts,
     list_analysis,
@@ -16,7 +20,6 @@ from db import (
     list_trade_notes,
     parse_emotional_problems,
     update_trade,
-    delete_trade
 )
 from components.chart_editor import (
     chart_table_rows,
@@ -24,6 +27,7 @@ from components.chart_editor import (
     persist_chart_editor,
     render_chart_editor,
 )
+from components.note_editor import render_note_editor
 from components.state_header import render_entity_header
 from helpers import option_with_placeholder
 
@@ -34,7 +38,6 @@ from .sections import (
     render_open_stage,
     render_review_stage,
 )
-from .sections.notes import render_notes_section
 from .state import allowed_statuses, visible_stages
 from .constants import (
     STATUS_STAGE,
@@ -274,11 +277,27 @@ def render_trade_editor(
                 base_rows=chart_rows_source,
             )
             st.divider()
-            render_notes_section(
-                trade_id=trade_id,
-                trade_key=trade_key,
+            render_note_editor(
+                key=f"trade_{trade_key}",
                 attached_notes=trade_notes,
+                attach_note=lambda note_id, t_id=trade_id: attach_note_to_trade(
+                    t_id, note_id
+                ),
+                detach_note=lambda note_id, t_id=trade_id: detach_note_from_trade(
+                    t_id, note_id
+                ),
+                create_note=lambda title, body: add_note(title, body),
                 all_notes=all_notes,
+                title="Notes",
+                selection_label="Linked notes",
+                popover_label="Add",
+                create_button_label="Create note",
+                empty_warning="Note body cannot be empty.",
+                success_update_message="Notes updated.",
+                success_create_message="Note created and attached.",
+                error_update_message="Failed to update notes: {exc}",
+                error_create_message="Failed to add note: {exc}",
+                column_ratio=(0.6, 0.4),
             )
 
         if not submitted:
