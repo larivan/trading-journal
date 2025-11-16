@@ -15,6 +15,7 @@ from components.vertical_tabs import render_vertical_tabs
 from db import (
     add_analysis_stage,
     delete_analysis_stage,
+    delete_chart,
     list_analysis_stage_charts,
 )
 
@@ -71,6 +72,11 @@ def render_plan_section(
             if stage_id is None:
                 return
             try:
+                charts_to_remove = list_analysis_stage_charts(stage_id)
+                for chart in charts_to_remove:
+                    chart_id = chart.get("id")
+                    if chart_id:
+                        delete_chart(chart_id)
                 delete_analysis_stage(stage_id)
                 st.success("План удалён.")
                 st.rerun()
