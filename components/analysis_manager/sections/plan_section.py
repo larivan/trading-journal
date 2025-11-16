@@ -3,22 +3,18 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import streamlit as st
 
 from components.chart_editor import (
     chart_table_rows,
-    normalize_editor_rows,
-    persist_chart_editor,
     render_chart_editor,
 )
 from db import (
     add_analysis_stage,
     delete_analysis_stage,
     list_analysis_stage_charts,
-    update_analysis_stage,
-    attach_chart_to_analysis_stage,
 )
 
 from ..constants import STAGE_TITLES
@@ -26,18 +22,20 @@ from ..constants import STAGE_TITLES
 
 def render_plan_section(
     *,
-    plan_stages: List[Dict[str, any]],
+    plan_stages: List[Dict[str, Any]],
     analysis_id: int,
     visible: bool,
     expanded: bool,
-) -> None:
-    """Отображает список планов с отдельными чартами и описанием."""
+) -> List[Dict[str, Any]]:
+    """Отображает список планов и возвращает их формы."""
 
     if not visible:
-        return
+        return []
 
-    label = STAGE_TITLES.get("plan", "Plan")
-    with st.expander(label, expanded=expanded):
+    stage_label = STAGE_TITLES.get("plan", "Plan")
+    forms: List[Dict[str, Any]] = []
+
+    with st.expander(stage_label, expanded=expanded):
         if st.button(
             "Добавить план",
             type="secondary",
@@ -57,7 +55,7 @@ def render_plan_section(
 
         if not plan_stages:
             st.info("Планы ещё не созданы.")
-            return
+            return []
 
         for idx, stage in enumerate(sorted(plan_stages, key=lambda s: s.get("id") or 0), start=1):
             stage_id = stage["id"]
@@ -78,38 +76,8 @@ def render_plan_section(
                 caption=None,
             )
 
-            col_save, col_delete = st.columns(2)
-            if col_save.button(
-                "Сохранить план",
-                type="primary",
-                use_container_width=True,
-                key=f"plan_save_{stage_id}",
-            ):
-                try:
-                    update_analysis_stage(
-                        stage_id,
-                        {
-                            "analysis_id": analysis_id,
-                            "type": "plan",
-                            "summary": summary_value.strip() or None,
-                            "time_local": datetime.now().strftime("%H:%M:%S"),
-                        },
-                    )
-                    chart_state_payload = chart_editor_value if chart_editor_value is not None else chart_rows_source
-                    editor_rows = normalize_editor_rows(chart_state_payload)
-                    persist_chart_editor(
-                        attached_charts=charts,
-                        editor_rows=editor_rows,
-                        attach_chart=lambda chart_id, s_id=stage_id: attach_chart_to_analysis_stage(
-                            s_id, chart_id
-                        ),
-                    )
-                    st.success("План обновлён.")
-                    st.rerun()
-                except Exception as exc:  # pragma: no cover
-                    st.error(f"Не удалось сохранить план: {exc}")
-
-            if col_delete.button(
+            delete_col = st.columns(2)[1]
+            if delete_col.button(
                 "Удалить план",
                 type="secondary",
                 use_container_width=True,
@@ -121,6 +89,21 @@ def render_plan_section(
                     st.rerun()
                 except Exception as exc:  # pragma: no cover
                     st.error(f"Не удалось удалить план: {exc}")
+
+            forms.append(
+                {
+                    "stage_id": stage_id,
+                    "stage_type": "plan",
+                    "summary": summary_value,
+                    "charts": {
+                        "attached": charts,
+                        "rows_source": chart_rows_source,
+                        "editor_value": chart_editor_value,
+                    },
+                }
+            )
+
+    return forms
 
 
 __all__ = ["render_plan_section"]

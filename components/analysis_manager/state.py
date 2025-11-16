@@ -21,18 +21,18 @@ def visible_stage_types(current_stage: str) -> List[str]:
 def ensure_stage_records(analysis_id: int) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
     """Гарантирует наличие записей для этапов и возвращает отдельные коллекции."""
 
-    singles: Dict[str, Dict[str, Any]] = {}
-    plan_stages: List[Dict[str, Any]] = []
+    stages: Dict[str, Dict[str, Any]] = {}
+    plans: List[Dict[str, Any]] = []
     for stage in list_analysis_stages({"analysis_id": analysis_id}):
         if stage["type"] == "plan":
-            plan_stages.append(stage)
+            plans.append(stage)
         else:
-            singles[stage["type"]] = stage
+            stages[stage["type"]] = stage
 
     for stage_type in ANALYSIS_STATE_VALUES:
         if stage_type == "plan":
             continue
-        if stage_type in singles:
+        if stage_type in stages:
             continue
         new_id = add_analysis_stage(
             {
@@ -44,9 +44,9 @@ def ensure_stage_records(analysis_id: int) -> Tuple[Dict[str, Dict[str, Any]], L
         )
         new_stage = get_analysis_stage(new_id)
         if new_stage:
-            singles[stage_type] = new_stage
+            stages[stage_type] = new_stage
         else:  # fallback
-            singles[stage_type] = {
+            stages[stage_type] = {
                 "id": new_id,
                 "analysis_id": analysis_id,
                 "type": stage_type,
@@ -54,8 +54,8 @@ def ensure_stage_records(analysis_id: int) -> Tuple[Dict[str, Dict[str, Any]], L
                 "summary": None,
             }
 
-    plan_stages.sort(key=lambda stage: stage.get("id") or 0)
-    return singles, plan_stages
+    plans.sort(key=lambda stage: stage.get("id") or 0)
+    return stages, plans
 
 
 __all__ = ["visible_stage_types", "ensure_stage_records"]
