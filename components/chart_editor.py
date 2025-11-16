@@ -198,7 +198,6 @@ _COMPONENT_CSS = """
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 12px rgba(49, 51, 63, 0.08);
-  cursor: zoom-in;
 }
 .st-chart-card__image img {
   width: 100%;
@@ -363,6 +362,7 @@ const syncLightboxLinks = (galleryId, charts) => {
     link.dataset.fslightbox = galleryId;
     link.dataset.chartEditorGallery = galleryId;
     link.dataset.type = "image";
+    link.dataset.caption = (chart.caption || "").trim();
     link.setAttribute("aria-hidden", "true");
     link.tabIndex = -1;
     portal.appendChild(link);
