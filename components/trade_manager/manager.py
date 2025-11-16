@@ -24,13 +24,13 @@ from components.chart_editor import (
     persist_chart_editor,
     render_chart_editor,
 )
+from components.state_header import render_entity_header
 from helpers import option_with_placeholder
 
 from config import LOCAL_TZ
 from .defaults import build_trade_defaults
 from .sections import (
     render_closed_stage,
-    render_header_actions,
     render_open_stage,
     render_review_stage,
 )
@@ -201,25 +201,38 @@ def render_trade_editor(
 
         header_container = st.container(border=True)
         with header_container:
-            status_col, _, actions_col = st.columns(
-                [0.2, 0.4, 0.4],
-                gap="large",
-                vertical_alignment="bottom",
+            allowed = allowed_statuses(current_state)
+            current_state = current_state if current_state in allowed else allowed[0]
+
+            def _submit_action() -> None:
+                st.session_state[f"tm_submit_triggered_{trade_key}"] = True
+
+            def _cancel_action() -> None:
+                if on_close:
+                    on_close()
+
+            selected_state = render_entity_header(
+                status_label="Trade status",
+                status_options=allowed,
+                current_status=current_state,
+                status_key=f"tm_status_{trade_key}",
+                actions=[
+                    {
+                        "label": "Save changes",
+                        "type": "primary",
+                        "key": f"tm_submit_{trade_key}",
+                        "on_click": _submit_action,
+                    },
+                    {
+                        "label": "Cancel",
+                        "key": f"tm_cancel_{trade_key}",
+                        "on_click": _cancel_action,
+                        "type": "secondary",
+                        "disabled": on_close is None,
+                    },
+                ],
             )
-            with status_col:
-                allowed = allowed_statuses(current_state)
-                current_state = current_state if current_state in allowed else allowed[0]
-                selected_state = st.selectbox(
-                    "Trade status",
-                    allowed,
-                    index=allowed.index(current_state),
-                    key=f"tm_status_{trade_key}",
-                )
-            with actions_col:
-                submitted = render_header_actions(
-                    trade_key,
-                    on_cancel=on_close,
-                )
+            submitted = st.session_state.pop(f"tm_submit_triggered_{trade_key}", False)
 
         stages_col, side_col = st.columns([1, 2])
 
