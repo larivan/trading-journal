@@ -30,6 +30,7 @@ from components.chart_editor import (
 from components.note_editor import render_note_editor
 from components.state_header import render_entity_header
 from helpers import option_with_placeholder
+from utils.trade_sessions import detect_trade_session
 
 from config import LOCAL_TZ
 from .defaults import build_trade_defaults
@@ -110,6 +111,12 @@ def render_trade_creator(
         if not submitted:
             return None
 
+        session_value = detect_trade_session(
+            open_values["date"],
+            open_values["time"],
+            local_tz_label=LOCAL_TZ,
+        )
+
         payload: Dict[str, Any] = {
             "date_local": open_values["date"].isoformat(),
             "time_local": open_values["time"].strftime("%H:%M:%S"),
@@ -120,6 +127,7 @@ def render_trade_creator(
             "setup_id": setups[open_values["setup_label"]],
             "risk_pct": float(open_values["risk_pct"]),
             "state": selected_state,
+            "session": session_value,
         }
 
         new_trade_id = None
@@ -235,7 +243,8 @@ def render_trade_editor(
                     },
                 ],
             )
-            submitted = st.session_state.pop(f"tm_submit_triggered_{trade_key}", False)
+            submitted = st.session_state.pop(
+                f"tm_submit_triggered_{trade_key}", False)
 
         stages_col, side_col = st.columns([1, 2])
 
@@ -317,6 +326,13 @@ def render_trade_editor(
                 st.error(err)
             return
 
+        trade_local_tz = trade.get("local_tz") or LOCAL_TZ
+        session_value = detect_trade_session(
+            open_values["date"],
+            open_values["time"],
+            local_tz_label=trade_local_tz,
+        )
+
         payload: Dict[str, Any] = {
             "date_local": open_values["date"].isoformat(),
             "time_local": open_values["time"].strftime("%H:%M:%S"),
@@ -326,6 +342,7 @@ def render_trade_editor(
             "setup_id": setups[open_values["setup_label"]],
             "risk_pct": float(open_values["risk_pct"]),
             "state": selected_state,
+            "session": session_value,
         }
 
         if closed_inputs:
