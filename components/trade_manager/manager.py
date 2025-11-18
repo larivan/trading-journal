@@ -9,7 +9,6 @@ from db import (
     attach_chart_to_trade,
     attach_note_to_trade,
     create_trade,
-    delete_trade,
     detach_note_from_trade,
     get_trade_by_id,
     list_accounts,
@@ -22,6 +21,7 @@ from db import (
     update_trade,
 )
 from components.chart_editor import (
+    chart_editor_value_state_key,
     chart_table_rows,
     normalize_editor_rows,
     persist_chart_editor,
@@ -29,7 +29,7 @@ from components.chart_editor import (
 )
 from components.note_editor import render_note_editor
 from components.state_header import render_entity_header
-from helpers import option_with_placeholder
+from helpers import option_with_placeholder, parse_trade_date, parse_trade_time
 from utils.trade_sessions import detect_trade_session
 
 from config import LOCAL_TZ
@@ -47,128 +47,54 @@ from .constants import (
 )
 
 
-def render_trade_creator(
-    *,
-    on_created: Optional[Callable[[int], None]] = None,
-    on_cancel: Optional[Callable[[], None]] = None,
-) -> None:
-    """Показывает модалку создания новой сделки."""
-
-    @st.dialog("Создание сделки")
-    def _dialog() -> None:
-        trade_key = f"trade_creator"
-
-        accounts = option_with_placeholder(
-            list_accounts(),
-            placeholder="— Account not selected —",
-            formatter=lambda acc: f"{acc['name']} (#{acc['id']})",
-        )
-        setups = option_with_placeholder(
-            list_setups(),
-            placeholder="— Setup not selected —",
-            formatter=lambda setup: f"{setup['name']} (#{setup['id']})",
-        )
-        analyses = option_with_placeholder(
-            list_analysis(),
-            placeholder="— Analysis not linked —",
-            formatter=lambda analysis: f"{analysis.get('date_local') or 'No date'} · {analysis.get('asset') or '—'} (#{analysis['id']})",
-        )
-
-        account_labels = list(accounts.keys())
-        setup_labels = list(setups.keys())
-        analysis_labels = list(analyses.keys())
-
-        defaults = build_trade_defaults({}, accounts, analyses, setups)
-        open_defaults = defaults["open"]
-
-        status_container = st.container(border=True)
-        with status_container:
-            selected_state = st.selectbox(
-                "Trade status",
-                CREATE_ALLOWED_STATUSES,
-                index=0,
-                key=f"{trade_key}_status",
-                help="Доступные статусы при создании сделки.",
-            )
-
-        open_values = render_open_stage(
-            trade_key=trade_key,
-            visible=True,
-            expanded=True,
-            defaults=open_defaults,
-            account_labels=account_labels,
-            assets=open_defaults["asset_options"],
-            analysis_labels=analysis_labels,
-            setup_labels=setup_labels,
-        )
-
-        submitted = st.button(
-            "Create",
-            type="primary",
-            use_container_width=True,
-            key=f"{trade_key}_submit",
-        )
-        if not submitted:
-            return None
-
-        session_value = detect_trade_session(
-            open_values["date"],
-            open_values["time"],
-            local_tz_label=LOCAL_TZ,
-        )
-
-        payload: Dict[str, Any] = {
-            "date_local": open_values["date"].isoformat(),
-            "time_local": open_values["time"].strftime("%H:%M:%S"),
-            "local_tz": LOCAL_TZ,
-            "account_id": accounts[open_values["account_label"]],
-            "asset": open_values["asset"],
-            "analysis_id": analyses[open_values["analysis_label"]],
-            "setup_id": setups[open_values["setup_label"]],
-            "risk_pct": float(open_values["risk_pct"]),
-            "state": selected_state,
-            "session": session_value,
-        }
-
-        new_trade_id = None
-
-        try:
-            new_trade_id = create_trade(payload)
-            st.success("Сделка создана.")
-        except Exception as exc:  # pragma: no cover - UI feedback
-            st.error(f"Failed to create the trade: {exc}")
-
-        cancel = st.button(
-            "Отмена",
-            key="tc_dialog_cancel",
-            use_container_width=True,
-        )
-        if new_trade_id and on_created:
-            on_created(new_trade_id)
-        if cancel and on_cancel:
-            on_cancel()
-
-    _dialog()
-
-
-def render_trade_editor(
+def render_trade_manager(
     *,
     trade_id: Optional[int],
+    on_created: Optional[Callable[[int], None]] = None,
     on_close: Optional[Callable[[], None]] = None,
 ) -> None:
-    """Показыввает модалку для редактирования существующих сделок."""
+    """Единое окно создания и редактирования сделок."""
 
-    @st.dialog("Редактирование сделки", width="large")
-    def _dialog() -> None:
+    is_new_trade = trade_id is None
+    trade: Dict[str, Any] = {}
+    trade_error: Optional[str] = None
+    trade_error_level: Optional[str] = None
+    if not is_new_trade:
         if not trade_id:
-            st.info("Сделка не выбрана.")
-            return
-        trade = get_trade_by_id(trade_id)
-        if not trade:
-            st.error("Сделка не найдена.")
+            trade_error = "Сделка не выбрана."
+            trade_error_level = "info"
+        else:
+            existing = get_trade_by_id(trade_id)
+            if not existing:
+                trade_error = "Сделка не найдена."
+                trade_error_level = "error"
+            else:
+                trade = existing
+
+    def _format_trade_title(data: Dict[str, Any]) -> str:
+        asset_value = (data.get("asset") or "Trade").strip() or "Trade"
+        date_value = parse_trade_date(data.get("date_local"))
+        time_value = parse_trade_time(data.get("time_local"))
+        date_label = date_value.strftime("%d.%m.%Y") if date_value else "—"
+        time_label = time_value.strftime("%H:%M") if time_value else "—"
+        return f"{asset_value} · {date_label} - {time_label}"
+
+    dialog_title = "New trade"
+    if not is_new_trade:
+        dialog_title = (
+            "Trade"
+            if trade_error
+            else _format_trade_title(trade)
+        )
+
+    @st.dialog(dialog_title, width="large")
+    def _dialog() -> None:
+        if trade_error:
+            status_fn = st.info if trade_error_level == "info" else st.error
+            status_fn(trade_error)
             return
 
-        trade_key = f"edit_{trade_id}"
+        trade_key = "create" if is_new_trade else f"edit_{trade_id}"
 
         accounts = option_with_placeholder(
             list_accounts(),
@@ -197,28 +123,64 @@ def render_trade_editor(
         emotional_defaults = parse_emotional_problems(
             closed_defaults.pop("emotional"))
 
-        current_state = trade.get("state") or "open"
+        current_state = trade.get("state") or CREATE_ALLOWED_STATUSES[0]
         selected_state = current_state
         closed_inputs: Dict[str, Any] = {}
         review_inputs: Optional[Dict[str, Any]] = None
         open_values = open_defaults.copy()
         submitted = False
-        trade_charts = list_trade_charts(trade_id)
+        trade_charts = list_trade_charts(trade_id) if not is_new_trade else []
         chart_rows_source = chart_table_rows(trade_charts)
-        trade_notes = list_trade_notes(trade_id)
+        trade_notes = list_trade_notes(trade_id) if not is_new_trade else []
         all_notes = list_notes()
 
         chart_editor_value: Optional[Any] = None
+        pending_notes_key = f"tm_pending_notes_{trade_key}"
+
+        def _coerce_note_id(value: Any) -> Optional[int]:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        def _pending_note_ids() -> List[int]:
+            raw = st.session_state.get(pending_notes_key, [])
+            if not isinstance(raw, list):
+                st.session_state[pending_notes_key] = []
+                return []
+            cleaned: List[int] = []
+            for value in raw:
+                note_id = _coerce_note_id(value)
+                if note_id is None or note_id in cleaned:
+                    continue
+                cleaned.append(note_id)
+            st.session_state[pending_notes_key] = cleaned
+            return cleaned
+
+        def _reset_creation_buffers() -> None:
+            if not is_new_trade:
+                return
+            st.session_state.pop(pending_notes_key, None)
+            chart_state_key = chart_editor_value_state_key(
+                f"tm_chart_editor_{trade_key}"
+            )
+            st.session_state.pop(chart_state_key, None)
 
         header_container = st.container(border=True)
         with header_container:
-            allowed = allowed_statuses(current_state)
+            allowed = (
+                CREATE_ALLOWED_STATUSES
+                if is_new_trade
+                else allowed_statuses(current_state)
+            )
             current_state = current_state if current_state in allowed else allowed[0]
 
             def _submit_action() -> None:
                 st.session_state[f"tm_submit_triggered_{trade_key}"] = True
 
             def _cancel_action() -> None:
+                if is_new_trade:
+                    _reset_creation_buffers()
                 if on_close:
                     on_close()
 
@@ -229,7 +191,7 @@ def render_trade_editor(
                 status_key=f"tm_status_{trade_key}",
                 actions=[
                     {
-                        "label": "Save changes",
+                        "label": "Save",
                         "type": "primary",
                         "key": f"tm_submit_{trade_key}",
                         "on_click": _submit_action,
@@ -286,15 +248,52 @@ def render_trade_editor(
                 base_rows=chart_rows_source,
             )
             st.divider()
+            note_attach_fn: Callable[[int], None]
+            note_detach_fn: Callable[[int], None]
+            attached_notes: List[Dict[str, Any]]
+            if is_new_trade:
+                pending_ids = _pending_note_ids()
+
+                def _attach_pending(note_id: int) -> None:
+                    clean_id = _coerce_note_id(note_id)
+                    if clean_id is None:
+                        return
+                    ids = _pending_note_ids()
+                    if clean_id not in ids:
+                        ids.append(clean_id)
+                        st.session_state[pending_notes_key] = ids
+
+                def _detach_pending(note_id: int) -> None:
+                    clean_id = _coerce_note_id(note_id)
+                    if clean_id is None:
+                        return
+                    ids = [nid for nid in _pending_note_ids()
+                           if nid != clean_id]
+                    st.session_state[pending_notes_key] = ids
+
+                note_attach_fn = _attach_pending
+                note_detach_fn = _detach_pending
+                note_index = {note["id"]: note for note in all_notes}
+                attached_notes = [
+                    note_index[note_id]
+                    for note_id in pending_ids
+                    if note_id in note_index
+                ]
+            else:
+                def note_attach_fn(note_id, t_id=trade_id): return attach_note_to_trade(  # noqa: E731
+                    t_id, note_id
+                )
+
+                def note_detach_fn(note_id, t_id=trade_id): return detach_note_from_trade(  # noqa: E731
+                    t_id, note_id
+                )
+                attached_notes = trade_notes
+
             render_note_editor(
                 key=f"trade_{trade_key}",
-                attached_notes=trade_notes,
-                attach_note=lambda note_id, t_id=trade_id: attach_note_to_trade(
-                    t_id, note_id
-                ),
-                detach_note=lambda note_id, t_id=trade_id: detach_note_from_trade(
-                    t_id, note_id
-                ),
+                attached_notes=attached_notes,
+                attach_note=note_attach_fn,
+                detach_note=note_detach_fn,
                 create_note=lambda title, body: add_note(title, body),
                 all_notes=all_notes,
                 title="Notes",
@@ -380,59 +379,40 @@ def render_trade_editor(
         chart_state_payload = chart_editor_value if chart_editor_value is not None else chart_rows_source
         chart_editor_rows = normalize_editor_rows(chart_state_payload)
 
-        try:
-            persist_chart_editor(
-                attached_charts=trade_charts,
-                editor_rows=chart_editor_rows,
-                attach_chart=lambda chart_id, trade_id=trade_id: attach_chart_to_trade(
-                    trade_id, chart_id),
-            )
-            update_trade(trade_id, payload)
-            st.success("Trade updated.")
-            st.rerun()
-        except Exception as exc:  # pragma: no cover - UI feedback
-            st.error(f"Failed to persist the trade: {exc}")
-
-    _dialog()
-
-
-def render_trade_remover(
-    *,
-    trade_id: Optional[int],
-    on_deleted: Optional[Callable[[], None]] = None,
-    on_cancel: Optional[Callable[[], None]] = None,
-) -> None:
-    """Показывает модалку удаления выбранной сделки."""
-
-    @st.dialog("Удаление сделки")
-    def _dialog() -> None:
-        if not trade_id:
-            st.info("Сделка не выбрана.")
-            return
-        st.warning(
-            "Сделка будет удалена безвозвратно. Подтвердите действие.",
-            icon="⚠️",
-        )
-        col_ok, col_cancel = st.columns(2)
-        confirm = col_ok.button(
-            "Удалить",
-            type="primary",
-            use_container_width=True,
-        )
-        cancel = col_cancel.button(
-            "Отмена",
-            use_container_width=True,
-        )
-        if confirm:
+        if is_new_trade:
+            payload["local_tz"] = trade_local_tz
             try:
-                delete_trade(trade_id)
-                st.success("Сделка удалена.")
-                if on_deleted:
-                    on_deleted()
+                new_trade_id = create_trade(payload)
+                persist_chart_editor(
+                    attached_charts=[],
+                    editor_rows=chart_editor_rows,
+                    attach_chart=lambda chart_id, trade_id=new_trade_id: attach_chart_to_trade(  # noqa: E731
+                        trade_id, chart_id
+                    ),
+                )
+                for note_id in _pending_note_ids():
+                    attach_note_to_trade(new_trade_id, note_id)
+                _reset_creation_buffers()
+                # st.success("Сделка создана.")
+                if on_created:
+                    on_created(new_trade_id)
+                else:
+                    st.rerun()
+            except Exception as exc:  # pragma: no cover - UI feedback
+                st.error(f"Failed to create the trade: {exc}")
+        else:
+            try:
+                persist_chart_editor(
+                    attached_charts=trade_charts,
+                    editor_rows=chart_editor_rows,
+                    attach_chart=lambda chart_id, trade_id=trade_id: attach_chart_to_trade(  # noqa: E731
+                        trade_id, chart_id
+                    ),
+                )
+                update_trade(trade_id, payload)
+                # st.success("Trade updated.")
                 st.rerun()
-            except Exception as exc:  # pragma: no cover
-                st.error(f"Не удалось удалить сделку: {exc}")
-        if cancel and on_cancel:
-            on_cancel()
+            except Exception as exc:  # pragma: no cover - UI feedback
+                st.error(f"Failed to persist the trade: {exc}")
 
     _dialog()

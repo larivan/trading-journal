@@ -14,13 +14,8 @@ from components.entity_filters import (
 )
 from config import ASSETS, TRADE_RESULT_VALUES, TRADE_SESSION_VALUES, TRADE_STATE_VALUES
 from components.entity_table import render_entity_table
-from components.trade_manager import (
-    render_trade_creator,
-    render_trade_editor,
-    render_trade_remover,
-
-)
-from db import list_trades, list_accounts
+from components.trade_manager import render_trade_manager
+from db import delete_trade, list_accounts, list_trades
 from helpers import apply_page_config_from_file
 
 # --- Базовая настройка страницы под Streamlit ---
@@ -41,7 +36,6 @@ st.session_state.setdefault(
 st.session_state.setdefault("selected_trade_id", None)
 st.session_state.setdefault("show_create_trade", False)
 st.session_state.setdefault("show_edit_trade", False)
-st.session_state.setdefault("show_delete_trade", False)
 
 
 def account_options() -> Dict[str, Optional[int]]:
@@ -153,7 +147,6 @@ if tab_changed:
     st.session_state["selected_trade_id"] = None
     set_dialog_flag("show_create_trade", False)
     set_dialog_flag("show_edit_trade", False)
-    set_dialog_flag("show_delete_trade", False)
     table_state_key = f"trades_table_{selected_tab_key}"
     st.session_state.pop(table_state_key, None)
     st.session_state.pop(f"{table_state_key}_selection", None)
@@ -261,17 +254,25 @@ def _handle_open_trade(row: Dict[str, Any]) -> None:
     st.session_state["selected_trade_id"] = trade_id
     set_dialog_flag("show_edit_trade", True)
     set_dialog_flag("show_create_trade", False)
-    set_dialog_flag("show_delete_trade", False)
+
+
+def _delete_trade_and_refresh(trade_id: Optional[int]) -> None:
+    if not trade_id:
+        return
+    try:
+        delete_trade(trade_id)
+        st.success("Сделка удалена.")
+        st.session_state["selected_trade_id"] = None
+        st.rerun()
+    except Exception as exc:
+        st.error(f"Не удалось удалить сделку: {exc}")
 
 
 def _handle_delete_trades(ids: List[Any]) -> None:
     if not ids:
         return
     first_id = ids[0]
-    st.session_state["selected_trade_id"] = first_id
-    set_dialog_flag("show_delete_trade", True)
-    set_dialog_flag("show_create_trade", False)
-    set_dialog_flag("show_edit_trade", False)
+    _delete_trade_and_refresh(first_id)
 
 
 table_key = f"trades_table_{selected_tab_key}"
@@ -293,7 +294,6 @@ else:
         st.session_state["selected_trade_id"] = None
         set_dialog_flag("show_create_trade", False)
         set_dialog_flag("show_edit_trade", False)
-        set_dialog_flag("show_delete_trade", False)
 
 # --- Правый блок кнопок (создание / открытие / удаление) ---
 open_disabled = st.session_state.get("selected_trade_id") is None
@@ -306,15 +306,11 @@ create_clicked, open_clicked, delete_clicked = render_action_buttons(
 if create_clicked:
     set_dialog_flag("show_create_trade", True)
     set_dialog_flag("show_edit_trade", False)
-    set_dialog_flag("show_delete_trade", False)
 if open_clicked:
     set_dialog_flag("show_edit_trade", True)
     set_dialog_flag("show_create_trade", False)
-    set_dialog_flag("show_delete_trade", False)
 if delete_clicked:
-    set_dialog_flag("show_delete_trade", True)
-    set_dialog_flag("show_create_trade", False)
-    set_dialog_flag("show_edit_trade", False)
+    _delete_trade_and_refresh(st.session_state.get("selected_trade_id"))
 
 
 def _close_create_dialog() -> None:
@@ -334,31 +330,15 @@ def _close_edit_dialog() -> None:
     st.rerun()
 
 
-def _close_delete_dialog() -> None:
-    set_dialog_flag("show_delete_trade", False)
-    st.rerun()
-
-
-def _handle_trade_deleted() -> None:
-    st.session_state["selected_trade_id"] = None
-    set_dialog_flag("show_delete_trade", False)
-    st.rerun()
-
-
 # --- В зависимости от флагов показываем нужные модалки ---
 if st.session_state.get("show_create_trade"):
-    render_trade_creator(
+    render_trade_manager(
+        trade_id=None,
         on_created=_handle_trade_created,
-        on_cancel=_close_create_dialog,
+        on_close=_close_create_dialog,
     )
 if st.session_state.get("show_edit_trade"):
-    render_trade_editor(
+    render_trade_manager(
         trade_id=st.session_state.get("selected_trade_id"),
         on_close=_close_edit_dialog,
-    )
-if st.session_state.get("show_delete_trade"):
-    render_trade_remover(
-        trade_id=st.session_state.get("selected_trade_id"),
-        on_deleted=_handle_trade_deleted,
-        on_cancel=_close_delete_dialog,
     )
