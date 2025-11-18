@@ -1,5 +1,5 @@
-from datetime import date, timedelta
-from typing import Dict, Optional, Tuple
+from datetime import date, datetime, time, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
 
@@ -179,41 +179,118 @@ if date_from:
 if date_to:
     tab_filters["date_to"] = date_to.isoformat()
 
-# --- Загружаем сделки и отслеживаем, изменилась ли выделенная строка ---
+# --- Загружаем сделки и отрисовываем интерактивную таблицу ---
 rows = list_trades(tab_filters)
-trade_table_columns = [
-    {"field": "date_local", "label": "Дата", "type": "date"},
-    {"field": "time_local", "label": "Время", "type": "time"},
-    {"field": "asset", "label": "Инструмент"},
-    {"field": "state", "label": "Состояние"},
-    {"field": "result", "label": "Результат"},
-    {"field": "net_pnl", "label": "PnL"},
-    {"field": "risk_reward", "label": "R:R"},
-    {"field": "session", "label": "Сессия"},
+
+
+def _format_date(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, date):
+        return value.strftime("%d.%m.%Y")
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value).strftime("%d.%m.%Y")
+        except ValueError:
+            return value
+    return str(value)
+
+
+def _format_time(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, time):
+        return value.strftime("%H:%M")
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value).strftime("%H:%M")
+        except ValueError:
+            return value[:5]
+    return str(value)
+
+
+def _format_number(value: Any) -> str:
+    if value is None:
+        return ""
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+trade_table_columns: List[Dict[str, Any]] = [
+    {
+        "field": "date_local",
+        "label": "Дата",
+        "compute": lambda row: row.get("date_local"),
+        "format": _format_date,
+        "id": "date_local",
+    },
+    {
+        "field": "time_local",
+        "label": "Время",
+        "compute": lambda row: row.get("time_local"),
+        "format": _format_time,
+        "id": "time_local",
+    },
+    {"field": "asset", "label": "Инструмент", "id": "asset"},
+    {"field": "state", "label": "Состояние", "id": "state"},
+    {"field": "result", "label": "Результат", "id": "result"},
+    {
+        "field": "net_pnl",
+        "label": "PnL",
+        "compute": lambda row: row.get("net_pnl"),
+        "format": _format_number,
+        "id": "net_pnl",
+    },
+    {
+        "field": "risk_reward",
+        "label": "R:R",
+        "compute": lambda row: row.get("risk_reward"),
+        "format": _format_number,
+        "id": "risk_reward",
+    },
+    {"field": "session", "label": "Сессия", "id": "session"},
 ]
-trade_column_config = {
-    "Дата": st.column_config.DateColumn("Дата", format="DD.MM.YYYY"),
-    "Время": st.column_config.TimeColumn("Время"),
-    "PnL": st.column_config.NumberColumn("PnL", format="%.2f"),
-    "R:R": st.column_config.NumberColumn("R:R", format="%.2f"),
-}
-selection_changed, selected_from_tab = render_entity_table(
+
+
+def _handle_open_trade(row: Dict[str, Any]) -> None:
+    trade_id = row.get("id")
+    if not trade_id:
+        return
+    st.session_state["selected_trade_id"] = trade_id
+    set_dialog_flag("show_edit_trade", True)
+    set_dialog_flag("show_create_trade", False)
+    set_dialog_flag("show_delete_trade", False)
+
+
+def _handle_delete_trades(ids: List[Any]) -> None:
+    if not ids:
+        return
+    first_id = ids[0]
+    st.session_state["selected_trade_id"] = first_id
+    set_dialog_flag("show_delete_trade", True)
+    set_dialog_flag("show_create_trade", False)
+    set_dialog_flag("show_edit_trade", False)
+
+
+table_key = f"trades_table_{selected_tab_key}"
+table_result = render_entity_table(
+    key=table_key,
     rows=rows,
-    tab_key=selected_tab_key,
-    session_prefix="trades",
     columns=trade_table_columns,
-    column_config=trade_column_config,
     empty_message="Нет сделок для выбранного периода.",
+    page_size=100,
+    on_open=_handle_open_trade,
+    on_delete=_handle_delete_trades,
 )
-if selection_changed:
-    if selected_from_tab is None:
-        if not st.session_state.get("show_edit_trade"):
-            st.session_state["selected_trade_id"] = None
-            set_dialog_flag("show_create_trade", False)
-            set_dialog_flag("show_edit_trade", False)
-            set_dialog_flag("show_delete_trade", False)
-    else:
-        st.session_state["selected_trade_id"] = selected_from_tab
+
+selected_ids = table_result.get("selected_ids") or []
+if selected_ids:
+    st.session_state["selected_trade_id"] = selected_ids[-1]
+else:
+    if not st.session_state.get("show_edit_trade"):
+        st.session_state["selected_trade_id"] = None
         set_dialog_flag("show_create_trade", False)
         set_dialog_flag("show_edit_trade", False)
         set_dialog_flag("show_delete_trade", False)

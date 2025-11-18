@@ -1,5 +1,5 @@
-from datetime import date, timedelta
-from typing import Dict, Optional, Tuple
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
 
@@ -160,34 +160,74 @@ if date_to:
     tab_filters["date_to"] = date_to.isoformat()
 
 rows = list_analysis(tab_filters)
-analysis_columns = [
-    {"field": "date_local", "label": "Дата", "type": "date"},
-    {"field": "asset", "label": "Инструмент"},
-    {"field": "daily_bias", "label": "Daily bias"},
-    {"field": "fact_bias", "label": "Fact bias"},
-    {"field": "day_result", "label": "Result"},
-    {"field": "state", "label": "Тип анализа"},
+
+
+def _format_date(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, date):
+        return value.strftime("%d.%m.%Y")
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value).strftime("%d.%m.%Y")
+        except ValueError:
+            return value
+    return str(value)
+
+
+analysis_columns: List[Dict[str, Any]] = [
+    {
+        "field": "date_local",
+        "label": "Дата",
+        "compute": lambda row: row.get("date_local"),
+        "format": _format_date,
+        "id": "date_local",
+    },
+    {"field": "asset", "label": "Инструмент", "id": "asset"},
+    {"field": "daily_bias", "label": "Daily bias", "id": "daily_bias"},
+    {"field": "fact_bias", "label": "Fact bias", "id": "fact_bias"},
+    {"field": "day_result", "label": "Result", "id": "day_result"},
+    {"field": "state", "label": "Тип анализа", "id": "state"},
 ]
-analysis_column_config = {
-    "Дата": st.column_config.DateColumn("Дата", format="DD.MM.YYYY"),
-}
-selection_changed, selected_from_table = render_entity_table(
+
+
+def _handle_open_analysis(row: Dict[str, Any]) -> None:
+    analysis_id = row.get("id")
+    if not analysis_id:
+        return
+    st.session_state["selected_analysis_id"] = analysis_id
+    set_dialog_flag("show_edit_analysis", True)
+    set_dialog_flag("show_create_analysis", False)
+    set_dialog_flag("show_delete_analysis", False)
+
+
+def _handle_delete_analyses(ids: List[Any]) -> None:
+    if not ids:
+        return
+    first_id = ids[0]
+    st.session_state["selected_analysis_id"] = first_id
+    set_dialog_flag("show_delete_analysis", True)
+    set_dialog_flag("show_create_analysis", False)
+    set_dialog_flag("show_edit_analysis", False)
+
+
+table_key = f"analysis_table_{selected_tab_key}"
+table_result = render_entity_table(
+    key=table_key,
     rows=rows,
-    tab_key=selected_tab_key,
-    session_prefix="analysis",
     columns=analysis_columns,
-    column_config=analysis_column_config,
     empty_message="Нет анализов за выбранный период.",
+    page_size=100,
+    on_open=_handle_open_analysis,
+    on_delete=_handle_delete_analyses,
 )
-if selection_changed:
-    if selected_from_table is None:
-        if not st.session_state.get("show_edit_analysis"):
-            st.session_state["selected_analysis_id"] = None
-            set_dialog_flag("show_create_analysis", False)
-            set_dialog_flag("show_edit_analysis", False)
-            set_dialog_flag("show_delete_analysis", False)
-    else:
-        st.session_state["selected_analysis_id"] = selected_from_table
+
+selected_ids = table_result.get("selected_ids") or []
+if selected_ids:
+    st.session_state["selected_analysis_id"] = selected_ids[-1]
+else:
+    if not st.session_state.get("show_edit_analysis"):
+        st.session_state["selected_analysis_id"] = None
         set_dialog_flag("show_create_analysis", False)
         set_dialog_flag("show_edit_analysis", False)
         set_dialog_flag("show_delete_analysis", False)
