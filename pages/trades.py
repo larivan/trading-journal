@@ -3,10 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
 
-from components.database_toolbar import (
-    render_action_buttons,
-    render_database_toolbar,
-)
+from components.database_toolbar import render_database_toolbar
 from components.entity_filters import (
     TAB_DEFINITIONS,
     ensure_custom_range,
@@ -17,27 +14,37 @@ from components.entity_table import render_entity_table
 from components.trade_manager import render_trade_manager
 from db import delete_trade, list_accounts, list_trades
 from helpers import apply_page_config_from_file
-
-# --- Базовая настройка страницы под Streamlit ---
-apply_page_config_from_file(__file__)
-
-# --- Первичные значения фильтров и диапазона дат ---
-today = date.today()
-st.session_state.setdefault("trades_active_filters", {})
-st.session_state.setdefault(
-    "trades_custom_range",
-    (
-        today - timedelta(days=7),
-        today,
-    ),
+from utils.session_state import (
+    clear_table_state,
+    close_entity_dialog,
+    consume_tab_change,
+    dialog_is_open,
+    get_custom_date_range,
+    get_entity_filters,
+    get_selected_entity,
+    get_visible_tab,
+    open_entity_dialog,
+    reset_entity_state,
+    set_custom_date_range,
+    set_entity_filters,
+    set_selected_entity,
 )
 
-# --- Инициализируем рабочие флаги и выбранную сделку ---
+# === БАЗОВАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ ===
+# Настраиваем страницу и готовим исходные значения для фильтров и диапазонов.
+apply_page_config_from_file(__file__)
+
+today = date.today()
+default_trades_range = (
+    today - timedelta(days=7),
+    today,
+)
 st.session_state.setdefault("selected_trade_id", None)
 st.session_state.setdefault("show_create_trade", False)
 st.session_state.setdefault("show_edit_trade", False)
 
 
+# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ФИЛЬТРОВ ===
 def account_options() -> Dict[str, Optional[int]]:
     """Формирует удобный для отображения список счетов с их ID."""
     options: Dict[str, Optional[int]] = {"Все счета": None}
@@ -132,47 +139,40 @@ def _render_trades_custom_filters(
     return filters, date_range
 
 
-def set_dialog_flag(flag: str, value: bool) -> None:
-    st.session_state[flag] = value
-
-
-# --- Верхняя панель: слева фильтр периода, справа кнопки действий ---
-selected_label, selected_tab_key, tab_changed, actions_placeholder = render_database_toolbar(
+# === ВЕРХНЯЯ ПАНЕЛЬ С ФИЛЬТРАМИ ПЕРИОДОВ ===
+render_database_toolbar(
     tab_definitions=TAB_DEFINITIONS,
     session_prefix="trades",
 )
+default_tab_key = TAB_DEFINITIONS[0][1]
+selected_tab_key = get_visible_tab("trades", default_tab_key)
+tab_changed = consume_tab_change("trades")
 
-# --- Фиксируем выбранный период и обнуляем выбор при переключении ---
+# --- Переключение табов требует очистки состояний таблицы и диалогов ---
 if tab_changed:
-    st.session_state["selected_trade_id"] = None
-    set_dialog_flag("show_create_trade", False)
-    set_dialog_flag("show_edit_trade", False)
-    table_state_key = f"trades_table_{selected_tab_key}"
-    st.session_state.pop(table_state_key, None)
-    st.session_state.pop(f"{table_state_key}_selection", None)
-st.session_state["trades_visible_tab"] = selected_tab_key
-st.session_state["trades_active_period"] = selected_label
+    reset_entity_state("trade")
+    clear_table_state("trades", selected_tab_key)
 
-# --- Собираем итоговый фильтр для таблицы ---
+# === СБОР ФИЛЬТРОВ ДЛЯ ЗАПРОСА ДАННЫХ ===
 if selected_tab_key == "custom":
     filters, custom_range = _render_trades_custom_filters(
         account_map,
-        st.session_state.get("trades_active_filters"),
-        st.session_state.get("trades_custom_range"),
+        get_entity_filters("trades"),
+        get_custom_date_range("trades", default_trades_range),
     )
-    st.session_state["trades_active_filters"] = filters
-    st.session_state["trades_custom_range"] = custom_range
-    tab_filters = filters.copy()
+    set_entity_filters("trades", filters)
+    set_custom_date_range("trades", custom_range)
+    tab_filters = dict(filters)
     date_from, date_to = custom_range
 else:
-    tab_filters = st.session_state.get("trades_active_filters", {}).copy()
+    tab_filters = get_entity_filters("trades")
     date_from, date_to = tab_date_range(selected_tab_key)
 if date_from:
     tab_filters["date_from"] = date_from.isoformat()
 if date_to:
     tab_filters["date_to"] = date_to.isoformat()
 
-# --- Загружаем сделки и отрисовываем интерактивную таблицу ---
+# === ЗАГРУЗКА ДАННЫХ И ОПРЕДЕЛЕНИЕ КОЛОНОК ===
 rows = list_trades(tab_filters)
 
 
@@ -211,6 +211,7 @@ def _format_number(value: Any) -> str:
         return str(value)
 
 
+# --- Настройка отображаемых колонок таблицы ---
 trade_table_columns: List[Dict[str, Any]] = [
     {
         "field": "date_local",
@@ -247,13 +248,13 @@ trade_table_columns: List[Dict[str, Any]] = [
 ]
 
 
+# === ДЕЙСТВИЯ ПРИ ВЗАИМОДЕЙСТВИИ С ТАБЛИЦЕЙ ===
 def _handle_open_trade(row: Dict[str, Any]) -> None:
     trade_id = row.get("id")
     if not trade_id:
         return
-    st.session_state["selected_trade_id"] = trade_id
-    set_dialog_flag("show_edit_trade", True)
-    set_dialog_flag("show_create_trade", False)
+    set_selected_entity("trade", trade_id)
+    open_entity_dialog("trade", "edit")
 
 
 def _delete_trade_and_refresh(trade_id: Optional[int]) -> None:
@@ -261,8 +262,7 @@ def _delete_trade_and_refresh(trade_id: Optional[int]) -> None:
         return
     try:
         delete_trade(trade_id)
-        st.success("Сделка удалена.")
-        st.session_state["selected_trade_id"] = None
+        set_selected_entity("trade", None)
         st.rerun()
     except Exception as exc:
         st.error(f"Не удалось удалить сделку: {exc}")
@@ -275,8 +275,10 @@ def _handle_delete_trades(ids: List[Any]) -> None:
     _delete_trade_and_refresh(first_id)
 
 
+# --- Создаём таблицу с обработкой выделений и действий ---
 table_key = f"trades_table_{selected_tab_key}"
-table_result = render_entity_table(
+render_entity_table(
+    entity_name="trade",
     key=table_key,
     rows=rows,
     columns=trade_table_columns,
@@ -286,59 +288,33 @@ table_result = render_entity_table(
     on_delete=_handle_delete_trades,
 )
 
-selected_ids = table_result.get("selected_ids") or []
-if selected_ids:
-    st.session_state["selected_trade_id"] = selected_ids[-1]
-else:
-    if not st.session_state.get("show_edit_trade"):
-        st.session_state["selected_trade_id"] = None
-        set_dialog_flag("show_create_trade", False)
-        set_dialog_flag("show_edit_trade", False)
 
-# --- Правый блок кнопок (создание / открытие / удаление) ---
-open_disabled = st.session_state.get("selected_trade_id") is None
-create_clicked, open_clicked, delete_clicked = render_action_buttons(
-    actions_container=actions_placeholder,
-    session_prefix="trades",
-    open_disabled=open_disabled,
-)
-
-if create_clicked:
-    set_dialog_flag("show_create_trade", True)
-    set_dialog_flag("show_edit_trade", False)
-if open_clicked:
-    set_dialog_flag("show_edit_trade", True)
-    set_dialog_flag("show_create_trade", False)
-if delete_clicked:
-    _delete_trade_and_refresh(st.session_state.get("selected_trade_id"))
-
-
-def _close_create_dialog() -> None:
-    set_dialog_flag("show_create_trade", False)
-    st.rerun()
-
-
+# === КОЛЛБЭКИ ДЛЯ МОДАЛОК СОЗДАНИЯ / РЕДАКТИРОВАНИЯ ===
 def _handle_trade_created(new_trade_id: int) -> None:
-    st.session_state["selected_trade_id"] = new_trade_id
-    set_dialog_flag("show_create_trade", False)
-    set_dialog_flag("show_edit_trade", True)
+    set_selected_entity("trade", new_trade_id)
+    open_entity_dialog("trade", "edit")
     st.rerun()
 
 
 def _close_edit_dialog() -> None:
-    set_dialog_flag("show_edit_trade", False)
+    close_entity_dialog("trade", "edit")
     st.rerun()
 
 
-# --- В зависимости от флагов показываем нужные модалки ---
-if st.session_state.get("show_create_trade"):
+def _close_create_dialog() -> None:
+    close_entity_dialog("trade", "create")
+    st.rerun()
+
+
+# === ВЫЗОВ СООТВЕТСТВУЮЩИХ ДИАЛОГОВ В ЗАВИСИМОСТИ ОТ СОСТОЯНИЯ ===
+if dialog_is_open("trade", "create"):
     render_trade_manager(
         trade_id=None,
         on_created=_handle_trade_created,
         on_close=_close_create_dialog,
     )
-if st.session_state.get("show_edit_trade"):
+if dialog_is_open("trade", "edit"):
     render_trade_manager(
-        trade_id=st.session_state.get("selected_trade_id"),
+        trade_id=get_selected_entity("trade"),
         on_close=_close_edit_dialog,
     )

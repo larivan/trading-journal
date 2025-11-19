@@ -6,6 +6,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import streamlit as st
 
+from utils.session_state import EntityName, handle_selection_change
+
 ColumnDefinition = Dict[str, Any]
 
 _COMPONENT_HTML = """
@@ -670,6 +672,7 @@ def _build_rows_payload(
 
 def render_entity_table(
     *,
+    entity_name: EntityName,
     key: str,
     rows: Sequence[Dict[str, Any]],
     columns: Sequence[ColumnDefinition],
@@ -678,17 +681,12 @@ def render_entity_table(
     page_size: int = 100,
     on_open: Optional[Callable[[Dict[str, Any]], None]] = None,
     on_delete: Optional[Callable[[List[Any]], None]] = None,
-) -> Dict[str, Any]:
-    """Отрисовывает универсальную таблицу сущностей и обрабатывает действия.
-
-    Возвращает словарь с ключами:
-      - selected_ids: список выбранных идентификаторов строк
-      - open_id: идентификатор строки, по которой кликнули «Открыть» (или None)
-      - delete_ids: список id, для которых было нажато «Удалить» (или None)
-    """
+) -> None:
+    """Отрисовывает универсальную таблицу сущностей и обрабатывает действия."""
     if not rows:
         st.info(empty_message)
-        return {"selected_ids": [], "open_id": None, "delete_ids": None}
+        handle_selection_change(entity_name, [])
+        return
 
     component_state = st.session_state.get(key, {})
     initial_selected = (
@@ -743,7 +741,8 @@ def render_entity_table(
     )
 
     if not isinstance(result, dict):
-        return {"selected_ids": initial_selected, "open_id": None, "delete_ids": None}
+        handle_selection_change(entity_name, initial_selected)
+        return
 
     selected_ids = result.get("selected_ids") or initial_selected
     if not isinstance(selected_ids, list):
@@ -764,11 +763,7 @@ def render_entity_table(
     ):
         on_delete(delete_ids)
 
-    return {
-        "selected_ids": selected_ids,
-        "open_id": open_id,
-        "delete_ids": delete_ids if isinstance(delete_ids, list) else None,
-    }
+    handle_selection_change(entity_name, selected_ids)
 
 
 __all__ = ["render_entity_table", "ColumnDefinition"]

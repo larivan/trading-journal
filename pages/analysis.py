@@ -9,10 +9,7 @@ from components.analysis_manager import (
     render_analysis_remover,
 )
 from components.entity_table import render_entity_table
-from components.database_toolbar import (
-    render_action_buttons,
-    render_database_toolbar,
-)
+from components.database_toolbar import render_database_toolbar
 from components.entity_filters import (
     TAB_DEFINITIONS,
     ensure_custom_range,
@@ -26,26 +23,34 @@ from config import (
 )
 from db import list_analysis
 from helpers import apply_page_config_from_file
+from utils.session_state import (
+    clear_table_state,
+    close_entity_dialog,
+    consume_tab_change,
+    dialog_is_open,
+    get_custom_date_range,
+    get_entity_filters,
+    get_selected_entity,
+    get_visible_tab,
+    open_entity_dialog,
+    reset_entity_state,
+    set_custom_date_range,
+    set_entity_filters,
+    set_selected_entity,
+)
 
-# --- Базовая настройка страницы под Streamlit ---
+# === ОСНОВНАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ АНАЛИЗОВ ===
 apply_page_config_from_file(__file__)
 
 today = date.today()
-st.session_state.setdefault("analysis_active_filters", {})
-st.session_state.setdefault(
-    "analysis_custom_range",
-    (today - timedelta(days=7), today),
-)
+default_analysis_range = (today - timedelta(days=7), today)
 st.session_state.setdefault("selected_analysis_id", None)
 st.session_state.setdefault("show_create_analysis", False)
 st.session_state.setdefault("show_edit_analysis", False)
 st.session_state.setdefault("show_delete_analysis", False)
 
 
-def set_dialog_flag(flag: str, value: bool) -> None:
-    st.session_state[flag] = value
-
-
+# === ОТРИСОВКА И ПРИМЕНЕНИЕ КАСТОМНЫХ ФИЛЬТРОВ ===
 def _render_analysis_custom_filters(
     initial_filters: Optional[Dict[str, Optional[str]]],
     initial_range: Optional[Tuple[Optional[date], Optional[date]]],
@@ -127,38 +132,38 @@ def _render_analysis_custom_filters(
     return filters, date_range
 
 
-selected_label, selected_tab_key, tab_changed, actions_placeholder = render_database_toolbar(
+# === ВЕРХНЯЯ ПАНЕЛЬ С ПЕРИОДОМ И СОЗДАНИЕМ АНАЛИЗОВ ===
+render_database_toolbar(
     tab_definitions=TAB_DEFINITIONS,
     session_prefix="analysis",
 )
+default_tab_key = TAB_DEFINITIONS[0][1]
+selected_tab_key = get_visible_tab("analysis", default_tab_key)
+tab_changed = consume_tab_change("analysis")
 
 if tab_changed:
-    st.session_state["selected_analysis_id"] = None
-    set_dialog_flag("show_create_analysis", False)
-    set_dialog_flag("show_edit_analysis", False)
-    set_dialog_flag("show_delete_analysis", False)
-    st.session_state.pop(f"analysis_table_{selected_tab_key}", None)
-    st.session_state.pop(f"analysis_table_{selected_tab_key}_selection", None)
-st.session_state["analysis_visible_tab"] = selected_tab_key
-st.session_state["analysis_active_period"] = selected_label
+    reset_entity_state("analysis")
+    clear_table_state("analysis", selected_tab_key)
 
+# === ПРИМЕНЕНИЕ ФИЛЬТРОВ И ОПРЕДЕЛЕНИЕ ДИАПАЗОНА ===
 if selected_tab_key == "custom":
     filters, custom_range = _render_analysis_custom_filters(
-        st.session_state.get("analysis_active_filters"),
-        st.session_state.get("analysis_custom_range"),
+        get_entity_filters("analysis"),
+        get_custom_date_range("analysis", default_analysis_range),
     )
-    st.session_state["analysis_active_filters"] = filters
-    st.session_state["analysis_custom_range"] = custom_range
-    tab_filters = filters.copy()
+    set_entity_filters("analysis", filters)
+    set_custom_date_range("analysis", custom_range)
+    tab_filters = dict(filters)
     date_from, date_to = custom_range
 else:
-    tab_filters = st.session_state.get("analysis_active_filters", {}).copy()
+    tab_filters = get_entity_filters("analysis")
     date_from, date_to = tab_date_range(selected_tab_key)
 if date_from:
     tab_filters["date_from"] = date_from.isoformat()
 if date_to:
     tab_filters["date_to"] = date_to.isoformat()
 
+# === ЗАГРУЗКА ДАННЫХ ДЛЯ ОТОБРАЖЕНИЯ ===
 rows = list_analysis(tab_filters)
 
 
@@ -175,6 +180,7 @@ def _format_date(value: Any) -> str:
     return str(value)
 
 
+# --- Настройка колонок таблицы ---
 analysis_columns: List[Dict[str, Any]] = [
     {
         "field": "date_local",
@@ -191,28 +197,27 @@ analysis_columns: List[Dict[str, Any]] = [
 ]
 
 
+# === ОБРАБОТЧИКИ ДЕЙСТВИЙ ТАБЛИЦЫ ===
 def _handle_open_analysis(row: Dict[str, Any]) -> None:
     analysis_id = row.get("id")
     if not analysis_id:
         return
-    st.session_state["selected_analysis_id"] = analysis_id
-    set_dialog_flag("show_edit_analysis", True)
-    set_dialog_flag("show_create_analysis", False)
-    set_dialog_flag("show_delete_analysis", False)
+    set_selected_entity("analysis", analysis_id)
+    open_entity_dialog("analysis", "edit")
 
 
 def _handle_delete_analyses(ids: List[Any]) -> None:
     if not ids:
         return
     first_id = ids[0]
-    st.session_state["selected_analysis_id"] = first_id
-    set_dialog_flag("show_delete_analysis", True)
-    set_dialog_flag("show_create_analysis", False)
-    set_dialog_flag("show_edit_analysis", False)
+    set_selected_entity("analysis", first_id)
+    open_entity_dialog("analysis", "delete")
 
 
+# --- Отрисовываем таблицу с подключенными обработчиками ---
 table_key = f"analysis_table_{selected_tab_key}"
-table_result = render_entity_table(
+render_entity_table(
+    entity_name="analysis",
     key=table_key,
     rows=rows,
     columns=analysis_columns,
@@ -220,80 +225,51 @@ table_result = render_entity_table(
     page_size=100,
     on_open=_handle_open_analysis,
     on_delete=_handle_delete_analyses,
-)
-
-selected_ids = table_result.get("selected_ids") or []
-if selected_ids:
-    st.session_state["selected_analysis_id"] = selected_ids[-1]
-else:
-    if not st.session_state.get("show_edit_analysis"):
-        st.session_state["selected_analysis_id"] = None
-        set_dialog_flag("show_create_analysis", False)
-        set_dialog_flag("show_edit_analysis", False)
-        set_dialog_flag("show_delete_analysis", False)
-
-open_disabled = st.session_state.get("selected_analysis_id") is None
-create_clicked, open_clicked, delete_clicked = render_action_buttons(
-    actions_container=actions_placeholder,
-    session_prefix="analysis",
-    open_disabled=open_disabled,
-)
-
-if create_clicked:
-    set_dialog_flag("show_create_analysis", True)
-    set_dialog_flag("show_edit_analysis", False)
-    set_dialog_flag("show_delete_analysis", False)
-if open_clicked:
-    set_dialog_flag("show_edit_analysis", True)
-    set_dialog_flag("show_create_analysis", False)
-    set_dialog_flag("show_delete_analysis", False)
-if delete_clicked:
-    set_dialog_flag("show_delete_analysis", True)
-    set_dialog_flag("show_create_analysis", False)
-    set_dialog_flag("show_edit_analysis", False)
+) 
 
 
-def _close_create_dialog() -> None:
-    set_dialog_flag("show_create_analysis", False)
-    st.rerun()
-
-
+# === ЛОГИКА УПРАВЛЕНИЯ МОДАЛЬНЫМИ ОКНАМИ ===
 def _close_edit_dialog() -> None:
-    set_dialog_flag("show_edit_analysis", False)
+    close_entity_dialog("analysis", "edit")
     st.rerun()
 
 
 def _close_delete_dialog() -> None:
-    set_dialog_flag("show_delete_analysis", False)
+    close_entity_dialog("analysis", "delete")
     st.rerun()
 
 
 def _handle_analysis_deleted() -> None:
-    st.session_state["selected_analysis_id"] = None
-    set_dialog_flag("show_delete_analysis", False)
+    set_selected_entity("analysis", None)
+    close_entity_dialog("analysis", "delete")
     st.rerun()
 
 
 def _handle_analysis_created(new_id: int) -> None:
-    st.session_state["selected_analysis_id"] = new_id
-    set_dialog_flag("show_create_analysis", False)
-    set_dialog_flag("show_edit_analysis", True)
+    set_selected_entity("analysis", new_id)
+    open_entity_dialog("analysis", "edit")
     st.rerun()
 
 
-if st.session_state.get("show_create_analysis"):
+def _close_create_dialog() -> None:
+    close_entity_dialog("analysis", "create")
+    st.rerun()
+
+
+# === УСЛОВНЫЙ РЕНДЕР ДИАЛОГОВ СОГЛАСНО СОСТОЯНИЮ ===
+if dialog_is_open("analysis", "create"):
     render_analysis_creator(
         on_created=_handle_analysis_created,
         on_cancel=_close_create_dialog,
     )
-if st.session_state.get("show_edit_analysis"):
+if dialog_is_open("analysis", "edit"):
     render_analysis_editor(
-        analysis_id=st.session_state.get("selected_analysis_id"),
+        analysis_id=get_selected_entity("analysis"),
         on_close=_close_edit_dialog,
     )
-if st.session_state.get("show_delete_analysis"):
+if dialog_is_open("analysis", "delete"):
     render_analysis_remover(
-        analysis_id=st.session_state.get("selected_analysis_id"),
+        analysis_id=get_selected_entity("analysis"),
         on_cancel=_close_delete_dialog,
         on_deleted=_handle_analysis_deleted,
     )
