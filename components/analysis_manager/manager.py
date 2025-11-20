@@ -21,7 +21,6 @@ from db import (
 
 from .defaults import build_analysis_defaults
 from .sections import (
-    render_primary_fields,
     render_plan_section,
     render_pre_stage,
     render_post_stage,
@@ -110,7 +109,7 @@ def render_analysis_editor(
                 status_key=f"analysis_status_{analysis_id}",
                 actions=[
                     {
-                        "label": "Save changes",
+                        "label": "Save",
                         "type": "primary",
                         "key": f"analysis_header_save_{analysis_id}",
                         "on_click": _submit_primary,
@@ -124,11 +123,6 @@ def render_analysis_editor(
                     },
                 ],
             ) or current_stage
-
-        primary_values = render_primary_fields(
-            form_key=f"analysis_edit_{analysis_id}",
-            defaults=defaults,
-        )
 
         stage_map, plan_stages = ensure_stage_records(analysis_id)
         visible_types = visible_stage_types(selected_stage)
@@ -150,14 +144,14 @@ def render_analysis_editor(
             elif stage_type == "pre-market":
                 pre_form = render_pre_stage(
                     stage_data=stage_map.get(stage_type),
-                    analysis=analysis,
+                    defaults=defaults,
                     visible=render,
                     expanded=expanded,
                 )
             elif stage_type == "post-market":
                 post_form = render_post_stage(
                     stage_data=stage_map.get(stage_type),
-                    analysis=analysis,
+                    defaults=defaults,
                     visible=render,
                     expanded=expanded,
                 )
@@ -175,8 +169,6 @@ def render_analysis_editor(
 
             analysis_updates: Dict[str, Any] = {
                 "state": selected_stage,
-                "date_local": primary_values["date_local"],
-                "asset": primary_values["asset"],
             }
             for form in forms_to_save:
                 updates = form.get("analysis_updates")

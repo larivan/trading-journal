@@ -10,7 +10,7 @@ from components.chart_editor import (
     chart_table_rows,
     render_chart_editor,
 )
-from config import DAILY_BIAS
+from config import DAILY_BIAS, ASSETS
 from db import (
     list_analysis_stage_charts,
 )
@@ -19,7 +19,7 @@ from db import (
 def render_pre_stage(
     *,
     stage_data: Optional[Dict[str, Any]],
-    analysis: Dict[str, Any],
+    defaults: Dict[str, Any],
     visible: bool,
     expanded: bool,
 ) -> Optional[Dict[str, Any]]:
@@ -28,22 +28,27 @@ def render_pre_stage(
     if not visible or not stage_data:
         return None
     stage_id = stage_data["id"]
-    with st.expander("Pre-market", expanded=expanded):
+    with st.expander("Overview & Pre-market", expanded=expanded):
         col1, col2 = st.columns([1, 3], gap="medium")
         with col1:
+            date_value = st.date_input(
+                "Date",
+                value=defaults["date_local"],
+                format="DD.MM.YYYY",
+                key=f"stage_date_{stage_id}",
+            )
+            asset_value = st.selectbox(
+                "Asset",
+                options=ASSETS,
+                index=ASSETS.index(defaults["asset"]),
+                key=f"stage_asset_{stage_id}",
+            )
+            st.divider()
             daily_bias_value = st.selectbox(
                 "Daily bias",
                 options=DAILY_BIAS,
-                index=DAILY_BIAS.index(analysis.get("daily_bias"))
-                if analysis.get("daily_bias") in DAILY_BIAS
-                else 0,
+                index=DAILY_BIAS.index(defaults["daily_bias"]),
                 key=f"stage_daily_bias_{stage_id}",
-            )
-            summary_value = st.text_area(
-                "Note",
-                value=stage_data.get("summary") or "",
-                height=160,
-                key=f"stage_summary_{stage_id}",
             )
 
         with col2:
@@ -56,12 +61,23 @@ def render_pre_stage(
                 title="",
                 caption=None,
             )
+            st.divider()
+            summary_value = st.text_area(
+                "Analysis Notes",
+                value=stage_data.get("summary") or "",
+                height=160,
+                key=f"stage_summary_{stage_id}",
+            )
 
     return {
         "stage_id": stage_id,
         "stage_type": "pre-market",
-        "analysis_updates": {"daily_bias": daily_bias_value},
         "summary": summary_value,
+        "analysis_updates": {
+            "daily_bias": daily_bias_value,
+            "asset": asset_value,
+            "date_local": date_value.isoformat(),
+        },
         "charts": {
             "attached": charts,
             "rows_source": chart_rows_source,

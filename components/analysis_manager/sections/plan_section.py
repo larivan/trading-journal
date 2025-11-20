@@ -19,8 +19,6 @@ from db import (
     list_analysis_stage_charts,
 )
 
-from ..constants import STAGE_TITLES
-
 
 def render_plan_section(
     *,
@@ -34,10 +32,9 @@ def render_plan_section(
     if not visible:
         return []
 
-    stage_label = STAGE_TITLES.get("plan", "Plan")
     forms: List[Dict[str, Any]] = []
 
-    with st.expander(stage_label, expanded=expanded):
+    with st.expander("Plan", expanded=expanded):
         sorted_stages = sorted(plan_stages, key=lambda s: s.get("id") or 0)
 
         if not sorted_stages:
@@ -64,7 +61,6 @@ def render_plan_section(
 
         def _add_plan() -> None:
             _create_plan_stage(analysis_id)
-            st.success("План создан.")
             st.rerun()
 
         def _remove_plan(tab: Dict[str, Any]) -> None:
@@ -78,7 +74,6 @@ def render_plan_section(
                     if chart_id:
                         delete_chart(chart_id)
                 delete_analysis_stage(stage_id)
-                st.success("План удалён.")
                 st.rerun()
             except Exception as exc:  # pragma: no cover
                 st.error(f"Не удалось удалить план: {exc}")
@@ -116,9 +111,9 @@ def render_plan_section(
                 caption=None,
             )
             summary_values[selected_stage["id"]] = st.text_area(
-                "Note",
+                "Plan Notes",
                 value=selected_stage.get("summary") or "",
-                height=200,
+                height=160,
                 key=summary_key,
             )
 
@@ -141,7 +136,8 @@ def render_plan_section(
                         "editor_value": editor_values.get(
                             stage_id,
                             st.session_state.get(
-                                chart_editor_value_state_key(_chart_editor_key(stage_id))
+                                chart_editor_value_state_key(
+                                    _chart_editor_key(stage_id))
                             ),
                         ),
                     },

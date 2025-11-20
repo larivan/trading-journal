@@ -19,8 +19,8 @@ def render_entity_header(
 ) -> Optional[str]:
     """Рисует селект статуса и настраиваемые кнопки действий."""
 
-    layout_ratio = layout_ratio or [0.25, 0.05, 0.7]
-    status_col, spacer_col, actions_col = st.columns(
+    layout_ratio = layout_ratio or [0.2, 0.4, 0.4]
+    status_col, _, actions_col = st.columns(
         layout_ratio,
         gap="large",
         vertical_alignment="bottom",
@@ -31,7 +31,8 @@ def render_entity_header(
             st.warning("Нет доступных состояний")
             selected = None
         else:
-            default_status = current_status if current_status in options_list else options_list[0]
+            default_status = current_status if current_status in options_list else options_list[
+                0]
             selected = st.selectbox(
                 status_label,
                 options_list,

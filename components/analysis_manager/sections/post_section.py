@@ -25,7 +25,7 @@ from db import (
 def render_post_stage(
     *,
     stage_data: Optional[Dict[str, Any]],
-    analysis: Dict[str, Any],
+    defaults: Dict[str, Any],
     visible: bool,
     expanded: bool,
 ) -> Optional[Dict[str, Any]]:
@@ -41,22 +41,14 @@ def render_post_stage(
             fact_bias_value = st.selectbox(
                 "Fact bias",
                 options=DAILY_BIAS,
-                index=DAILY_BIAS.index(analysis.get("fact_bias")) if analysis.get(
-                    "fact_bias") in DAILY_BIAS else 0,
+                index=DAILY_BIAS.index(defaults["fact_bias"]),
                 key=f"stage_fact_bias_{stage_id}",
             )
             day_result_value = st.selectbox(
                 "Day result",
                 options=DAY_RESULT_VALUES,
-                index=DAY_RESULT_VALUES.index(analysis.get("day_result")) if analysis.get(
-                    "day_result") in DAY_RESULT_VALUES else 0,
+                index=DAY_RESULT_VALUES.index(defaults["day_result"]),
                 key=f"stage_day_result_{stage_id}",
-            )
-            summary_value = st.text_area(
-                "Note",
-                value=stage_data.get("summary") or "",
-                height=160,
-                key=f"stage_summary_{stage_id}",
             )
 
         with col2:
@@ -68,6 +60,13 @@ def render_post_stage(
                 base_rows=chart_rows_source,
                 title="",
                 caption=None,
+            )
+
+            summary_value = st.text_area(
+                "Analysis Notes",
+                value=stage_data.get("summary") or "",
+                height=160,
+                key=f"stage_summary_{stage_id}",
             )
 
             st.markdown("#### Observations")

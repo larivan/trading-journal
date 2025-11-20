@@ -87,8 +87,7 @@ _COMPONENT_CSS = """
   color: #000;
 }
 .st-vtabs__remove:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  display: none;
 }
 .st-vtabs__add {
   display: flex;
