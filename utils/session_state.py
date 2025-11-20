@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, Dict, Literal, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, Literal, Optional, Sequence, Tuple
 
 import streamlit as st
 
+from components.entity_filters import tab_date_range
 # --- Базовые типы и конфигурация сущностей ---
 EntityName = Literal["trade", "analysis"]
 EntityDialog = Literal["create", "edit", "delete"]
@@ -104,11 +105,6 @@ def consume_tab_change(session_prefix: str) -> bool:
     return bool(st.session_state.pop(key, False))
 
 
-def get_active_period_label(session_prefix: str, default_label: str) -> str:
-    value = st.session_state.get(f"{session_prefix}_active_period")
-    return value if isinstance(value, str) else default_label
-
-
 def get_visible_tab(session_prefix: str, default_tab: str) -> str:
     value = st.session_state.get(f"{session_prefix}_visible_tab")
     return value if isinstance(value, str) else default_tab
@@ -128,42 +124,57 @@ def _range_key(session_prefix: str) -> str:
     return f"{session_prefix}_custom_range"
 
 
-# --- Управление фильтрами и кастомными диапазонами ---
-def get_entity_filters(session_prefix: str) -> Dict[str, Any]:
-    stored = st.session_state.get(_filters_key(session_prefix))
-    if isinstance(stored, dict):
-        return dict(stored)
-    st.session_state[_filters_key(session_prefix)] = {}
-    return {}
+# --- Композитные хелперы для страниц сущностей ---
+CustomFilterRenderer = Callable[
+    [Optional[Dict[str, Any]], Optional[Tuple[Optional[date], Optional[date]]]],
+    Tuple[Dict[str, Any], Tuple[Optional[date], Optional[date]]],
+]
 
 
-def set_entity_filters(session_prefix: str, filters: Dict[str, Any]) -> None:
-    st.session_state[_filters_key(session_prefix)] = dict(filters)
-
-
-def get_custom_date_range(
-    session_prefix: str, default_range: Tuple[date, date]
-) -> Tuple[Optional[date], Optional[date]]:
-    stored = st.session_state.get(_range_key(session_prefix))
-    if (
-        isinstance(stored, (list, tuple))
-        and len(stored) == 2
-    ):
-        start, end = stored
-        if (
-            isinstance(start, (date, type(None)))
-            and isinstance(end, (date, type(None)))
-        ):
-            st.session_state[_range_key(session_prefix)] = (start, end)
-            return start, end
-    st.session_state[_range_key(session_prefix)] = default_range
-    return default_range
-
-
-def set_custom_date_range(
-    session_prefix: str, date_range: Tuple[Optional[date], Optional[date]]
+def init_entity_state(
+    *,
+    entity_name: EntityName,
+    default_range: Tuple[date, date],
 ) -> None:
-    st.session_state[_range_key(session_prefix)] = date_range
+    """Гарантирует наличие базовых ключей состояния для сущности."""
+    selected_key = _ENTITY_CONFIG[entity_name]["selected_key"]
+    st.session_state.setdefault(selected_key, None)
+    for flag in _ENTITY_CONFIG[entity_name]["dialogs"].values():
+        st.session_state.setdefault(flag, False)
+    prefix = "trades" if entity_name == "trade" else "analysis"
+    st.session_state.setdefault(_filters_key(prefix), {})
+    st.session_state.setdefault(_range_key(prefix), default_range)
+
+
+def apply_period_filters(
+    *,
+    entity_name: EntityName,
+    session_prefix: str,
+    default_range: Tuple[date, date],
+    tab_definitions: Iterable[Tuple[str, str]],
+    render_custom_filters: CustomFilterRenderer,
+) -> Tuple[Dict[str, Any], Optional[date], Optional[date], str]:
+    """Общая логика обработки периодов и кастомных фильтров."""
+    default_tab_key = tab_definitions[0][1]
+    selected_tab_key = get_visible_tab(session_prefix, default_tab_key)
+    tab_changed = consume_tab_change(session_prefix)
+    if tab_changed:
+        reset_entity_state(entity_name)
+        clear_table_state(session_prefix, selected_tab_key)
+    if selected_tab_key == "custom":
+        filters, custom_range = render_custom_filters(
+            default_range,
+        )
+        tab_filters = dict(filters)
+        date_from, date_to = custom_range
+    else:
+        tab_filters = {}
+        date_from, date_to = tab_date_range(selected_tab_key)
+    if date_from:
+        tab_filters["date_from"] = date_from.isoformat()
+    if date_to:
+        tab_filters["date_to"] = date_to.isoformat()
+    return tab_filters, date_from, date_to, selected_tab_key
 
 
 __all__ = [
@@ -173,17 +184,14 @@ __all__ = [
     "close_entity_dialog",
     "consume_tab_change",
     "dialog_is_open",
-    "get_active_period_label",
     "get_selected_entity",
     "get_visible_tab",
     "handle_selection_change",
-    "get_custom_date_range",
-    "get_entity_filters",
+    "init_entity_state",
     "open_entity_dialog",
     "reset_entity_dialogs",
     "reset_entity_state",
-    "set_custom_date_range",
-    "set_entity_filters",
+    "apply_period_filters",
     "set_selected_entity",
     "update_period_state",
 ]

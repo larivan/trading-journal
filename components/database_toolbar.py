@@ -4,7 +4,6 @@ import streamlit as st
 
 from utils.session_state import (
     EntityName,
-    get_active_period_label,
     get_visible_tab,
     open_entity_dialog,
     update_period_state,
@@ -36,26 +35,27 @@ def render_database_toolbar(
 
     default_tab_key = tab_definitions[0][1]
     period_col, _, actions_col = st.columns(
-        [0.5, 0.2, 0.3], vertical_alignment="bottom"
+        [0.5, 0.3, 0.2], vertical_alignment="bottom"
     )
 
     # --- Сегментированный контрол выбора периода ---
     with period_col:
         period_labels: List[str] = [label for label, _ in tab_definitions]
-        default_label = get_active_period_label(
-            session_prefix, period_labels[0])
+        period_key = f"{session_prefix}_period_control"
+
+        def period_on_change():
+            if st.session_state.get(period_key) is None:
+                st.session_state[period_key] = period_labels[0]
+                return
+
         selected_label = st.segmented_control(
             label,
             options=period_labels,
-            default=default_label if default_label in period_labels else period_labels[0],
-            key=f"{session_prefix}_period_control",
+            default=period_labels[0],
+            key=period_key,
             width="stretch",
+            on_change=period_on_change
         )
-
-    label_to_key = {label: key for label, key in tab_definitions}
-    if not selected_label or selected_label not in label_to_key:
-        selected_label = period_labels[0]
-        st.session_state[f"{session_prefix}_period_control"] = selected_label
 
     # --- Блок действий (пока только Create) ---
     with actions_col:
@@ -68,6 +68,7 @@ def render_database_toolbar(
             open_entity_dialog(resolved_entity, "create")
 
     # --- Фиксация изменения таба для дальнейшей логики страниц ---
+    label_to_key = {label: key for label, key in tab_definitions}
     selected_tab_key = label_to_key.get(selected_label, default_tab_key)
     previous_tab_key = get_visible_tab(session_prefix, default_tab_key)
     tab_changed = previous_tab_key != selected_tab_key

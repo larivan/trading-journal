@@ -90,3 +90,41 @@ def result_label(value: Optional[str]) -> str:
     if not value:
         return ""
     return RESULT_LABELS.get(value, value.replace("_", " ").title())
+
+
+# --- Общие форматеры для таблиц ---
+def format_local_date(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, date):
+        return value.strftime("%d.%m.%Y")
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value)
+            return parsed.strftime("%d.%m.%Y")
+        except ValueError:
+            return value
+    return str(value)
+
+
+def format_local_time(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, time):
+        return value.strftime("%H:%M")
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value)
+            return parsed.strftime("%H:%M")
+        except ValueError:
+            return value[:5]
+    return str(value)
+
+
+def format_number(value: Any) -> str:
+    if value is None:
+        return ""
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return str(value)

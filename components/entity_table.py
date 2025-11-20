@@ -71,6 +71,7 @@ _COMPONENT_CSS = """
   position: absolute;
   left: 0;
   bottom: calc(100% + 6px);
+  z-index: 1;
   box-shadow: -2px 2px 5px #eeeeee;
 }
 .st-entity-table__toolbar.is-empty {
