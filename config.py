@@ -28,6 +28,7 @@ TRADE_SESSION_VALUES = ["Frankfurt", "LOKZ",
                         "Lunch", "Pre-NY", "NYKZ", "Other"]
 
 ANALYSIS_STATE_VALUES = ["pre-market", "plan", "post-market"]
+NOTE_TYPE_VALUES = ("Note", "Observation")
 
 # --- Дополнительные справочники для UI ---
 ASSETS = ["EUR/USD", "GBP/USD", "XAU/USD", "XAG/USD"]

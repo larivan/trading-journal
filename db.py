@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Union, cast
 from config import (
     ANALYSIS_STATE_VALUES,
     EMOTIONAL_PROBLEMS,
+    NOTE_TYPE_VALUES,
     TRADE_RESULT_VALUES,
     TRADE_SESSION_VALUES,
     TRADE_STATE_VALUES,
@@ -207,7 +208,13 @@ def _normalize_note_type(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
     text = value.strip()
-    return text or None
+    if not text:
+        return None
+    if text not in NOTE_TYPE_VALUES:
+        raise ValueError(
+            f"note_type должно быть одним из: {', '.join(NOTE_TYPE_VALUES)}"
+        )
+    return text
 
 
 def _serialize_emotional_problems(value: Optional[Any]) -> Optional[str]:
@@ -354,7 +361,7 @@ CREATE TABLE IF NOT EXISTS notes (
     body        TEXT,
     date_local  TEXT,
     time_local  TEXT,
-    note_type   TEXT
+    note_type   TEXT CHECK (note_type IS NULL OR note_type IN ({_enum_sql(NOTE_TYPE_VALUES)}))
 );
 
 CREATE TABLE IF NOT EXISTS charts (
