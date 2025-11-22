@@ -7,7 +7,7 @@ import streamlit as st
 
 from components.entity_filters import tab_date_range
 # --- Базовые типы и конфигурация сущностей ---
-EntityName = Literal["trade", "analysis"]
+EntityName = Literal["trade", "analysis", "note"]
 EntityDialog = Literal["create", "edit", "delete"]
 
 
@@ -32,6 +32,19 @@ _ENTITY_CONFIG: Dict[EntityName, Dict[str, Any]] = {
             "delete": "show_delete_analysis",
         },
     },
+    "note": {
+        "selected_key": "selected_note_id",
+        "dialogs": {
+            "create": "show_create_note",
+            "edit": "show_edit_note",
+        },
+    },
+}
+
+_ENTITY_SESSION_PREFIX: Dict[EntityName, str] = {
+    "trade": "trades",
+    "analysis": "analysis",
+    "note": "notes",
 }
 
 
@@ -141,7 +154,7 @@ def init_entity_state(
     st.session_state.setdefault(selected_key, None)
     for flag in _ENTITY_CONFIG[entity_name]["dialogs"].values():
         st.session_state.setdefault(flag, False)
-    prefix = "trades" if entity_name == "trade" else "analysis"
+    prefix = _ENTITY_SESSION_PREFIX[entity_name]
     st.session_state.setdefault(_filters_key(prefix), {})
     st.session_state.setdefault(_range_key(prefix), default_range)
 

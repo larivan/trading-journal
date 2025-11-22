@@ -102,6 +102,14 @@ ANALYSIS_STAGE_ORDER_COLUMNS = {
     "type": "s.type",
 }
 
+NOTE_ORDER_COLUMNS = {
+    "id": "id",
+    "date_local": "date_local",
+    "time_local": "time_local",
+    "title": "title",
+    "note_type": "note_type",
+}
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "journal.db")
@@ -715,12 +723,54 @@ def get_note(note_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def list_notes() -> List[Dict[str, Any]]:
+def list_notes(
+    filters: Optional[Dict[str, Any]] = None,
+    order_by: Optional[str] = None,
+    ascending: bool = True,
+) -> List[Dict[str, Any]]:
+    filters = filters or {}
+    query = "SELECT * FROM notes WHERE 1=1"
+    params: List[Any] = []
+
+    for key, value in filters.items():
+        if value in (None, [], {}):
+            continue
+        if key == "note_type":
+            text_value = str(value).strip()
+            if not text_value:
+                continue
+            query += " AND note_type = ?"
+            params.append(text_value)
+        elif key == "date_from":
+            query += " AND date_local >= ?"
+            params.append(value)
+        elif key == "date_to":
+            query += " AND date_local <= ?"
+            params.append(value)
+        elif key == "query":
+            text_value = str(value).strip()
+            if not text_value:
+                continue
+            query += " AND (title LIKE ? OR body LIKE ?)"
+            value_like = f"%{text_value}%"
+            params.extend([value_like, value_like])
+
+    if order_by:
+        column = NOTE_ORDER_COLUMNS.get(order_by)
+        if not column:
+            raise ValueError(
+                f"order_by must be one of: {sorted(NOTE_ORDER_COLUMNS)}"
+            )
+        direction = "ASC" if ascending else "DESC"
+        query += f" ORDER BY {column} {direction}"
+        if order_by == "date_local":
+            query += f", time_local {direction}, id {direction}"
+    else:
+        query += " ORDER BY title IS NULL, title ASC, id ASC"
+
     conn = get_conn()
     try:
-        rows = conn.execute(
-            "SELECT * FROM notes ORDER BY title IS NULL, title ASC, id ASC"
-        ).fetchall()
+        rows = conn.execute(query, params).fetchall()
         return _rows_to_dicts(rows)
     finally:
         conn.close()

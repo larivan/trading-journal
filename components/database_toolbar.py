@@ -25,6 +25,7 @@ def render_database_toolbar(
     entity_by_prefix: Dict[str, EntityName] = {
         "trades": "trade",
         "analysis": "analysis",
+        "notes": "note",
     }
     if resolved_entity is None:
         resolved_entity = entity_by_prefix.get(session_prefix)
