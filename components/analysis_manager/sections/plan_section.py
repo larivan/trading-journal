@@ -109,8 +109,7 @@ def _render_plan_entry(entry: PlanEntry, container: Any, key_prefix: str) -> Non
         chart_editor_value = render_chart_editor(
             key=_chart_editor_key(key_prefix, entry["key"]),
             base_rows=rows_source,
-            title="Charts",
-            caption=None,
+            layout_columns=2
         )
         entry["chart_editor_value"] = chart_editor_value
 

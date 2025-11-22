@@ -246,6 +246,7 @@ def render_trade_manager(
             chart_editor_value = render_chart_editor(
                 key=f"tm_chart_editor_{trade_key}",
                 base_rows=chart_rows_source,
+                layout_columns=2,
             )
             st.divider()
             note_attach_fn: Callable[[int], None]

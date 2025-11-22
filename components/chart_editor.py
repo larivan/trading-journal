@@ -70,6 +70,10 @@ _COMPONENT_CSS = """
   flex-direction: column;
   gap: 0.75rem;
   width: 100%;
+  padding: 0.85rem;
+  border: 1px solid rgba(31, 42, 58, 0.2);
+  border-radius: 0.75rem;
+  box-sizing: border-box;
 }
 .st-chart-editor__form {
   display: flex;
@@ -112,6 +116,7 @@ _COMPONENT_CSS = """
   appearance: none;
   border: none;
   height: 40px;
+  min-width: 120px;
   border-radius: 0.5rem;
   padding: 0.55rem 1.5rem;
   background: var(--st-primary-color);
@@ -600,17 +605,10 @@ def render_chart_editor(
     *,
     key: str,
     base_rows: Sequence[ChartRow],
-    title: str = "Charts",
-    caption: Optional[str] = "Paste links to your TradingView snapshots so they stay linked to this record.",
     layout_columns: int = 1,
 ) -> List[ChartRow]:
     """Отрисовывает универсальный редактор чартов и возвращает его значение."""
     sanitized_rows = _sanitize_chart_rows(base_rows)
-    if title:
-        st.subheader(title)
-    if caption:
-        st.caption(caption)
-
     layout_mode = _layout_from_columns(layout_columns)
     value_state_key = chart_editor_value_state_key(key)
 

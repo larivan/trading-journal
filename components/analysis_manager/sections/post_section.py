@@ -90,8 +90,7 @@ def render_post_stage(
             chart_editor_value = render_chart_editor(
                 key=f"chart_editor_{stage_key}",
                 base_rows=chart_rows_source,
-                title="",
-                caption=None,
+                layout_columns=2
             )
 
             summary_value = st.text_area(
