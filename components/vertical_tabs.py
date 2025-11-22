@@ -45,9 +45,9 @@ _COMPONENT_CSS = """
   display: block;
   width: 100%;
   appearance: none;
-  border: 1px solid var(--st-secondary-background-color);
+  border: 1px solid rgba(31, 42, 58, 0.2);
   border-radius: 0.6rem;
-  background: var(--st-secondary-background-color);
+  background: transparent;
   color: var(--st-color-text, #1c1c1c);
   padding: 0.65rem 0.85rem;
   text-align: left;
@@ -56,14 +56,10 @@ _COMPONENT_CSS = """
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 .st-vtabs__row.is-selected .st-vtabs__tab {
-  background: var(--st-primary-color);
-  border-color: var(--st-primary-color);
-  color: #fff;
+  background-color: rgba(150, 150, 202, 0.15);
   box-shadow: 0 2px 6px rgba(49, 51, 63, 0.15);
 }
-.st-vtabs__tab:hover {
-  border-color: var(--st-primary-color);
-}
+
 .st-vtabs__remove {
   display: flex;
   align-items: center;
