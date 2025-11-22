@@ -3,7 +3,7 @@ import json
 import os
 import sqlite3
 from datetime import date, datetime, time, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union, cast
 
 # Справочники вынесены в config.py
 from config import (
@@ -178,6 +178,38 @@ def _normalize_analysis_stage_payload(data: Dict[str, Any]) -> Dict[str, Any]:
     return payload
 
 
+_UNSET: object = object()
+
+
+def _normalize_note_date(value: Optional[Union[str, date, datetime]]) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        value = value.date()
+    if isinstance(value, date):
+        return value.isoformat()
+    text = str(value).strip()
+    return text or None
+
+
+def _normalize_note_time(value: Optional[Union[str, time, datetime]]) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        value = value.time()
+    if isinstance(value, time):
+        return value.strftime("%H:%M:%S")
+    text = str(value).strip()
+    return text or None
+
+
+def _normalize_note_type(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    text = value.strip()
+    return text or None
+
+
 def _serialize_emotional_problems(value: Optional[Any]) -> Optional[str]:
     if value is None:
         return None
@@ -319,7 +351,10 @@ CREATE TABLE IF NOT EXISTS setups (
 CREATE TABLE IF NOT EXISTS notes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     title       TEXT,
-    body        TEXT
+    body        TEXT,
+    date_local  TEXT,
+    time_local  TEXT,
+    note_type   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS charts (
@@ -569,15 +604,33 @@ def delete_analysis(analysis_id: int) -> None:
 # =====================================================================
 
 
-def add_note(title: Optional[str], body: str,
-             tags: Optional[str] = None,
-             category: Optional[str] = None) -> int:
+def add_note(
+    title: Optional[str],
+    body: str,
+    note_type: Optional[str] = None,
+    date_local: Optional[Union[str, date, datetime]] = None,
+    time_local: Optional[Union[str, time, datetime]] = None,
+) -> int:
     conn = get_conn()
     try:
         cur = conn.cursor()
+        now = datetime.now()
+        normalized_date = _normalize_note_date(
+            date_local if date_local is not None else now
+        )
+        time_source: Optional[Union[str, time, datetime]] = time_local
+        if time_source is None and isinstance(date_local, datetime):
+            time_source = date_local
+        if time_source is None:
+            time_source = now
+        normalized_time = _normalize_note_time(time_source)
+        normalized_type = _normalize_note_type(note_type)
         cur.execute(
-            "INSERT INTO notes (title, body) VALUES (?, ?)",
-            (title, body)
+            """
+            INSERT INTO notes (title, body, date_local, time_local, note_type)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (title, body, normalized_date, normalized_time, normalized_type),
         )
         conn.commit()
         return cur.lastrowid
@@ -585,18 +638,48 @@ def add_note(title: Optional[str], body: str,
         conn.close()
 
 
-def update_note(note_id: int, title: Optional[str], body: str,
-                tags: Optional[str] = None) -> None:
+def update_note(
+    note_id: int,
+    title: Optional[str],
+    body: str,
+    *,
+    note_type: Union[str, None, object] = _UNSET,
+    date_local: Union[str, date, datetime, None, object] = _UNSET,
+    time_local: Union[str, time, datetime, None, object] = _UNSET,
+) -> None:
     conn = get_conn()
     try:
         cur = conn.cursor()
+        assignments = ["title=?", "body=?"]
+        params: List[Any] = [title, body]
+        if date_local is not _UNSET:
+            assignments.append("date_local=?")
+            params.append(
+                _normalize_note_date(
+                    cast(Optional[Union[str, date, datetime]], date_local)
+                )
+            )
+        if time_local is not _UNSET:
+            assignments.append("time_local=?")
+            params.append(
+                _normalize_note_time(
+                    cast(Optional[Union[str, time, datetime]], time_local)
+                )
+            )
+        if note_type is not _UNSET:
+            assignments.append("note_type=?")
+            params.append(
+                _normalize_note_type(cast(Optional[str], note_type))
+            )
         cur.execute(
             """
             UPDATE notes
-            SET title=?, body=?
+            SET {set_clause}
             WHERE id=?
-            """,
-            (title, body, note_id)
+            """.format(
+                set_clause=", ".join(assignments)
+            ),
+            (*params, note_id),
         )
         if cur.rowcount == 0:
             raise ValueError(f"Заметка #{note_id} не найдена.")
