@@ -3,11 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
 
-from components.analysis_manager import (
-    render_analysis_creator,
-    render_analysis_editor,
-    render_analysis_remover,
-)
+from components.analysis_manager import render_analysis_manager
 from components.entity_table import render_entity_table
 from components.database_toolbar import render_database_toolbar
 from components.entity_filters import (
@@ -20,7 +16,7 @@ from config import (
     DAY_RESULT_VALUES,
     ANALYSIS_STATE_VALUES
 )
-from db import list_analysis
+from db import delete_analysis, list_analysis
 from helpers import apply_page_config_from_file, format_local_date
 from utils.session_state import (
     apply_period_filters,
@@ -148,12 +144,21 @@ def _handle_open_analysis(row: Dict[str, Any]) -> None:
     open_entity_dialog("analysis", "edit")
 
 
+def _delete_analysis_and_refresh(analysis_id: Optional[int]) -> None:
+    if not analysis_id:
+        return
+    try:
+        delete_analysis(analysis_id)
+        set_selected_entity("analysis", None)
+        st.rerun()
+    except Exception as exc:
+        st.error(f"Не удалось удалить анализ: {exc}")
+
+
 def _handle_delete_analyses(ids: List[Any]) -> None:
     if not ids:
         return
-    first_id = ids[0]
-    set_selected_entity("analysis", first_id)
-    open_entity_dialog("analysis", "delete")
+    _delete_analysis_and_refresh(ids[0])
 
 
 # --- Отрисовываем таблицу с подключенными обработчиками ---
@@ -176,17 +181,6 @@ def _close_edit_dialog() -> None:
     st.rerun()
 
 
-def _close_delete_dialog() -> None:
-    close_entity_dialog("analysis", "delete")
-    st.rerun()
-
-
-def _handle_analysis_deleted() -> None:
-    set_selected_entity("analysis", None)
-    close_entity_dialog("analysis", "delete")
-    st.rerun()
-
-
 def _handle_analysis_created(new_id: int) -> None:
     set_selected_entity("analysis", new_id)
     open_entity_dialog("analysis", "edit")
@@ -200,18 +194,13 @@ def _close_create_dialog() -> None:
 
 # === УСЛОВНЫЙ РЕНДЕР ДИАЛОГОВ СОГЛАСНО СОСТОЯНИЮ ===
 if dialog_is_open("analysis", "create"):
-    render_analysis_creator(
+    render_analysis_manager(
+        analysis_id=None,
         on_created=_handle_analysis_created,
-        on_cancel=_close_create_dialog,
+        on_close=_close_create_dialog,
     )
 if dialog_is_open("analysis", "edit"):
-    render_analysis_editor(
+    render_analysis_manager(
         analysis_id=get_selected_entity("analysis"),
         on_close=_close_edit_dialog,
-    )
-if dialog_is_open("analysis", "delete"):
-    render_analysis_remover(
-        analysis_id=get_selected_entity("analysis"),
-        on_cancel=_close_delete_dialog,
-        on_deleted=_handle_analysis_deleted,
     )

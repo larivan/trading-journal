@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date as date_cls
 from typing import Any, Dict, Optional
 
 import streamlit as st
@@ -11,15 +12,13 @@ from components.chart_editor import (
     render_chart_editor,
 )
 from config import DAILY_BIAS, ASSETS
-from db import (
-    list_analysis_stage_charts,
-)
 
 
 def render_pre_stage(
     *,
+    stage_key: str,
     stage_data: Optional[Dict[str, Any]],
-    defaults: Dict[str, Any],
+    analysis_defaults: Dict[str, Any],
     visible: bool,
     expanded: bool,
 ) -> Optional[Dict[str, Any]]:
@@ -27,36 +26,48 @@ def render_pre_stage(
 
     if not visible or not stage_data:
         return None
-    stage_id = stage_data["id"]
+
+    stage_id = stage_data.get("stage_id")
+    date_value = _coerce_date(analysis_defaults.get("date_local"))
+    asset_value = analysis_defaults.get("asset", ASSETS[0])
+    daily_bias_value = analysis_defaults.get("daily_bias", DAILY_BIAS[0])
+    if asset_value not in ASSETS:
+        asset_value = ASSETS[0]
+    if daily_bias_value not in DAILY_BIAS:
+        daily_bias_value = DAILY_BIAS[0]
+
+    chart_rows_source = stage_data.get("rows_source") or chart_table_rows(
+        stage_data.get("charts") or []
+    )
+    stage_data["rows_source"] = chart_rows_source
+
     with st.expander("Overview & Pre-market", expanded=expanded):
         col1, col2 = st.columns([1, 3], gap="medium")
         with col1:
             date_value = st.date_input(
                 "Date",
-                value=defaults["date_local"],
+                value=date_value,
                 format="DD.MM.YYYY",
-                key=f"stage_date_{stage_id}",
+                key=f"{stage_key}_date",
             )
             asset_value = st.selectbox(
                 "Asset",
                 options=ASSETS,
-                index=ASSETS.index(defaults["asset"]),
-                key=f"stage_asset_{stage_id}",
+                index=ASSETS.index(asset_value),
+                key=f"{stage_key}_asset",
             )
             st.divider()
             daily_bias_value = st.selectbox(
                 "Daily bias",
                 options=DAILY_BIAS,
-                index=DAILY_BIAS.index(defaults["daily_bias"]),
-                key=f"stage_daily_bias_{stage_id}",
+                index=DAILY_BIAS.index(daily_bias_value),
+                key=f"{stage_key}_daily_bias",
             )
 
         with col2:
             st.markdown("#### Charts")
-            charts = list_analysis_stage_charts(stage_id)
-            chart_rows_source = chart_table_rows(charts)
             chart_editor_value = render_chart_editor(
-                key=f"chart_editor_stage_{stage_id}",
+                key=f"chart_editor_{stage_key}",
                 base_rows=chart_rows_source,
                 title="",
                 caption=None,
@@ -66,7 +77,7 @@ def render_pre_stage(
                 "Analysis Notes",
                 value=stage_data.get("summary") or "",
                 height=160,
-                key=f"stage_summary_{stage_id}",
+                key=f"{stage_key}_summary",
             )
 
     return {
@@ -79,11 +90,22 @@ def render_pre_stage(
             "date_local": date_value.isoformat(),
         },
         "charts": {
-            "attached": charts,
+            "attached": stage_data.get("charts") or [],
             "rows_source": chart_rows_source,
             "editor_value": chart_editor_value,
         },
     }
+
+
+def _coerce_date(value: Any) -> date_cls:
+    if isinstance(value, date_cls):
+        return value
+    if isinstance(value, str):
+        try:
+            return date_cls.fromisoformat(value)
+        except ValueError:
+            pass
+    return date_cls.today()
 
 
 __all__ = ["render_pre_stage"]

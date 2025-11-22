@@ -49,7 +49,7 @@ from .constants import (
 
 def render_trade_manager(
     *,
-    trade_id: Optional[int],
+    trade_id: Optional[int] = None,
     on_created: Optional[Callable[[int], None]] = None,
     on_close: Optional[Callable[[], None]] = None,
 ) -> None:
