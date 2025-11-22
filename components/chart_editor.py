@@ -52,15 +52,9 @@ _COMPONENT_HTML = """
   </div>
   <div class="st-chart-editor__form">
     <div class="st-chart-editor__inputs">
-      <label class="st-chart-editor__field">
-        <span>Image link</span>
-        <input type="url" data-input-url placeholder="https://example.com/chart.png" />
-      </label>
-      <label class="st-chart-editor__field">
-        <span>Caption</span>
-        <input type="text" data-input-caption placeholder="Optional note" />
-      </label>
-      <button type="button" class="st-chart-editor__add" data-add>Add new</button>
+      <input class="st-chart-editor__field" type="url" data-input-url placeholder="Image link" />
+      <input class="st-chart-editor__field" type="text" data-input-caption placeholder="Caption" />
+      <button type="button" class="st-chart-editor__add" data-add>Add</button>
     </div>
     <div class="st-chart-editor__error" data-error></div>
   </div>
@@ -96,30 +90,28 @@ _COMPONENT_CSS = """
   flex-direction: column;
   gap: 0.25rem;
   flex: 1 1 220px;
-  font-size: 0.85rem;
-  color: var(--st-color-text-light, rgba(49, 51, 63, 0.6));
-}
-.st-chart-editor__field input {
   width: 100%;
+  height: 40px;
   appearance: none;
   border-radius: 0.5rem;
   border: 1px solid transparent;
   padding: 0.5rem 0.5rem;
   font-size: 0.95rem;
+  color: var(--st-color-text-light, rgba(49, 51, 63, 0.6));
   background: #fff;
   transition: border-color 120ms ease, background 120ms ease;
   box-sizing: border-box;
 }
-.st-chart-editor__field input:focus {
+.st-chart-editor__field:focus {
   border-color: var(--st-primary-color);
   outline: none;
-  background: rgba(48, 115, 255, 0.08);
 }
 .st-chart-editor__add {
   align-self: flex-end;
   margin-left: auto;
   appearance: none;
   border: none;
+  height: 40px;
   border-radius: 0.5rem;
   padding: 0.55rem 1.5rem;
   background: var(--st-primary-color);
@@ -262,15 +254,9 @@ template.innerHTML = `
   </div>
   <div class="st-chart-editor__form">
     <div class="st-chart-editor__inputs">
-      <label class="st-chart-editor__field">
-        <span>Image link</span>
-        <input type="url" data-input-url placeholder="https://example.com/chart.png" />
-      </label>
-      <label class="st-chart-editor__field">
-        <span>Caption</span>
-        <input type="text" data-input-caption placeholder="Optional note" />
-      </label>
-      <button type="button" class="st-chart-editor__add" data-add>Add new</button>
+      <input class="st-chart-editor__field" type="url" data-input-url placeholder="Image link" />
+      <input class="st-chart-editor__field" type="text" data-input-caption placeholder="Caption" />
+      <button type="button" class="st-chart-editor__add" data-add>Add</button>
     </div>
     <div class="st-chart-editor__error" data-error></div>
   </div>
@@ -473,6 +459,8 @@ const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
 
       input.onblur = () => finish(true);
       input.onkeydown = (event) => {
+        event.stopPropagation();
+        event.stopImmediatePropagation();
         if (event.key === "Enter") {
           event.preventDefault();
           finish(true);
@@ -580,12 +568,16 @@ export default function(component) {
   };
 
   urlInput.onkeydown = (event) => {
+    event.stopPropagation();
+    event.stopImmediatePropagation();
     if (event.key === "Enter") {
       event.preventDefault();
       addChart();
     }
   };
   captionInput.onkeydown = (event) => {
+    event.stopPropagation();
+    event.stopImmediatePropagation();
     if (event.key === "Enter" && urlInput.value.trim()) {
       event.preventDefault();
       addChart();
