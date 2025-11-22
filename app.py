@@ -20,16 +20,4 @@ for page in PAGES.items():
 
 
 # Регистрация страниц
-st.navigation(pages, position="hidden").run()
-
-nav = []
-for page in PAGES.items():
-    name, options = page
-    nav.append(st.Page(
-        f"pages/{name}.py",
-        title=options['title'],
-        icon=options['icon'],
-        default=options['default']
-    ))
-
-pg = st.navigation(nav)
+st.navigation(pages).run()
