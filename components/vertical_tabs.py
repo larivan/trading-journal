@@ -296,6 +296,7 @@ def render_vertical_tabs(
 
     add_trigger = result.get("add")
     if on_add and add_trigger:
+        st.session_state[_pending_select_key(key)] = True
         on_add()
 
     remove_target = result.get("remove")
@@ -306,12 +307,20 @@ def render_vertical_tabs(
 
 
 def _resolve_selected_id(key: str, tabs: Sequence[TabItem]) -> Any:
+    if st.session_state.pop(_pending_select_key(key), False) and tabs:
+        last_id = tabs[-1]["id"]
+        st.session_state[key] = {"selected_id": last_id}
+        return last_id
     stored = st.session_state.get(key, {})
     if isinstance(stored, dict):
         existing = stored.get("selected_id")
         if existing in {tab["id"] for tab in tabs}:
             return existing
     return tabs[0]["id"]
+
+
+def _pending_select_key(key: str) -> str:
+    return f"{key}_select_new_tab"
 
 
 __all__ = ["render_vertical_tabs"]
