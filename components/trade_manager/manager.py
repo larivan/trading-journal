@@ -248,7 +248,6 @@ def render_trade_manager(
                 base_rows=chart_rows_source,
                 layout_columns=2,
             )
-            st.divider()
             note_attach_fn: Callable[[int], None]
             note_detach_fn: Callable[[int], None]
             attached_notes: List[Dict[str, Any]]
