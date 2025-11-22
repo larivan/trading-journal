@@ -6,21 +6,18 @@ PAGES = {
         'icon': ':material/bar_chart:',
         'default': True,
         'layout': 'wide',
-        'in_nav': True,
     },
     'trades': {
         'title': 'Trades Database',
         'icon': ':material/view_list:',
         'default': False,
         'layout': 'wide',
-        'in_nav': True,
     },
     'analysis': {
         'title': 'Analysis Database',
         'icon': ':material/insights:',
         'default': False,
         'layout': 'wide',
-        'in_nav': True,
     }
 }
 
