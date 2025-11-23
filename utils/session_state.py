@@ -85,6 +85,12 @@ def close_entity_dialog(entity: EntityName, dialog: EntityDialog) -> None:
         st.session_state[key] = False
 
 
+def switch_to_edit_dialog(entity: EntityName, entity_id: int) -> None:
+    """Переключает интерфейс на режим редактирования созданной сущности."""
+    set_selected_entity(entity, entity_id)
+    open_entity_dialog(entity, "edit")
+
+
 def dialog_is_open(entity: EntityName, dialog: EntityDialog) -> bool:
     key = _dialog_key(entity, dialog)
     return bool(key and st.session_state.get(key))
@@ -206,5 +212,6 @@ __all__ = [
     "reset_entity_state",
     "apply_period_filters",
     "set_selected_entity",
+    "switch_to_edit_dialog",
     "update_period_state",
 ]

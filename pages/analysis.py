@@ -26,6 +26,7 @@ from utils.session_state import (
     init_entity_state,
     open_entity_dialog,
     set_selected_entity,
+    switch_to_edit_dialog,
 )
 
 # === ОСНОВНАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ АНАЛИЗОВ ===
@@ -178,18 +179,14 @@ render_entity_table(
 # === ЛОГИКА УПРАВЛЕНИЯ МОДАЛЬНЫМИ ОКНАМИ ===
 def _close_edit_dialog() -> None:
     close_entity_dialog("analysis", "edit")
-    st.rerun()
 
 
 def _handle_analysis_created(new_id: int) -> None:
-    set_selected_entity("analysis", new_id)
-    open_entity_dialog("analysis", "edit")
-    st.rerun()
+    switch_to_edit_dialog("analysis", new_id)
 
 
 def _close_create_dialog() -> None:
     close_entity_dialog("analysis", "create")
-    st.rerun()
 
 
 # === УСЛОВНЫЙ РЕНДЕР ДИАЛОГОВ СОГЛАСНО СОСТОЯНИЮ ===

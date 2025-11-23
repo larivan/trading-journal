@@ -27,6 +27,7 @@ from db import (
     update_analysis,
     update_analysis_stage,
 )
+from utils.session_state import close_entity_dialog
 
 from .defaults import build_analysis_defaults
 from .sections import (
@@ -49,6 +50,7 @@ def render_analysis_manager(
 
     dialog_key = _dialog_key(analysis_id)
     is_new_analysis = analysis_id is None
+    dialog_type = "create" if is_new_analysis else "edit"
     analysis: Dict[str, Any] = {}
     analysis_error: Optional[str] = None
     analysis_error_level: Optional[str] = None
@@ -80,7 +82,13 @@ def render_analysis_manager(
     dialog_title = "New analysis" if is_new_analysis else _format_title(analysis_values)
     all_notes = list_notes()
 
-    @st.dialog(dialog_title, width="large")
+    def _handle_dialog_dismiss() -> None:
+        _reset_dialog_state(dialog_key)
+        close_entity_dialog("analysis", dialog_type)
+        if on_close:
+            on_close()
+
+    @st.dialog(dialog_title, width="large", on_dismiss=_handle_dialog_dismiss)
     def _dialog() -> None:
         if analysis_error:
             status_fn = st.info if analysis_error_level == "info" else st.error
@@ -93,9 +101,7 @@ def render_analysis_manager(
             st.session_state[submit_key] = True
 
         def _cancel() -> None:
-            _reset_dialog_state(dialog_key)
-            if on_close:
-                on_close()
+            _handle_dialog_dismiss()
 
         current_stage = (
             analysis.get("state")
@@ -198,10 +204,6 @@ def render_analysis_manager(
             if is_new_analysis:
                 if on_created:
                     on_created(current_analysis_id)
-                else:
-                    st.rerun()
-            else:
-                st.rerun()
         except Exception as exc:  # pragma: no cover
             st.error(f"Не удалось сохранить анализ: {exc}")
 
@@ -349,7 +351,6 @@ def _add_plan_entry(dialog_key: str) -> None:
     entries = st.session_state.setdefault(_plan_entries_key(dialog_key), [])
     entries.append(_empty_plan_entry(dialog_key))
     st.session_state[_plan_entries_key(dialog_key)] = entries
-    st.rerun()
 
 
 def _remove_plan_entry(dialog_key: str, entry: Optional[Dict[str, Any]]) -> None:
@@ -366,7 +367,6 @@ def _remove_plan_entry(dialog_key: str, entry: Optional[Dict[str, Any]]) -> None
         entries.append(_empty_plan_entry(dialog_key))
     st.session_state[_plan_entries_key(dialog_key)] = entries
     _cleanup_plan_entry_state(dialog_key, entry["key"])
-    st.rerun()
 
 
 def _cleanup_plan_entry_state(dialog_key: str, entry_key: str) -> None:

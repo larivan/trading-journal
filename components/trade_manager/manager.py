@@ -31,6 +31,7 @@ from components.note_editor import render_note_editor
 from components.state_header import render_entity_header
 from helpers import option_with_placeholder, parse_trade_date, parse_trade_time
 from utils.trade_sessions import detect_trade_session
+from utils.session_state import close_entity_dialog
 
 from config import LOCAL_TZ
 from .defaults import build_trade_defaults
@@ -56,6 +57,9 @@ def render_trade_manager(
     """Единое окно создания и редактирования сделок."""
 
     is_new_trade = trade_id is None
+    dialog_type = "create" if is_new_trade else "edit"
+    trade_key = "create" if is_new_trade else f"edit_{trade_id}"
+    pending_notes_key = f"tm_pending_notes_{trade_key}"
     trade: Dict[str, Any] = {}
     trade_error: Optional[str] = None
     trade_error_level: Optional[str] = None
@@ -87,14 +91,28 @@ def render_trade_manager(
             else _format_trade_title(trade)
         )
 
-    @st.dialog(dialog_title, width="large")
+    def _reset_creation_buffers() -> None:
+        if not is_new_trade:
+            return
+        st.session_state.pop(pending_notes_key, None)
+        chart_state_key = chart_editor_value_state_key(
+            f"tm_chart_editor_{trade_key}"
+        )
+        st.session_state.pop(chart_state_key, None)
+
+    def _handle_dialog_dismiss() -> None:
+        if is_new_trade:
+            _reset_creation_buffers()
+        close_entity_dialog("trade", dialog_type)
+        if on_close:
+            on_close()
+
+    @st.dialog(dialog_title, width="large", on_dismiss=_handle_dialog_dismiss)
     def _dialog() -> None:
         if trade_error:
             status_fn = st.info if trade_error_level == "info" else st.error
             status_fn(trade_error)
             return
-
-        trade_key = "create" if is_new_trade else f"edit_{trade_id}"
 
         accounts = option_with_placeholder(
             list_accounts(),
@@ -135,7 +153,6 @@ def render_trade_manager(
         all_notes = list_notes()
 
         chart_editor_value: Optional[Any] = None
-        pending_notes_key = f"tm_pending_notes_{trade_key}"
 
         def _coerce_note_id(value: Any) -> Optional[int]:
             try:
@@ -157,15 +174,6 @@ def render_trade_manager(
             st.session_state[pending_notes_key] = cleaned
             return cleaned
 
-        def _reset_creation_buffers() -> None:
-            if not is_new_trade:
-                return
-            st.session_state.pop(pending_notes_key, None)
-            chart_state_key = chart_editor_value_state_key(
-                f"tm_chart_editor_{trade_key}"
-            )
-            st.session_state.pop(chart_state_key, None)
-
         header_container = st.container(border=True)
         with header_container:
             allowed = (
@@ -179,10 +187,7 @@ def render_trade_manager(
                 st.session_state[f"tm_submit_triggered_{trade_key}"] = True
 
             def _cancel_action() -> None:
-                if is_new_trade:
-                    _reset_creation_buffers()
-                if on_close:
-                    on_close()
+                _handle_dialog_dismiss()
 
             selected_state = render_entity_header(
                 status_label="Trade status",
@@ -396,8 +401,6 @@ def render_trade_manager(
                 # st.success("Сделка создана.")
                 if on_created:
                     on_created(new_trade_id)
-                else:
-                    st.rerun()
             except Exception as exc:  # pragma: no cover - UI feedback
                 st.error(f"Failed to create the trade: {exc}")
         else:
@@ -411,7 +414,6 @@ def render_trade_manager(
                 )
                 update_trade(trade_id, payload)
                 # st.success("Trade updated.")
-                st.rerun()
             except Exception as exc:  # pragma: no cover - UI feedback
                 st.error(f"Failed to persist the trade: {exc}")
 

@@ -18,6 +18,7 @@ from utils.session_state import (
     init_entity_state,
     open_entity_dialog,
     set_selected_entity,
+    switch_to_edit_dialog,
 )
 
 apply_page_config_from_file(__file__)
@@ -160,19 +161,15 @@ render_entity_table(
 
 
 def _handle_note_created(new_note_id: int) -> None:
-    set_selected_entity("note", new_note_id)
-    open_entity_dialog("note", "edit")
-    st.rerun()
+    switch_to_edit_dialog("note", new_note_id)
 
 
 def _close_edit_dialog() -> None:
     close_entity_dialog("note", "edit")
-    st.rerun()
 
 
 def _close_create_dialog() -> None:
     close_entity_dialog("note", "create")
-    st.rerun()
 
 
 if dialog_is_open("note", "create"):

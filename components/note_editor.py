@@ -126,7 +126,6 @@ def _sync_note_links(
             detach_note(note_id)
         if success_message:
             st.success(success_message)
-        st.rerun()
     except Exception as exc:  # pragma: no cover - UI feedback
         st.error(error_message_template.format(exc=exc))
 
@@ -160,7 +159,6 @@ def _render_note_creator(
                 attach_note(note_id)
                 if success_message:
                     st.success(success_message)
-                st.rerun()
             except Exception as exc:  # pragma: no cover - UI feedback
                 st.error(error_message_template.format(exc=exc))
 

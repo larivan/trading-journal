@@ -21,6 +21,7 @@ from utils.session_state import (
     init_entity_state,
     open_entity_dialog,
     set_selected_entity,
+    switch_to_edit_dialog,
 )
 
 # === БАЗОВАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ ===
@@ -221,19 +222,15 @@ render_entity_table(
 
 # === КОЛЛБЭКИ ДЛЯ МОДАЛОК СОЗДАНИЯ / РЕДАКТИРОВАНИЯ ===
 def _handle_trade_created(new_trade_id: int) -> None:
-    set_selected_entity("trade", new_trade_id)
-    open_entity_dialog("trade", "edit")
-    st.rerun()
+    switch_to_edit_dialog("trade", new_trade_id)
 
 
 def _close_edit_dialog() -> None:
     close_entity_dialog("trade", "edit")
-    st.rerun()
 
 
 def _close_create_dialog() -> None:
     close_entity_dialog("trade", "create")
-    st.rerun()
 
 
 # === ВЫЗОВ СООТВЕТСТВУЮЩИХ ДИАЛОГОВ В ЗАВИСИМОСТИ ОТ СОСТОЯНИЯ ===

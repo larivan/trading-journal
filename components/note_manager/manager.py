@@ -8,6 +8,7 @@ import streamlit as st
 
 from config import NOTE_TYPE_VALUES
 from db import add_note, get_note, update_note
+from utils.session_state import close_entity_dialog
 
 DialogCallback = Optional[Callable[[int], None]]
 
@@ -22,6 +23,7 @@ def render_note_manager(
 
     dialog_key = _dialog_key(note_id)
     is_new_note = note_id is None
+    dialog_type = "create" if is_new_note else "edit"
     note: Dict[str, Any] = {}
     note_error: Optional[str] = None
     if not is_new_note:
@@ -42,7 +44,13 @@ def render_note_manager(
 
     dialog_title = "New note" if is_new_note else _format_dialog_title(note)
 
-    @st.dialog(dialog_title, width="medium")
+    def _handle_dialog_dismiss() -> None:
+        _reset_dialog_state(dialog_key)
+        close_entity_dialog("note", dialog_type)
+        if on_close:
+            on_close()
+
+    @st.dialog(dialog_title, width="medium", on_dismiss=_handle_dialog_dismiss)
     def _dialog() -> None:
         if note_error:
             st.warning(note_error)
@@ -79,9 +87,8 @@ def render_note_manager(
             disabled=on_close is None,
         )
 
-        if cancel_clicked and on_close:
-            _reset_dialog_state(dialog_key)
-            on_close()
+        if cancel_clicked:
+            _handle_dialog_dismiss()
             return
 
         if not save_clicked:
@@ -104,8 +111,6 @@ def render_note_manager(
                 _reset_dialog_state(dialog_key)
                 if on_created:
                     on_created(new_note_id)
-                else:
-                    st.rerun()
             else:
                 update_note(
                     note.get("id"),
@@ -114,7 +119,6 @@ def render_note_manager(
                     note_type=note_type_clean,
                 )
                 _reset_dialog_state(dialog_key)
-                st.rerun()
         except Exception as exc:  # pragma: no cover - UI feedback
             st.error(f"Не удалось сохранить заметку: {exc}")
 
