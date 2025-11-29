@@ -7,7 +7,8 @@ from db import delete_trade, list_accounts, list_trades
 from helpers import (
     parse_date,
     to_option_format,
-    apply_page_config_from_file
+    apply_page_config_from_file,
+    custom_selectbox,
 )
 from utils.session_state import (
     open_dialog,
@@ -36,6 +37,7 @@ ESTIMATION_VARS = {
     1: "Like",
     0: "Dislike",
 }
+
 
 # --- Загружаем список счетов и настраиваем state для форм ---
 accounts = to_option_format(
@@ -67,9 +69,10 @@ with actions_col:
         open_dialog("trade_manager")
 
 # === ПРИМЕНЕНИЕ ПЕРИОДОВ И КАСТОМНЫХ ФИЛЬТРОВ ===
-tab_filters: Dict[str, Any] = {}
+filter: Dict[str, Any] = {}
 date_from: Optional[date] = None
 date_to: Optional[date] = None
+account_id: Optional[int] = None
 
 label_to_key = {label: key for key, label in TAB_DEFINITIONS.items()}
 selected_key = label_to_key.get(selected_label, "today")
@@ -77,7 +80,7 @@ selected_key = label_to_key.get(selected_label, "today")
 if selected_key == "custom":
     with st.container():
         fc1, fc2, fc3, fc4, fc5, fc6, fc7 = st.columns(7)
-        date_range = fc1.date_input(
+        date_from, date_to = fc1.date_input(
             "Диапазон дат",
             value=(
                 date.today() - timedelta(days=7),
@@ -91,12 +94,12 @@ if selected_key == "custom":
             placeholder="All",
             index=None,
         )
-        account = fc3.selectbox(
-            "Account",
-            list(accounts.keys()),
-            placeholder="All",
-            index=None,
-        )
+        with fc3:
+            account_id = custom_selectbox(
+                "Account",
+                accounts,
+                placeholder="All",
+            )
         asset = fc4.selectbox(
             "Asset",
             ASSETS,
@@ -122,21 +125,20 @@ if selected_key == "custom":
             index=None,
         )
 
-    account_id = accounts.get(account)
     if account_id:
-        tab_filters["account_id"] = account_id
+        filter["account_id"] = account_id
     if state:
-        tab_filters["state"] = state
+        filter["state"] = state
     if result:
-        tab_filters["result"] = result
+        filter["result"] = result
     if asset:
-        tab_filters["asset"] = asset
+        filter["asset"] = asset
     if session:
-        tab_filters["session"] = session
+        filter["session"] = session
     if estimation:
         estimation_key = {val: key for key, val in ESTIMATION_VARS.items()}
         selected_estimation = estimation_key.get(estimation, None)
-        tab_filters["estimation"] = selected_estimation
+        filter["estimation"] = selected_estimation
 
 else:
     today = date.today()
@@ -158,12 +160,12 @@ else:
         date_to = today
 
 if date_from:
-    tab_filters["date_from"] = date_from.isoformat()
+    filter["date_from"] = date_from.isoformat()
 if date_to:
-    tab_filters["date_to"] = date_to.isoformat()
+    filter["date_to"] = date_to.isoformat()
 
 # === ЗАГРУЗКА ДАННЫХ И ОПРЕДЕЛЕНИЕ КОЛОНОК ===
-rows = list_trades(tab_filters)
+rows = list_trades(filter)
 
 
 # --- Настройка отображаемых колонок таблицы ---

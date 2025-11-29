@@ -16,6 +16,7 @@ from .sections import (
 )
 from db import (
     create_trade,
+    delete_trade,
     get_trade_by_id,
     list_accounts,
     list_analysis,
@@ -43,7 +44,9 @@ def render_trade_manager() -> None:
         trade = get_trade_by_id(trade_id)
         if not trade:
             st.error("Trade not found.")
-            return
+            st.session_state.pop("tm_trade_id", None)
+            close_dialog()
+            st.rerun()
 
     @st.dialog(_get_dialog_title(trade, is_new_trade), width="large", on_dismiss=_handle_dialog_dismiss)
     def _dialog() -> None:
@@ -101,9 +104,9 @@ def render_trade_manager() -> None:
             main_values = render_main_stage(
                 expanded=(selected_status in ("Open", "Cancel", "Miss")),
                 defaults=defaults["open"],
-                account_options=list(accounts.keys()),
-                analysis_options=list(analyses.keys()),
-                setup_options=list(setups.keys()),
+                account_options=accounts,
+                analysis_options=analyses,
+                setup_options=setups,
             )
 
             close_values = render_close_stage(
@@ -157,10 +160,10 @@ def render_trade_manager() -> None:
         payload: Dict[str, Any] = {
             "date_local": main_values["date"].isoformat(),
             "time_local": main_values["time"].strftime("%H:%M:%S"),
-            "account_id": None if not main_values["account"] else accounts[main_values["account"]],
+            "account_id": main_values["account"],
             "asset": main_values["asset"],
-            "analysis_id": None if not main_values["analysis"] else analyses[main_values["analysis"]],
-            "setup_id": None if not main_values["setup"] else setups[main_values["setup"]],
+            "analysis_id": main_values["analysis"],
+            "setup_id": main_values["setup"],
             "risk_pct": float(main_values["risk_pct"]),
             "session": session_value,
             "state": selected_status,
@@ -183,10 +186,14 @@ def render_trade_manager() -> None:
 
         if is_new_trade:
             payload["local_tz"] = local_tz
+
             try:
                 new_trade_id = create_trade(payload)
-                st.session_state["tm_trade_id"] = new_trade_id
-                st.session_state["tm_success_message"] = "Trade created."
+            except Exception as exc:
+                message_col.error(f"Failed to create the trade: {exc}")
+                return
+
+            try:
                 persist_chart_editor(
                     attached_charts=[],
                     editor_rows=current_charts,
@@ -194,10 +201,23 @@ def render_trade_manager() -> None:
                         trade_id, chart_id
                     ),
                 )
-                st.rerun()
             except Exception as exc:
-                message_col.error(f"Failed to create the trade: {exc}")
+                delete_trade(new_trade_id)
+                message_col.error(
+                    f"Trade rolled back because charts could not be saved: {exc}"
+                )
+                return
+
+            st.session_state["tm_trade_id"] = new_trade_id
+            st.session_state["tm_success_message"] = "Trade created."
+            st.rerun()
         else:
+            try:
+                update_trade(trade_id, payload)
+            except Exception as exc:
+                message_col.error(f"Failed to persist the trade: {exc}")
+                return
+
             try:
                 persist_chart_editor(
                     attached_charts=charts,
@@ -206,11 +226,14 @@ def render_trade_manager() -> None:
                         trade_id, chart_id
                     ),
                 )
-                update_trade(trade_id, payload)
-                st.session_state["tm_success_message"] = "Trade saved."
-                st.rerun()
             except Exception as exc:  # pragma: no cover - UI feedback
-                message_col.error(f"Failed to persist the trade: {exc}")
+                message_col.error(
+                    f"Trade saved but failed to update charts: {exc}"
+                )
+                return
+
+            st.session_state["tm_success_message"] = "Trade saved."
+            st.rerun()
 
     if dialog_is_active("trade_manager"):
         _dialog()

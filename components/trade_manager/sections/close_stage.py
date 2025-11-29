@@ -14,7 +14,7 @@ def render_close_stage(
     """Рисует секцию Close и возвращает введённые значения."""
     data = defaults.copy()
     if not visible:
-        return data
+        return None
 
     with st.expander("After close", expanded=expanded):
         cc1, cc2 = st.columns(2)

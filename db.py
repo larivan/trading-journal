@@ -1329,6 +1329,7 @@ def list_trades(filters: Optional[Dict[str, Any]] = None,
         "state": "state",
         "result": "result",
         "session": "session",
+        "estimation": "estimation",
         "date_from": "date_local >= ?",
         "date_to": "date_local <= ?",
     }

@@ -3,7 +3,7 @@
 from typing import Any, Dict
 
 from config import ASSETS
-from helpers import parse_date, parse_time, current_option_label
+from helpers import parse_date, parse_time
 
 
 def get_trade_defaults(
@@ -18,10 +18,10 @@ def get_trade_defaults(
         "open": {
             "date": parse_date(trade.get("date_local")),
             "time": parse_time(trade.get("time_local")),
-            "account": current_option_label(accounts, trade.get("account_id")),
+            "account": trade.get("account_id"),
             "asset": trade.get("asset"),
-            "analysis": current_option_label(analyses, trade.get("analysis_id")),
-            "setup": current_option_label(setups, trade.get("setup_id")),
+            "analysis": trade.get("analysis_id"),
+            "setup": trade.get("setup_id"),
             "risk_pct": float(trade.get("risk_pct") or 1.0),
         },
         "close": {

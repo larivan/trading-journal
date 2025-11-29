@@ -1,5 +1,7 @@
 from datetime import date, datetime, time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
+
+import streamlit as st
 
 from config import PAGES
 
@@ -36,8 +38,7 @@ def parse_time(value: Optional[str]) -> time:
                 return datetime.strptime(value, fmt).time()
             except ValueError:
                 continue
-    now = datetime.now().time()
-    return time(hour=now.hour, minute=now.minute, second=0)
+    return None
 
 
 def parse_date(value: Optional[str]) -> date:
@@ -49,27 +50,52 @@ def parse_date(value: Optional[str]) -> date:
                 return datetime.strptime(value, fmt).date()
             except ValueError:
                 continue
-    return date.today()
+    return None
 
 
 def to_option_format(
     items: List[Dict[str, Any]],
     *,
-    formatter,
-) -> Dict[str, Optional[int]]:
-    options: Dict = {}
+    formatter: Callable[[Dict[str, Any]], str],
+) -> List[Dict[str, Any]]:
+    """Приводит элементы к списку с явными label/value, сохраняя дубликаты."""
+    options: List[Dict[str, Any]] = []
     for item in items:
-        options[formatter(item)] = item["id"]
+        options.append(
+            {
+                "label": formatter(item),
+                "value": item.get("id"),
+            }
+        )
     return options
 
 
-def current_option_label(options: Dict[str, Optional[int]], value: Optional[int]) -> str:
-    if not options:
-        return None
-    for label, option_value in options.items():
-        if option_value == value:
-            return label
-    return next(iter(options))
+def custom_selectbox(
+    label: str,
+    options: List[Dict[str, Any]],
+    *,
+    placeholder: Optional[str] = None,
+    value: Optional[int] = None,
+) -> Optional[int]:
+    """Единый selectbox для options [{'label','value'}] с поддержкой дефолтов."""
+    has_options = bool(options)
+    available = options if has_options else []
+    index: Optional[int] = None
+    if value is not None:
+        for idx, option in enumerate(available):
+            if option.get("value") == value:
+                index = idx
+                break
+    if index is None and not has_options:
+        index = 0
+    selection = st.selectbox(
+        label,
+        available,
+        index=index,
+        placeholder=placeholder if has_options else None,
+        format_func=lambda option: option.get("label", "-"),
+    )
+    return selection.get("value") if isinstance(selection, dict) else None
 
 
 def result_label(value: Optional[str]) -> str:

@@ -1,18 +1,29 @@
 """Блок открытия сделки."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import streamlit as st
 from config import ASSETS
-from helpers import parse_date, parse_time
+from helpers import custom_selectbox
+
+OptionItem = Dict[str, Any]
+
+
+def _safe_choice_index(options: List[str], value: Optional[str]) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return options.index(value)
+    except ValueError:
+        return None
 
 
 def render_main_stage(
     expanded: bool,
     defaults: Dict[str, Any],
-    account_options: List[str],
-    analysis_options: List[str],
-    setup_options: List[str],
+    account_options: List[OptionItem],
+    analysis_options: List[OptionItem],
+    setup_options: List[OptionItem],
 ) -> Dict[str, Any]:
     """Отрисовывает блок открытия сделки (дата, счёт, сетап и риск)."""
     data = defaults.copy()
@@ -28,32 +39,29 @@ def render_main_stage(
             "Time",
             value=data["time"],
         )
-        data["account"] = st.selectbox(
+        data["account"] = custom_selectbox(
             "Account",
             account_options,
             placeholder="- Not set -",
-            index=account_options.index(
-                data["account"]) if data["account"] else None,
+            value=data.get("account"),
         )
         data["asset"] = st.selectbox(
             "Asset",
             ASSETS,
             placeholder="- Not set -",
-            index=ASSETS.index(data["asset"]) if data["asset"] else None,
+            index=_safe_choice_index(ASSETS, data.get("asset")),
         )
-        data["analysis"] = st.selectbox(
+        data["analysis"] = custom_selectbox(
             "Daily analysis",
             analysis_options,
             placeholder="- Not set -",
-            index=analysis_options.index(
-                data["analysis"]) if data["analysis"] else None,
+            value=data.get("analysis"),
         )
-        data["setup"] = st.selectbox(
+        data["setup"] = custom_selectbox(
             "Setup",
             setup_options,
             placeholder="- Not set -",
-            index=setup_options.index(
-                data["setup"]) if data["setup"] else None,
+            value=data.get("setup"),
         )
         data["risk_pct"] = st.slider(
             "Risk per trade, %",
