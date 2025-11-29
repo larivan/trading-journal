@@ -30,12 +30,13 @@ def render_close_stage(
             value=float(data["net_pnl"]),
             step=1.0,
         )
-        data["risk_reward"] = cc1.number_input(
+        cc3, cc4 = st.columns(2)
+        data["risk_reward"] = cc3.number_input(
             "R:R",
             value=float(data["risk_reward"]),
             step=0.1,
         )
-        data["reward_percent"] = cc2.number_input(
+        data["reward_percent"] = cc4.number_input(
             "Reward %",
             value=float(data["reward_percent"]),
             step=0.5,

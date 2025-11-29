@@ -3,15 +3,6 @@ from typing import Any, Dict, List, Optional
 
 from config import PAGES
 
-# --- Общие словари подписей для статусов/результатов сделок ---
-STATE_LABELS = {
-    "open": "Open",
-    "closed": "Closed",
-    "reviewed": "Reviewed",
-    "cancelled": "Cancelled",
-    "missed": "Missed",
-}
-
 RESULT_LABELS = {
     "win": "Win",
     "loss": "Loss",
@@ -36,7 +27,7 @@ def apply_page_config_from_file(file):
 
 
 # --- Trade helpers (можно переиспользовать в различных компонентах) ---
-def parse_trade_time(value: Optional[str]) -> time:
+def parse_time(value: Optional[str]) -> time:
     if isinstance(value, time):
         return value
     if isinstance(value, str):
@@ -49,7 +40,7 @@ def parse_trade_time(value: Optional[str]) -> time:
     return time(hour=now.hour, minute=now.minute, second=0)
 
 
-def parse_trade_date(value: Optional[str]) -> date:
+def parse_date(value: Optional[str]) -> date:
     if isinstance(value, date):
         return value
     if isinstance(value, str):
@@ -61,29 +52,24 @@ def parse_trade_date(value: Optional[str]) -> date:
     return date.today()
 
 
-def option_with_placeholder(
+def to_option_format(
     items: List[Dict[str, Any]],
     *,
-    placeholder: str,
     formatter,
 ) -> Dict[str, Optional[int]]:
-    options: Dict[str, Optional[int]] = {placeholder: None}
+    options: Dict = {}
     for item in items:
         options[formatter(item)] = item["id"]
     return options
 
 
 def current_option_label(options: Dict[str, Optional[int]], value: Optional[int]) -> str:
+    if not options:
+        return None
     for label, option_value in options.items():
         if option_value == value:
             return label
     return next(iter(options))
-
-
-def state_label(value: Optional[str]) -> str:
-    if not value:
-        return ""
-    return STATE_LABELS.get(value, value.replace("_", " ").title())
 
 
 def result_label(value: Optional[str]) -> str:

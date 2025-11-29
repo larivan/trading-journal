@@ -1269,6 +1269,8 @@ def update_trade(trade_id: int, data: Dict[str, Any]) -> None:
 
 
 def delete_trade(trade_id: int) -> None:
+    if trade_id is None:
+        return
     conn = get_conn()
     try:
         cur = conn.cursor()

@@ -3,7 +3,7 @@
 from typing import Any, Dict, List
 import streamlit as st
 from components.chart_editor import persist_chart_editor, render_chart_editor
-from helpers import option_with_placeholder, parse_date, parse_time
+from helpers import to_option_format, parse_date, parse_time
 from utils.trade_sessions import detect_trade_session
 from utils.session_state import dialog_is_active, close_dialog
 from config import LOCAL_TZ
@@ -48,15 +48,15 @@ def render_trade_manager() -> None:
     @st.dialog(_get_dialog_title(trade, is_new_trade), width="large", on_dismiss=_handle_dialog_dismiss)
     def _dialog() -> None:
         # Подготовка данных
-        accounts = option_with_placeholder(
+        accounts = to_option_format(
             list_accounts(),
             formatter=lambda acc: f"{acc['name']}",
         )
-        setups = option_with_placeholder(
+        setups = to_option_format(
             list_setups(),
             formatter=lambda setup: f"{setup['name']}",
         )
-        analyses = option_with_placeholder(
+        analyses = to_option_format(
             list_analysis(),
             formatter=lambda analysis: f"{analysis.get('date_local')} · {analysis.get('asset')}",
         )
@@ -129,7 +129,7 @@ def render_trade_manager() -> None:
         if not submitted:
             return
 
-        errors: List[str] = []
+        # Валидация и сохранение сделки
         if selected_status in ("Open", "Cancel", "Miss"):
             if not main_values["asset"]:
                 message_col.error("Select an asset.")
