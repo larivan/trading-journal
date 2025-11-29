@@ -315,31 +315,25 @@ CREATE TABLE IF NOT EXISTS analysis_stages (
 
 CREATE TABLE IF NOT EXISTS trades (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    local_tz           TEXT,
-    date_local         TEXT,
-    time_local         TEXT,
-
+    local_tz           TEXT NOT NULL,
+    date_local         TEXT NOT NULL,
+    time_local         TEXT NOT NULL,
     account_id         INTEGER,
     setup_id           INTEGER,
     analysis_id        INTEGER,
-    asset              TEXT,
-
-    session            TEXT CHECK (session IN ({_enum_sql(TRADE_SESSION_VALUES)})),
-
-    state              TEXT CHECK (state IN ({_enum_sql(TRADE_STATE_VALUES)})),
+    asset              TEXT NOT NULL,
+    session            TEXT CHECK (session IN ({_enum_sql(TRADE_SESSION_VALUES)})) NOT NULL,
+    state              TEXT CHECK (state IN ({_enum_sql(TRADE_STATE_VALUES)})) NOT NULL,
     result             TEXT CHECK (result IN ({_enum_sql(TRADE_RESULT_VALUES)})),
-
     net_pnl            REAL,
     risk_pct           REAL,
     risk_reward        REAL,
     reward_percent     REAL,
     estimation         INTEGER,
-
     emotional_problems TEXT,
     hot_thoughts       TEXT,
     cold_thoughts      TEXT,
-
+    
     FOREIGN KEY (account_id)  REFERENCES accounts(id)  ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (setup_id)    REFERENCES setups(id)    ON DELETE SET NULL   ON UPDATE CASCADE,
     FOREIGN KEY (analysis_id) REFERENCES analysis(id)  ON DELETE SET NULL   ON UPDATE CASCADE
@@ -951,7 +945,9 @@ def list_charts() -> List[Dict[str, Any]]:
         conn.close()
 
 
-def list_trade_charts(trade_id: int) -> List[Dict[str, Any]]:
+def list_trade_charts(trade_id: Optional[int]) -> List[Dict[str, Any]]:
+    if trade_id is None:
+        return []
     conn = get_conn()
     try:
         rows = conn.execute(

@@ -28,8 +28,8 @@ PAGES = {
 }
 
 # --- Справочники (энумы) ---
-TRADE_STATE_VALUES = ["open", "closed", "reviewed", "cancelled", "missed"]
-TRADE_RESULT_VALUES = ["win", "loss", "be"]
+TRADE_STATE_VALUES = ["Open", "Close", "Review", "Cancel", "Miss"]
+TRADE_RESULT_VALUES = ["Win", "Loss", "BE"]
 TRADE_SESSION_VALUES = ["Frankfurt", "LOKZ",
                         "Lunch", "Pre-NY", "NYKZ", "Other"]
 

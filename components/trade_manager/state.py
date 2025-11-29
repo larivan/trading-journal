@@ -1,33 +1,31 @@
 """Функции для работы со статусами сделок."""
 
-from typing import List
+from typing import Dict, List
 
-from .constants import STATUS_STAGE, STATUS_TRANSITIONS
+# --- Допустимые переходы между статусами сделки ---
+STATUS_TRANSITIONS: Dict[str, List[str]] = {
+    "Open": ["Open", "Close", "Cancel"],
+    "Close": ["Open", "Close", "Review"],
+    "Review": ["Close", "Review"],
+    "Cancel": ["Open", "Cancel", "Review"],
+    "Miss": ["Miss", "Review"],
+}
 
 
-def allowed_statuses(current_state: str) -> List[str]:
-    """Возвращает полный список статусов, куда можно перейти, включая обратные."""
+def get_allowed_statuses(current_state: str) -> List[str]:
+    """Возвращает объединённые переходы из текущего и предыдущего статусов."""
+    if not current_state or current_state not in STATUS_TRANSITIONS:
+        return ["Open", "Miss"]
 
-    forward = STATUS_TRANSITIONS.get(current_state, ["open"])
-    backward = [
-        state for state, options in STATUS_TRANSITIONS.items()
-        if current_state in options
-    ]
-    ordered: List[str] = []
-    for candidate in forward + backward + [current_state]:
-        if candidate not in ordered:
-            ordered.append(candidate)
-    return ordered or ["open"]
+    return STATUS_TRANSITIONS[current_state]
 
 
 def visible_stages(selected_state: str) -> List[str]:
     """Определяет, какие блоки формы показывать для выбранного статуса."""
-
-    stage = STATUS_STAGE.get(selected_state, "open")
-    if stage == "open":
-        return ["open"]
-    if stage == "closed":
-        return ["open", "closed"]
-    if stage == "review":
-        return ["open", "closed", "review"]
-    return ["open"]
+    if selected_state == "Open":
+        return ["main"]
+    if selected_state == "Close":
+        return ["main", "close"]
+    if selected_state == "Review":
+        return ["main", "close", "review"]
+    return ["main"]
