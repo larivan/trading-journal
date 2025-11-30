@@ -19,12 +19,6 @@ PAGES = {
         'default': False,
         'layout': 'wide',
     },
-    'notes': {
-        'title': 'Notes Database',
-        'icon': ':material/sticky_note_2:',
-        'default': False,
-        'layout': 'wide',
-    }
 }
 
 # --- Справочники (энумы) ---

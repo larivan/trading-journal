@@ -47,6 +47,7 @@ def render_trade_manager() -> None:
             st.session_state.pop("tm_trade_id", None)
             close_dialog()
             st.rerun()
+            return
 
     @st.dialog(_get_dialog_title(trade, is_new_trade), width="large", on_dismiss=_handle_dialog_dismiss)
     def _dialog() -> None:
@@ -202,7 +203,6 @@ def render_trade_manager() -> None:
                     ),
                 )
             except Exception as exc:
-                delete_trade(new_trade_id)
                 message_col.error(
                     f"Trade rolled back because charts could not be saved: {exc}"
                 )
@@ -210,7 +210,6 @@ def render_trade_manager() -> None:
 
             st.session_state["tm_trade_id"] = new_trade_id
             st.session_state["tm_success_message"] = "Trade created."
-            st.rerun()
         else:
             try:
                 update_trade(trade_id, payload)
@@ -233,7 +232,7 @@ def render_trade_manager() -> None:
                 return
 
             st.session_state["tm_success_message"] = "Trade saved."
-            st.rerun()
+        st.rerun()
 
     if dialog_is_active("trade_manager"):
         _dialog()

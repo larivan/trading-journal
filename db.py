@@ -3,7 +3,7 @@ import json
 import os
 import sqlite3
 from datetime import date, datetime, time, timedelta
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Dict, List, Optional, Union
 
 # Справочники вынесены в config.py
 from config import (
@@ -185,9 +185,6 @@ def _normalize_analysis_stage_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             )
         payload[key] = value
     return payload
-
-
-_UNSET: object = object()
 
 
 def _normalize_note_date(value: Optional[Union[str, date, datetime]]) -> Optional[str]:
@@ -643,76 +640,6 @@ def add_note(
         )
         conn.commit()
         return cur.lastrowid
-    finally:
-        conn.close()
-
-
-def update_note(
-    note_id: int,
-    title: Optional[str],
-    body: str,
-    *,
-    note_type: Union[str, None, object] = _UNSET,
-    date_local: Union[str, date, datetime, None, object] = _UNSET,
-    time_local: Union[str, time, datetime, None, object] = _UNSET,
-) -> None:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        assignments = ["title=?", "body=?"]
-        params: List[Any] = [title, body]
-        if date_local is not _UNSET:
-            assignments.append("date_local=?")
-            params.append(
-                _normalize_note_date(
-                    cast(Optional[Union[str, date, datetime]], date_local)
-                )
-            )
-        if time_local is not _UNSET:
-            assignments.append("time_local=?")
-            params.append(
-                _normalize_note_time(
-                    cast(Optional[Union[str, time, datetime]], time_local)
-                )
-            )
-        if note_type is not _UNSET:
-            assignments.append("note_type=?")
-            params.append(
-                _normalize_note_type(cast(Optional[str], note_type))
-            )
-        cur.execute(
-            """
-            UPDATE notes
-            SET {set_clause}
-            WHERE id=?
-            """.format(
-                set_clause=", ".join(assignments)
-            ),
-            (*params, note_id),
-        )
-        if cur.rowcount == 0:
-            raise ValueError(f"Заметка #{note_id} не найдена.")
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def delete_note(note_id: int) -> None:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("DELETE FROM notes WHERE id=?", (note_id,))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def get_note(note_id: int) -> Optional[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        row = conn.execute("SELECT * FROM notes WHERE id=?",
-                           (note_id,)).fetchone()
-        return dict(row) if row else None
     finally:
         conn.close()
 

@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Tuple
 import streamlit as st
 from config import TRADE_RESULT_VALUES
+from helpers import safe_choice_index
 
 
 def render_close_stage(
@@ -22,8 +23,7 @@ def render_close_stage(
             "Result",
             TRADE_RESULT_VALUES,
             placeholder="- Not set -",
-            index=TRADE_RESULT_VALUES.index(
-                data["result"]) if data["result"] else None,
+            index=safe_choice_index(TRADE_RESULT_VALUES, data["result"]),
         )
         data["net_pnl"] = cc2.number_input(
             "Net PnL, $",

@@ -22,9 +22,7 @@ def render_plan_section(
     plan_entries: List[PlanEntry],
     key_prefix: str,
     visible: bool,
-    expanded: bool,
-    on_add: Callable[[], None],
-    on_remove: Callable[[PlanEntry], None],
+    expanded: bool
 ) -> List[Dict[str, Any]]:
     """Отображает список планов и возвращает их формы."""
 
@@ -32,7 +30,6 @@ def render_plan_section(
         return []
 
     if not plan_entries:
-        on_add()
         return []
 
     forms: List[Dict[str, Any]] = []
@@ -53,29 +50,31 @@ def render_plan_section(
                 return
             entry = tab_lookup.get(tab["id"])
             if entry:
-                on_remove(entry)
+                _remove_plan_entry(entry)
 
         selected_tab, content_col = render_vertical_tabs(
-            key=f"plan_tabs_{key_prefix}",
+            key=f"plan_tabs_new",
             tabs=tabs,
             label="Plans",
             add_label="Add new",
             remove_label="×",
             min_tabs=1,
-            on_add=on_add,
+            on_add=_add_plan_entry,
             on_remove=_handle_remove,
         )
 
         if selected_tab:
-            entry = tab_lookup.get(selected_tab["id"])
-            if entry:
-                _render_plan_entry(entry, content_col, key_prefix)
+            active_entry = tab_lookup.get(selected_tab["id"])
+            if active_entry:
+                _render_plan_entry(active_entry, content_col)
 
         for entry in plan_entries:
             rows_source = entry.get("rows_source")
+
             if rows_source is None:
                 rows_source = chart_table_rows(entry.get("charts") or [])
                 entry["rows_source"] = rows_source
+
             chart_editor_key = _chart_editor_key(key_prefix, entry["key"])
             editor_value = entry.get("chart_editor_value")
             if editor_value is None:
@@ -99,27 +98,24 @@ def render_plan_section(
     return forms
 
 
-def _render_plan_entry(entry: PlanEntry, container: Any, key_prefix: str) -> None:
+def _render_plan_entry(entry: PlanEntry, container: Any) -> None:
     rows_source = entry.get("rows_source")
     if rows_source is None:
         rows_source = chart_table_rows(entry.get("charts") or [])
         entry["rows_source"] = rows_source
 
     with container:
-        chart_editor_value = render_chart_editor(
-            key=_chart_editor_key(key_prefix, entry["key"]),
+        entry["chart_editor_value"] = render_chart_editor(
+            key="sdfsdfsdfskjhgfks",
             base_rows=rows_source,
             layout_columns=2
         )
-        entry["chart_editor_value"] = chart_editor_value
 
-        summary_value = st.text_area(
+        entry["summary"] = st.text_area(
             "Plan Notes",
             value=entry.get("summary") or "",
             height=160,
-            key=_summary_key(key_prefix, entry["key"]),
         )
-        entry["summary"] = summary_value
 
 
 def _format_tab_label(idx: int, entry: PlanEntry) -> str:
@@ -130,12 +126,46 @@ def _format_tab_label(idx: int, entry: PlanEntry) -> str:
     return label
 
 
-def _summary_key(prefix: str, entry_key: str) -> str:
-    return f"{prefix}_plan_summary_{entry_key}"
+def _empty_plan_entry(context_key: str) -> Dict[str, Any]:
+    return {
+        "key": uuid4().hex,
+        "stage_id": None,
+        "summary": "",
+        "charts": [],
+        "rows_source": None,
+        "time_local": None,
+    }
 
 
-def _chart_editor_key(prefix: str, entry_key: str) -> str:
-    return f"plan_chart_editor_{prefix}_{entry_key}"
+def _add_plan_entry(context_key: str) -> None:
+    entries = st.session_state.setdefault(_plan_entries_key(context_key), [])
+    entries.append(_empty_plan_entry(context_key))
+    st.session_state[_plan_entries_key(context_key)] = entries
+
+
+def _remove_plan_entry(context_key: str, entry: Optional[Dict[str, Any]]) -> None:
+    if not entry:
+        return
+    entries = st.session_state.get(_plan_entries_key(context_key), [])
+    stage_id = entry.get("stage_id")
+    if stage_id:
+        removed_ids = st.session_state.setdefault(
+            _removed_plan_ids_key(context_key), []
+        )
+        if stage_id not in removed_ids:
+            removed_ids.append(stage_id)
+    entries = [item for item in entries if item["key"] != entry["key"]]
+    if not entries:
+        entries.append(_empty_plan_entry(context_key))
+    st.session_state[_plan_entries_key(context_key)] = entries
+    _cleanup_plan_entry_state(context_key, entry["key"])
+
+
+def _cleanup_plan_entry_state(context_key: str, entry_key: str) -> None:
+    summary_key = f"{context_key}_plan_summary_{entry_key}"
+    st.session_state.pop(summary_key, None)
+    chart_key = f"plan_chart_editor_{context_key}_{entry_key}"
+    st.session_state.pop(chart_editor_value_state_key(chart_key), None)
 
 
 __all__ = ["render_plan_section"]

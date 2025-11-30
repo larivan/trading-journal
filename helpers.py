@@ -98,6 +98,15 @@ def custom_selectbox(
     return selection.get("value") if isinstance(selection, dict) else None
 
 
+def safe_choice_index(options: List[str], value: Optional[str]) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return options.index(value)
+    except ValueError:
+        return None
+
+
 def result_label(value: Optional[str]) -> str:
     if not value:
         return ""

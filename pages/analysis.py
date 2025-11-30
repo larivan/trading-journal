@@ -5,11 +5,6 @@ import streamlit as st
 
 from components.analysis_manager import render_analysis_manager
 from components.entity_table import render_entity_table
-from components.database_toolbar import render_database_toolbar
-from components.entity_filters import (
-    TAB_DEFINITIONS,
-    ensure_custom_range,
-)
 from config import (
     ASSETS,
     DAILY_BIAS,
@@ -19,38 +14,88 @@ from config import (
 from db import delete_analysis, list_analysis
 from helpers import apply_page_config_from_file, format_local_date
 from utils.session_state import (
-    apply_period_filters,
-    close_entity_dialog,
-    dialog_is_open,
-    get_selected_entity,
-    init_entity_state,
-    open_entity_dialog,
+    open_dialog,
     set_selected_entity,
-    switch_to_edit_dialog,
 )
 
 # === ОСНОВНАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ АНАЛИЗОВ ===
 apply_page_config_from_file(__file__)
 
-today = date.today()
-default_analysis_range = (today - timedelta(days=7), today)
-init_entity_state(entity_name="analysis", default_range=default_analysis_range)
+ANALYSIS_DIALOG_NAME = "analysis_manager"
+ANALYSIS_ID_STATE = "am_analysis_id"
+
+TAB_DEFINITIONS: Dict[str, str] = {
+    "today": "Today",
+    "week": "Current week",
+    "month": "Current month",
+    "quarter": "Current quarter",
+    "year": "Current year",
+    "custom": "Custom",
+}
 
 
-# === ОТРИСОВКА И ПРИМЕНЕНИЕ КАСТОМНЫХ ФИЛЬТРОВ ===
-def _render_analysis_custom_filters(
-    initial_range: Optional[Tuple[Optional[date], Optional[date]]],
-) -> Tuple[Dict[str, Optional[str]], Tuple[Optional[date], Optional[date]]]:
-    """Отрисовывает контент вкладки Custom для таблицы анализов."""
-    default_from, default_to = ensure_custom_range(initial_range)
+def _open_new_analysis() -> None:
+    st.session_state.pop(ANALYSIS_ID_STATE, None)
+    open_dialog(ANALYSIS_DIALOG_NAME)
 
-    asset_options = ["Все"] + ASSETS
-    daily_bias_options = ["Все"] + DAILY_BIAS
-    fact_bias_options = ["Все"] + DAILY_BIAS
-    day_result_options = ["Все"] + DAY_RESULT_VALUES
-    state_options = ["Все"] + ANALYSIS_STATE_VALUES
 
+def _tab_date_range(tab_key: str) -> Tuple[Optional[date], Optional[date]]:
+    today = date.today()
+    if tab_key == "today":
+        return today, today
+    if tab_key == "week":
+        start = today - timedelta(days=today.weekday())
+        return start, today
+    if tab_key == "month":
+        start = today.replace(day=1)
+        return start, today
+    if tab_key == "quarter":
+        quarter = (today.month - 1) // 3
+        month_start = quarter * 3 + 1
+        start = today.replace(month=month_start, day=1)
+        return start, today
+    if tab_key == "year":
+        start = today.replace(month=1, day=1)
+        return start, today
+    return None, None
+
+
+# === ВЕРХНЯЯ ПАНЕЛЬ С ВЫБОРОМ ПЕРИОДА ===
+period_col, _, actions_col = st.columns(
+    [0.5, 0.3, 0.2], vertical_alignment="bottom"
+)
+with period_col:
+    period_key = "analysis_current_period_label"
+    if not st.session_state.get(period_key):
+        st.session_state[period_key] = list(TAB_DEFINITIONS.values())[0]
+    selected_label = st.segmented_control(
+        "Период",
+        options=TAB_DEFINITIONS.values(),
+        default=list(TAB_DEFINITIONS.values())[0],
+        key=period_key,
+        width="stretch",
+    )
+
+with actions_col:
+    if st.button(
+        "Create",
+        type="primary",
+        width="stretch",
+    ):
+        _open_new_analysis()
+
+# === ФИЛЬТРЫ ПЕРИОДОВ И ДОПОЛНИТЕЛЬНЫЕ НАСТРОЙКИ ===
+filters: Dict[str, Any] = {}
+date_from: Optional[date] = None
+date_to: Optional[date] = None
+
+label_to_key = {label: key for key, label in TAB_DEFINITIONS.items()}
+selected_key = label_to_key.get(selected_label, "today")
+
+if selected_key == "custom":
     with st.container():
+        default_from = date.today() - timedelta(days=7)
+        default_to = date.today()
         fc1, fc2, fc3, fc4, fc5, fc6 = st.columns(6)
         raw_date_range = fc1.date_input(
             "Диапазон дат",
@@ -66,28 +111,16 @@ def _render_analysis_custom_filters(
             raw_from, raw_to = raw_date_range, default_to
         date_from = raw_from if isinstance(raw_from, date) else default_from
         date_to = raw_to if isinstance(raw_to, date) else default_to
-        asset_choice = fc2.selectbox(
-            "Инструмент",
-            asset_options
-        )
-        daily_bias_choice = fc3.selectbox(
-            "Daily bias",
-            daily_bias_options
-        )
-        fact_bias_choice = fc4.selectbox(
-            "Fact bias",
-            fact_bias_options
-        )
+        asset_choice = fc2.selectbox("Инструмент", ["Все"] + ASSETS)
+        daily_bias_choice = fc3.selectbox("Daily bias", ["Все"] + DAILY_BIAS)
+        fact_bias_choice = fc4.selectbox("Fact bias", ["Все"] + DAILY_BIAS)
         day_result_choice = fc5.selectbox(
-            "Результат",
-            day_result_options
+            "Результат", ["Все"] + DAY_RESULT_VALUES
         )
         state_choice = fc6.selectbox(
-            "Тип анализа",
-            state_options
+            "Тип анализа", ["Все"] + ANALYSIS_STATE_VALUES
         )
 
-    filters: Dict[str, Optional[str]] = {}
     if asset_choice != "Все":
         filters["asset"] = asset_choice
     if daily_bias_choice != "Все":
@@ -98,25 +131,16 @@ def _render_analysis_custom_filters(
         filters["day_result"] = day_result_choice
     if state_choice != "Все":
         filters["state"] = state_choice
+else:
+    date_from, date_to = _tab_date_range(selected_key)
 
-    return filters, (date_from, date_to)
-
-
-# === ВЕРХНЯЯ ПАНЕЛЬ С ПЕРИОДОМ И СОЗДАНИЕМ АНАЛИЗОВ ===
-render_database_toolbar(
-    tab_definitions=TAB_DEFINITIONS,
-    session_prefix="analysis",
-)
-tab_filters, date_from, date_to, selected_tab_key = apply_period_filters(
-    entity_name="analysis",
-    session_prefix="analysis",
-    default_range=default_analysis_range,
-    tab_definitions=TAB_DEFINITIONS,
-    render_custom_filters=_render_analysis_custom_filters,
-)
+if date_from:
+    filters["date_from"] = date_from.isoformat()
+if date_to:
+    filters["date_to"] = date_to.isoformat()
 
 # === ЗАГРУЗКА ДАННЫХ ДЛЯ ОТОБРАЖЕНИЯ ===
-rows = list_analysis(tab_filters)
+rows = list_analysis(filters)
 
 
 # --- Настройка колонок таблицы ---
@@ -142,28 +166,23 @@ def _handle_open_analysis(row: Dict[str, Any]) -> None:
     if not analysis_id:
         return
     set_selected_entity("analysis", analysis_id)
-    open_entity_dialog("analysis", "edit")
-
-
-def _delete_analysis_and_refresh(analysis_id: Optional[int]) -> None:
-    if not analysis_id:
-        return
-    try:
-        delete_analysis(analysis_id)
-        set_selected_entity("analysis", None)
-        st.rerun()
-    except Exception as exc:
-        st.error(f"Не удалось удалить анализ: {exc}")
+    st.session_state[ANALYSIS_ID_STATE] = analysis_id
+    open_dialog(ANALYSIS_DIALOG_NAME)
 
 
 def _handle_delete_analyses(ids: List[Any]) -> None:
     if not ids:
         return
-    _delete_analysis_and_refresh(ids[0])
+    for id in ids:
+        try:
+            delete_analysis(id)
+        except Exception as exc:
+            st.toast(f"Failed to delete trade with ID {id}: {exc}", icon="❌")
+    st.rerun()
 
 
 # --- Отрисовываем таблицу с подключенными обработчиками ---
-table_key = f"analysis_table_{selected_tab_key}"
+table_key = f"analysis_table_{selected_key}"
 render_entity_table(
     entity_name="analysis",
     key=table_key,
@@ -177,27 +196,4 @@ render_entity_table(
 
 
 # === ЛОГИКА УПРАВЛЕНИЯ МОДАЛЬНЫМИ ОКНАМИ ===
-def _close_edit_dialog() -> None:
-    close_entity_dialog("analysis", "edit")
-
-
-def _handle_analysis_created(new_id: int) -> None:
-    switch_to_edit_dialog("analysis", new_id)
-
-
-def _close_create_dialog() -> None:
-    close_entity_dialog("analysis", "create")
-
-
-# === УСЛОВНЫЙ РЕНДЕР ДИАЛОГОВ СОГЛАСНО СОСТОЯНИЮ ===
-if dialog_is_open("analysis", "create"):
-    render_analysis_manager(
-        analysis_id=None,
-        on_created=_handle_analysis_created,
-        on_close=_close_create_dialog,
-    )
-if dialog_is_open("analysis", "edit"):
-    render_analysis_manager(
-        analysis_id=get_selected_entity("analysis"),
-        on_close=_close_edit_dialog,
-    )
+render_analysis_manager()

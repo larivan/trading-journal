@@ -4,18 +4,9 @@ from typing import Any, Dict, List, Optional
 
 import streamlit as st
 from config import ASSETS
-from helpers import custom_selectbox
+from helpers import custom_selectbox, safe_choice_index
 
 OptionItem = Dict[str, Any]
-
-
-def _safe_choice_index(options: List[str], value: Optional[str]) -> Optional[int]:
-    if value is None:
-        return None
-    try:
-        return options.index(value)
-    except ValueError:
-        return None
 
 
 def render_main_stage(
@@ -49,7 +40,7 @@ def render_main_stage(
             "Asset",
             ASSETS,
             placeholder="- Not set -",
-            index=_safe_choice_index(ASSETS, data.get("asset")),
+            index=safe_choice_index(ASSETS, data.get("asset")),
         )
         data["analysis"] = custom_selectbox(
             "Daily analysis",
