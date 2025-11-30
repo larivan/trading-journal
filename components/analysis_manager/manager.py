@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
-from uuid import uuid4
+from typing import Any, Dict
 
 import streamlit as st
 
 from components.chart_editor import (
-    chart_editor_value_state_key,
-    normalize_editor_rows,
     persist_chart_editor,
 )
 from config import ANALYSIS_STATE_VALUES
@@ -67,13 +64,8 @@ def render_analysis_manager() -> None:
             return
 
     defaults = build_analysis_defaults(analysis)
-    plan_entries = _ensure_plan_entries(defaults["plans"])
-    # removed_plan_ids = st.session_state.setdefault(
-    #     _removed_plan_ids_key(context_key), []
-    # )
 
     def _handle_dialog_dismiss() -> None:
-        # _reset_dialog_state(context_key)
         st.session_state.pop(ANALYSIS_CONTEXT_STATE, None)
         st.session_state.pop(ANALYSIS_ID_STATE, None)
         close_dialog()
@@ -115,11 +107,12 @@ def render_analysis_manager() -> None:
             state_key=f"${state_key}_pre"
         )
 
-        # plan_forms = render_plan_section(
-        #     plan_entries=plan_entries,
-        #     visible="plan" in visible,
-        #     expanded=(selected_stage == "plan")
-        # )
+        plan_forms, removed_plan_ids = render_plan_section(
+            plan_entries=defaults["plans"],
+            visible="plan" in visible,
+            expanded=(selected_stage == "plan"),
+            state_key=f"${state_key}_plan",
+        )
 
         post_analysis_values, post_values = render_post_stage(
             stage_data=defaults["stages"].get("post-market"),
@@ -137,7 +130,6 @@ def render_analysis_manager() -> None:
             analysis_payload.update(pre_analysis_values)
         if post_analysis_values:
             analysis_payload.update(post_analysis_values)
-        # forms_to_save.extend(plan_forms)
 
         current_analysis_id = analysis_id
         try:
@@ -180,6 +172,46 @@ def render_analysis_manager() -> None:
                 message_col.error(f"Failed to save charts: {exc}")
                 return
 
+        if removed_plan_ids:
+            for stage_id in removed_plan_ids:
+                if not stage_id:
+                    continue
+                try:
+                    delete_analysis_stage(stage_id)
+                except Exception as exc:
+                    message_col.error(f"Failed to remove plan: {exc}")
+                    return
+
+        for plan_form in plan_forms:
+            charts_payload = plan_form.get("charts") or {}
+            plan_stage_id = plan_form.get("stage_id")
+            plan_payload = {
+                "analysis_id": current_analysis_id,
+                "type": "plan",
+                "summary": plan_form.get("summary") or "",
+            }
+            try:
+                if plan_stage_id:
+                    update_analysis_stage(plan_stage_id, plan_payload)
+                else:
+                    plan_payload["time_local"] = plan_form.get("time_local") or datetime.now()
+                    plan_stage_id = add_analysis_stage(plan_payload)
+            except Exception as exc:
+                message_col.error(f"Failed to save plan: {exc}")
+                return
+
+            try:
+                persist_chart_editor(
+                    attached_charts=charts_payload.get("rows_source") or [],
+                    editor_rows=charts_payload.get("editor_value") or [],
+                    attach_chart=lambda chart_id, stage_id=plan_stage_id: attach_chart_to_analysis_stage(
+                        stage_id, chart_id
+                    ),
+                )
+            except Exception as exc:
+                message_col.error(f"Failed to save charts: {exc}")
+                return
+
         if (post_values):
             post_stage_id = post_values["stage_id"]
             post_values.update({
@@ -207,42 +239,22 @@ def render_analysis_manager() -> None:
             except Exception as exc:
                 message_col.error(f"Failed to save charts: {exc}")
                 return
+
+        plan_state_key = f"${state_key}_plan"
+        plan_tabs_key = f"{plan_state_key}_tabs"
+        st.session_state.pop(f"{plan_state_key}_plans", None)
+        st.session_state.pop(f"{plan_state_key}_plans_removed", None)
+        st.session_state.pop(plan_tabs_key, None)
+        st.session_state.pop(f"{plan_tabs_key}_select_new_tab", None)
+        prefixes = (f"{plan_state_key}_summary_", f"{plan_state_key}_chart_")
+        for key in list(st.session_state.keys()):
+            if key.startswith(prefixes):
+                st.session_state.pop(key, None)
+
         st.rerun()
 
     if dialog_is_active(ANALYSIS_DIALOG_NAME):
         _dialog()
-
-
-def _plan_entries_key(context_key: str) -> str:
-    return f"{context_key}_plan_entries"
-
-
-def _removed_plan_ids_key(context_key: str) -> str:
-    return f"{context_key}_removed_plan_ids"
-
-
-def _ensure_plan_entries(
-    defaults: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    entries = []
-    for item in defaults:
-        stage_id = item.get("stage_id")
-        entries.append({
-            "key": str(stage_id or uuid4().hex),
-            "stage_id": stage_id,
-            "summary": item.get("summary") or "",
-            "charts": item.get("charts") or [],
-            "rows_source": item.get("rows_source"),
-            "time_local": item.get("time_local"),
-        })
-
-
-def _reset_dialog_state(context_key: str) -> None:
-    entries_key = _plan_entries_key(context_key)
-    entries = st.session_state.pop(entries_key, [])
-    for entry in entries:
-        _cleanup_plan_entry_state(context_key, entry["key"])
-    st.session_state.pop(_removed_plan_ids_key(context_key), None)
 
 
 def _get_dialog_title(data: Dict[str, Any], is_new: bool) -> str:

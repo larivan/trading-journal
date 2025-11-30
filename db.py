@@ -1276,7 +1276,7 @@ def list_trades(filters: Optional[Dict[str, Any]] = None,
                 f"order_by must be one of: {sorted(TRADE_ORDER_COLUMNS)}")
         q += f" ORDER BY {order_by} {'ASC' if ascending else 'DESC'}"
     else:
-        q += " ORDER BY date_local ASC, id ASC"
+        q += " ORDER BY date_local DESC, id DESC"
 
     conn = get_conn()
     try:

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Tuple
+from uuid import uuid4
 
 import streamlit as st
 
@@ -20,152 +21,153 @@ PlanEntry = Dict[str, Any]
 def render_plan_section(
     *,
     plan_entries: List[PlanEntry],
-    key_prefix: str,
     visible: bool,
-    expanded: bool
-) -> List[Dict[str, Any]]:
-    """Отображает список планов и возвращает их формы."""
+    expanded: bool,
+    state_key: str,
+) -> Tuple[List[Dict[str, Any]], List[int]]:
+    """Отрисовывает планы и возвращает формы + список удаленных stage_id."""
 
     if not visible:
-        return []
+        return [], []
 
-    if not plan_entries:
-        return []
+    entries_key = f"{state_key}_plans"
+    removed_key = f"{state_key}_plans_removed"
+    if entries_key not in st.session_state:
+        st.session_state[entries_key] = [
+            {
+                "key": entry.get("key") or str(entry.get("stage_id") or uuid4().hex),
+                "stage_id": entry.get("stage_id"),
+                "summary": entry.get("summary") or "",
+                "charts": entry.get("charts") or [],
+                "time_local": entry.get("time_local"),
+            }
+            for entry in (plan_entries or [])
+        ] or [_empty_entry()]
+    st.session_state.setdefault(removed_key, [])
 
-    forms: List[Dict[str, Any]] = []
+    entries: List[PlanEntry] = st.session_state[entries_key]
+    removed_ids: List[int] = st.session_state[removed_key]
 
     with st.expander("Plan", expanded=expanded):
         tabs = [
-            {
-                "id": entry["key"],
-                "label": _format_tab_label(idx, entry),
-            }
-            for idx, entry in enumerate(plan_entries, start=1)
+            {"id": entry["key"], "label": _tab_label(idx, entry)}
+            for idx, entry in enumerate(entries, start=1)
         ]
-
-        tab_lookup = {entry["key"]: entry for entry in plan_entries}
-
-        def _handle_remove(tab: Optional[Dict[str, Any]]) -> None:
-            if not tab:
-                return
-            entry = tab_lookup.get(tab["id"])
-            if entry:
-                _remove_plan_entry(entry)
-
         selected_tab, content_col = render_vertical_tabs(
-            key=f"plan_tabs_new",
+            key=f"{state_key}_tabs",
             tabs=tabs,
             label="Plans",
-            add_label="Add new",
+            add_label="Add plan",
             remove_label="×",
             min_tabs=1,
-            on_add=_add_plan_entry,
-            on_remove=_handle_remove,
+            on_add=lambda: st.session_state.setdefault(
+                entries_key, []).append(_empty_entry()),
+            on_remove=lambda tab: _remove_entry(
+                entries_key, removed_key, state_key, tab),
         )
 
         if selected_tab:
-            active_entry = tab_lookup.get(selected_tab["id"])
-            if active_entry:
-                _render_plan_entry(active_entry, content_col)
-
-        for entry in plan_entries:
-            rows_source = entry.get("rows_source")
-
-            if rows_source is None:
-                rows_source = chart_table_rows(entry.get("charts") or [])
-                entry["rows_source"] = rows_source
-
-            chart_editor_key = _chart_editor_key(key_prefix, entry["key"])
-            editor_value = entry.get("chart_editor_value")
-            if editor_value is None:
-                editor_value = st.session_state.get(
-                    chart_editor_value_state_key(chart_editor_key)
-                )
-            forms.append(
-                {
-                    "stage_id": entry.get("stage_id"),
-                    "stage_type": "plan",
-                    "summary": entry.get("summary") or "",
-                    "charts": {
-                        "attached": entry.get("charts") or [],
-                        "rows_source": rows_source,
-                        "editor_value": editor_value,
-                    },
-                    "entry_key": entry["key"],
-                }
+            active = next(
+                (item for item in entries if item["key"]
+                 == selected_tab["id"]), None
             )
+            if active:
+                _render_entry(active, content_col, state_key)
 
-    return forms
-
-
-def _render_plan_entry(entry: PlanEntry, container: Any) -> None:
-    rows_source = entry.get("rows_source")
-    if rows_source is None:
-        rows_source = chart_table_rows(entry.get("charts") or [])
-        entry["rows_source"] = rows_source
-
-    with container:
-        entry["chart_editor_value"] = render_chart_editor(
-            key="sdfsdfsdfskjhgfks",
-            base_rows=rows_source,
-            layout_columns=2
+    forms: List[Dict[str, Any]] = []
+    for entry in entries:
+        chart_rows = chart_table_rows(entry.get("charts") or [])
+        chart_key = _chart_editor_key(state_key, entry["key"])
+        summary_key = _summary_key(state_key, entry["key"])
+        forms.append(
+            {
+                "stage_id": entry.get("stage_id"),
+                "stage_type": "plan",
+                "summary": st.session_state.get(summary_key, entry.get("summary") or ""),
+                "charts": {
+                    "rows_source": chart_rows,
+                    "editor_value": st.session_state.get(
+                        chart_editor_value_state_key(chart_key), chart_rows
+                    ),
+                },
+                "entry_key": entry["key"],
+                "time_local": entry.get("time_local"),
+            }
         )
 
-        entry["summary"] = st.text_area(
-            "Plan Notes",
+    return forms, removed_ids
+
+
+def _render_entry(entry: PlanEntry, container: Any, state_key: str) -> None:
+    chart_rows = chart_table_rows(entry.get("charts") or [])
+    with container:
+        st.markdown("#### Charts")
+        render_chart_editor(
+            key=_chart_editor_key(state_key, entry["key"]),
+            base_rows=chart_rows,
+            layout_columns=2,
+        )
+        st.divider()
+        st.text_area(
+            "Plan notes",
             value=entry.get("summary") or "",
+            key=_summary_key(state_key, entry["key"]),
             height=160,
         )
 
 
-def _format_tab_label(idx: int, entry: PlanEntry) -> str:
-    label = f"Plan №{idx}"
-    stage_time = (entry.get("time_local") or "").strip()
-    if stage_time:
-        label = f"{label} · {stage_time}"
-    return label
+def _remove_entry(
+    entries_key: str,
+    removed_key: str,
+    state_key: str,
+    tab: Any,
+) -> None:
+    entry_id = tab.get("id") if isinstance(tab, dict) else None
+    if entry_id is None:
+        return
+
+    entries = st.session_state.get(entries_key, [])
+    remaining: List[PlanEntry] = []
+    for item in entries:
+        if item.get("key") != entry_id:
+            remaining.append(item)
+            continue
+        stage_id = item.get("stage_id")
+        if stage_id:
+            removed = st.session_state.setdefault(removed_key, [])
+            if stage_id not in removed:
+                removed.append(stage_id)
+        st.session_state.pop(_summary_key(state_key, entry_id), None)
+        st.session_state.pop(
+            chart_editor_value_state_key(
+                _chart_editor_key(state_key, entry_id)), None
+        )
+
+    st.session_state[entries_key] = remaining or [_empty_entry()]
 
 
-def _empty_plan_entry(context_key: str) -> Dict[str, Any]:
+def _empty_entry() -> PlanEntry:
     return {
         "key": uuid4().hex,
         "stage_id": None,
         "summary": "",
         "charts": [],
-        "rows_source": None,
         "time_local": None,
     }
 
 
-def _add_plan_entry(context_key: str) -> None:
-    entries = st.session_state.setdefault(_plan_entries_key(context_key), [])
-    entries.append(_empty_plan_entry(context_key))
-    st.session_state[_plan_entries_key(context_key)] = entries
+def _tab_label(idx: int, entry: PlanEntry) -> str:
+    base = f"Plan №{idx}"
+    stage_time = (entry.get("time_local") or "").strip()
+    return f"{base} · {stage_time}" if stage_time else base
 
 
-def _remove_plan_entry(context_key: str, entry: Optional[Dict[str, Any]]) -> None:
-    if not entry:
-        return
-    entries = st.session_state.get(_plan_entries_key(context_key), [])
-    stage_id = entry.get("stage_id")
-    if stage_id:
-        removed_ids = st.session_state.setdefault(
-            _removed_plan_ids_key(context_key), []
-        )
-        if stage_id not in removed_ids:
-            removed_ids.append(stage_id)
-    entries = [item for item in entries if item["key"] != entry["key"]]
-    if not entries:
-        entries.append(_empty_plan_entry(context_key))
-    st.session_state[_plan_entries_key(context_key)] = entries
-    _cleanup_plan_entry_state(context_key, entry["key"])
+def _chart_editor_key(state_key: str, entry_key: str) -> str:
+    return f"{state_key}_chart_{entry_key}"
 
 
-def _cleanup_plan_entry_state(context_key: str, entry_key: str) -> None:
-    summary_key = f"{context_key}_plan_summary_{entry_key}"
-    st.session_state.pop(summary_key, None)
-    chart_key = f"plan_chart_editor_{context_key}_{entry_key}"
-    st.session_state.pop(chart_editor_value_state_key(chart_key), None)
+def _summary_key(state_key: str, entry_key: str) -> str:
+    return f"{state_key}_summary_{entry_key}"
 
 
 __all__ = ["render_plan_section"]

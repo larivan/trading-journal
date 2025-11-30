@@ -298,10 +298,12 @@ def render_vertical_tabs(
     if on_add and add_trigger:
         st.session_state[_pending_select_key(key)] = True
         on_add()
+        st.rerun()
 
     remove_target = result.get("remove")
     if on_remove and remove_target is not None:
         on_remove(tab_lookup.get(remove_target, {"id": remove_target}))
+        st.rerun()
 
     return tab_lookup.get(selected_id), content_col.container()
 
