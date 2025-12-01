@@ -5,8 +5,20 @@ import streamlit as st
 from components.chart_editor import persist_chart_editor, render_chart_editor
 from helpers import to_option_format, parse_date, parse_time
 from utils.trade_sessions import detect_trade_session
-from utils.session_state import dialog_is_active, close_dialog
-from config import LOCAL_TZ
+from utils.session_state import (
+    open_dialog,
+    close_dialog,
+    dialog_is_active,
+    get_previous_dialog,
+    remove_previous_dialog
+)
+from config import (
+    TRADE_DIALOG_NAME,
+    TRADE_ID_STATE,
+    TRADE_SUCCESS_STATE,
+    TM_KEY_PREFIX,
+    LOCAL_TZ
+)
 from .state import get_allowed_statuses, visible_stages
 from .defaults import get_trade_defaults
 from .sections import (
@@ -31,20 +43,21 @@ def render_trade_manager() -> None:
     """Единое окно создания и редактирования сделок."""
     trade_id = None
     is_new_trade = True
-    if "tm_trade_id" in st.session_state:
+    if TRADE_ID_STATE in st.session_state:
         is_new_trade = False
-        trade_id = st.session_state["tm_trade_id"]
+        trade_id = st.session_state[TRADE_ID_STATE]
 
-    if "tm_success_message" in st.session_state:
-        st.toast(st.session_state.pop("tm_success_message"), icon="🔥")
+    if TRADE_SUCCESS_STATE in st.session_state:
+        st.toast(st.session_state.pop(TRADE_SUCCESS_STATE), icon="🔥")
+
+    state_key = f"{TM_KEY_PREFIX}{trade_id or 'new'}"
 
     trade: Dict[str, Any] = {}
-
     if not is_new_trade:
         trade = get_trade_by_id(trade_id)
         if not trade:
             st.error("Trade not found.")
-            st.session_state.pop("tm_trade_id", None)
+            st.session_state.pop(TRADE_ID_STATE, None)
             close_dialog()
             st.rerun()
             return
@@ -64,18 +77,13 @@ def render_trade_manager() -> None:
             list_analysis(),
             formatter=lambda analysis: f"{analysis.get('date_local')} · {analysis.get('asset')}",
         )
-        defaults = get_trade_defaults(
-            trade,
-            accounts,
-            analyses,
-            setups
-        )
+        defaults = get_trade_defaults(trade)
         charts = list_trade_charts(trade_id)
 
         # Рендерим хедер с выбором статуса и кнопками действий
         with st.container(border=True):
             status_col, message_col, actions_col = st.columns(
-                [0.2, 0.6, 0.2],
+                [0.2, 0.5, 0.3],
                 gap="large",
                 vertical_alignment="bottom",
             )
@@ -90,7 +98,17 @@ def render_trade_manager() -> None:
                 )
 
             with actions_col:
-                submitted = actions_col.button(
+                c1, c2 = st.columns(2)
+                if get_previous_dialog():
+                    if c1.button(
+                        ":material/arrow_back: Back",
+                        width="stretch"
+                    ):
+                        remove_previous_dialog()
+                        open_dialog("analysis_manager")
+                        st.rerun()
+
+                submitted = c2.button(
                     "Save",
                     type="primary",
                     width="stretch"
@@ -108,24 +126,27 @@ def render_trade_manager() -> None:
                 account_options=accounts,
                 analysis_options=analyses,
                 setup_options=setups,
+                state_key=f"{state_key}_main"
             )
 
             close_values = render_close_stage(
                 visible="close" in visible,
                 expanded=("Close" == selected_status),
                 defaults=defaults['close'],
+                state_key=f"{state_key}_close"
             )
 
             review_values = render_review_stage(
                 visible="review" in visible,
                 expanded=("Review" == selected_status),
                 defaults=defaults['review'],
+                state_key=f"{state_key}_review"
             )
 
         # Панель с редактором графиков
         with side_col:
             current_charts = render_chart_editor(
-                key=f"tm_chart_editor_new_trade",
+                key=f"{state_key}_chart_editor",
                 base_rows=charts,
                 layout_columns=2,
             )
@@ -208,8 +229,8 @@ def render_trade_manager() -> None:
                 )
                 return
 
-            st.session_state["tm_trade_id"] = new_trade_id
-            st.session_state["tm_success_message"] = "Trade created."
+            st.session_state[TRADE_ID_STATE] = new_trade_id
+            st.session_state[TRADE_SUCCESS_STATE] = "Trade created."
         else:
             try:
                 update_trade(trade_id, payload)
@@ -231,10 +252,10 @@ def render_trade_manager() -> None:
                 )
                 return
 
-            st.session_state["tm_success_message"] = "Trade saved."
+            st.session_state[TRADE_SUCCESS_STATE] = "Trade saved."
         st.rerun()
 
-    if dialog_is_active("trade_manager"):
+    if dialog_is_active(TRADE_DIALOG_NAME):
         _dialog()
 
 
@@ -251,4 +272,5 @@ def _get_dialog_title(data: Dict[str, Any], is_new_trade: bool) -> str:
 
 def _handle_dialog_dismiss() -> None:
     close_dialog()
-    st.session_state.pop("tm_trade_id", None)
+    st.session_state.pop(TRADE_ID_STATE, None)
+    st.session_state.pop("tm_default_analysis_id", None)

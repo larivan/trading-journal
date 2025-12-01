@@ -14,7 +14,7 @@ from utils.session_state import (
     open_dialog,
 )
 from config import (
-    ASSETS,
+    ASSETS_VALUES,
     TRADE_RESULT_VALUES,
     TRADE_SESSION_VALUES,
     TRADE_STATE_VALUES
@@ -102,7 +102,7 @@ if selected_key == "custom":
             )
         asset = fc4.selectbox(
             "Asset",
-            ASSETS,
+            ASSETS_VALUES,
             placeholder="All",
             index=None,
         )

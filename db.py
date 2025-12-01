@@ -8,8 +8,6 @@ from typing import Any, Dict, List, Optional, Union
 # Справочники вынесены в config.py
 from config import (
     ANALYSIS_STATE_VALUES,
-    EMOTIONAL_PROBLEMS,
-    NOTE_TYPE_VALUES,
     TRADE_RESULT_VALUES,
     TRADE_SESSION_VALUES,
     TRADE_STATE_VALUES,
@@ -186,99 +184,6 @@ def _normalize_analysis_stage_payload(data: Dict[str, Any]) -> Dict[str, Any]:
         payload[key] = value
     return payload
 
-
-def _normalize_note_date(value: Optional[Union[str, date, datetime]]) -> Optional[str]:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        value = value.date()
-    if isinstance(value, date):
-        return value.isoformat()
-    text = str(value).strip()
-    return text or None
-
-
-def _normalize_note_time(value: Optional[Union[str, time, datetime]]) -> Optional[str]:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        value = value.time()
-    if isinstance(value, time):
-        return value.strftime("%H:%M:%S")
-    text = str(value).strip()
-    return text or None
-
-
-def _normalize_note_type(value: Optional[str]) -> Optional[str]:
-    if value is None:
-        return None
-    text = value.strip()
-    if not text:
-        return None
-    if text not in NOTE_TYPE_VALUES:
-        raise ValueError(
-            f"note_type должно быть одним из: {', '.join(NOTE_TYPE_VALUES)}"
-        )
-    return text
-
-
-def _serialize_emotional_problems(value: Optional[Any]) -> Optional[str]:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        value = value.strip()
-        if not value:
-            return None
-        try:
-            parsed = json.loads(value)
-            if isinstance(parsed, list):
-                selection = [item for item in parsed
-                             if item in EMOTIONAL_PROBLEMS]
-                return json.dumps(selection) if selection else None
-        except json.JSONDecodeError:
-            pass
-        selection = [
-            item.strip() for item in value.split(",")
-            if item.strip() in EMOTIONAL_PROBLEMS
-        ]
-        return json.dumps(selection) if selection else None
-    if isinstance(value, (list, tuple, set)):
-        selection = [item for item in value if item in EMOTIONAL_PROBLEMS]
-        return json.dumps(selection) if selection else None
-    return None
-
-
-def parse_emotional_problems(raw: Optional[str]) -> List[str]:
-    if not raw:
-        return []
-    if isinstance(raw, str):
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, list):
-                return [item for item in parsed if item in EMOTIONAL_PROBLEMS]
-        except json.JSONDecodeError:
-            pass
-        return [
-            item.strip() for item in raw.split(",")
-            if item.strip() in EMOTIONAL_PROBLEMS
-        ]
-    if isinstance(raw, (list, tuple)):
-        return [item for item in raw if item in EMOTIONAL_PROBLEMS]
-    return []
-
-
-def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
-    cur = conn.execute(f"PRAGMA table_info({table})")
-    return any(row[1] == column for row in cur.fetchall())
-
-
-def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
-    cur = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-        (table,),
-    )
-    return cur.fetchone() is not None
-
 # =====================================================================
 # Schema (built from constants)
 # =====================================================================
@@ -360,7 +265,7 @@ CREATE TABLE IF NOT EXISTS notes (
     body        TEXT,
     date_local  TEXT,
     time_local  TEXT,
-    note_type   TEXT CHECK (note_type IS NULL OR note_type IN ({_enum_sql(NOTE_TYPE_VALUES)}))
+    note_type   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS charts (
@@ -601,196 +506,6 @@ def delete_analysis(analysis_id: int) -> None:
         cur.execute("DELETE FROM analysis WHERE id=?", (analysis_id,))
         if cur.rowcount == 0:
             raise ValueError(f"Анализ #{analysis_id} не найден.")
-        conn.commit()
-    finally:
-        conn.close()
-
-# =====================================================================
-# Notes
-# =====================================================================
-
-
-def add_note(
-    title: Optional[str],
-    body: str,
-    note_type: Optional[str] = None,
-    date_local: Optional[Union[str, date, datetime]] = None,
-    time_local: Optional[Union[str, time, datetime]] = None,
-) -> int:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        now = datetime.now()
-        normalized_date = _normalize_note_date(
-            date_local if date_local is not None else now
-        )
-        time_source: Optional[Union[str, time, datetime]] = time_local
-        if time_source is None and isinstance(date_local, datetime):
-            time_source = date_local
-        if time_source is None:
-            time_source = now
-        normalized_time = _normalize_note_time(time_source)
-        normalized_type = _normalize_note_type(note_type)
-        cur.execute(
-            """
-            INSERT INTO notes (title, body, date_local, time_local, note_type)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (title, body, normalized_date, normalized_time, normalized_type),
-        )
-        conn.commit()
-        return cur.lastrowid
-    finally:
-        conn.close()
-
-
-def list_notes(
-    filters: Optional[Dict[str, Any]] = None,
-    order_by: Optional[str] = None,
-    ascending: bool = True,
-) -> List[Dict[str, Any]]:
-    filters = filters or {}
-    query = "SELECT * FROM notes WHERE 1=1"
-    params: List[Any] = []
-
-    for key, value in filters.items():
-        if value in (None, [], {}):
-            continue
-        if key == "note_type":
-            text_value = str(value).strip()
-            if not text_value:
-                continue
-            query += " AND note_type = ?"
-            params.append(text_value)
-        elif key == "date_from":
-            query += " AND date_local >= ?"
-            params.append(value)
-        elif key == "date_to":
-            query += " AND date_local <= ?"
-            params.append(value)
-        elif key == "query":
-            text_value = str(value).strip()
-            if not text_value:
-                continue
-            query += " AND (title LIKE ? OR body LIKE ?)"
-            value_like = f"%{text_value}%"
-            params.extend([value_like, value_like])
-
-    if order_by:
-        column = NOTE_ORDER_COLUMNS.get(order_by)
-        if not column:
-            raise ValueError(
-                f"order_by must be one of: {sorted(NOTE_ORDER_COLUMNS)}"
-            )
-        direction = "ASC" if ascending else "DESC"
-        query += f" ORDER BY {column} {direction}"
-        if order_by == "date_local":
-            query += f", time_local {direction}, id {direction}"
-    else:
-        query += " ORDER BY title IS NULL, title ASC, id ASC"
-
-    conn = get_conn()
-    try:
-        rows = conn.execute(query, params).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def list_trade_notes(trade_id: int) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            """
-            SELECT n.*
-            FROM trade_notes tn
-            JOIN notes n ON n.id = tn.note_id
-            WHERE tn.trade_id=?
-            ORDER BY n.title IS NULL, n.title ASC, n.id ASC
-            """,
-            (trade_id,),
-        ).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def attach_note_to_trade(trade_id: int, note_id: int) -> None:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        note_exists = cur.execute(
-            "SELECT 1 FROM notes WHERE id=?", (note_id,)
-        ).fetchone()
-        if not note_exists:
-            raise ValueError(f"Заметка #{note_id} не найдена.")
-        cur.execute(
-            "INSERT OR IGNORE INTO trade_notes (trade_id, note_id) VALUES (?, ?)",
-            (trade_id, note_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def list_analysis_stage_notes(stage_id: int) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            """
-            SELECT n.*
-            FROM analysis_notes an
-            JOIN notes n ON n.id = an.note_id
-            WHERE an.analysis_stage_id=?
-            ORDER BY n.title IS NULL, n.title ASC, n.id ASC
-            """,
-            (stage_id,),
-        ).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def attach_note_to_analysis_stage(stage_id: int, note_id: int) -> None:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        note_exists = cur.execute(
-            "SELECT 1 FROM notes WHERE id=?",
-            (note_id,)
-        ).fetchone()
-        if not note_exists:
-            raise ValueError(f"Заметка #{note_id} не найдена.")
-        cur.execute(
-            "INSERT OR IGNORE INTO analysis_notes (analysis_stage_id, note_id) VALUES (?, ?)",
-            (stage_id, note_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def detach_note_from_analysis_stage(stage_id: int, note_id: int) -> None:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "DELETE FROM analysis_notes WHERE analysis_stage_id=? AND note_id=?",
-            (stage_id, note_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def detach_note_from_trade(trade_id: int, note_id: int) -> None:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "DELETE FROM trade_notes WHERE trade_id=? AND note_id=?",
-            (trade_id, note_id),
-        )
         conn.commit()
     finally:
         conn.close()
@@ -1134,31 +849,13 @@ WRITABLE_TRADE_FIELDS = [
 ]
 
 
-def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {}
-    for key in WRITABLE_TRADE_FIELDS:
-        if key not in data:
-            continue
-        value = data[key]
-        if key == "estimation" and value is not None:
-            try:
-                value = int(value)
-            except (TypeError, ValueError):
-                raise ValueError("estimation должно быть целым числом.")
-        if key == "emotional_problems":
-            value = _serialize_emotional_problems(value)
-        payload[key] = value
-    return payload
-
-
 def create_trade(data: Dict[str, Any]) -> int:
-    payload = _normalize_trade_payload(data)
-    if not payload:
+    if not data:
         raise ValueError("Нет данных для создания сделки.")
 
-    columns = ", ".join(payload.keys())
-    placeholders = ", ".join(["?"] * len(payload))
-    values = list(payload.values())
+    columns = ", ".join(data.keys())
+    placeholders = ", ".join(["?"] * len(data))
+    values = list(data.values())
 
     conn = get_conn()
     try:
@@ -1174,12 +871,11 @@ def create_trade(data: Dict[str, Any]) -> int:
 
 
 def update_trade(trade_id: int, data: Dict[str, Any]) -> None:
-    payload = _normalize_trade_payload(data)
-    if not payload:
+    if not data:
         return
 
-    assignments = ", ".join(f"{col}=?" for col in payload.keys())
-    values = list(payload.values())
+    assignments = ", ".join(f"{col}=?" for col in data.keys())
+    values = list(data.values())
 
     conn = get_conn()
     try:

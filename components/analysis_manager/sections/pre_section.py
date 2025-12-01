@@ -3,7 +3,7 @@ from __future__ import annotations
 import streamlit as st
 from typing import Any, Dict, Optional
 from helpers import parse_date, safe_choice_index
-from config import DAILY_BIAS, ASSETS
+from config import DAILY_BIAS_VALUES, ASSETS_VALUES
 from components.chart_editor import (
     chart_table_rows,
     render_chart_editor,
@@ -38,29 +38,29 @@ def render_pre_stage(
                 value=parse_date(analysis_defaults.get(
                     "date_local")) or "today",
                 format="DD.MM.YYYY",
-                key=f"${state_key}_date"
+                key=f"{state_key}_date"
             )
             analysis_result['asset'] = st.selectbox(
                 "Asset",
-                options=ASSETS,
+                options=ASSETS_VALUES,
                 placeholder="- Not set -",
-                key=f"${state_key}_asset",
+                key=f"{state_key}_asset",
                 index=safe_choice_index(
-                    ASSETS, analysis_defaults.get("asset"))
+                    ASSETS_VALUES, analysis_defaults.get("asset"))
             )
             st.divider()
             analysis_result['daily_bias'] = st.selectbox(
                 "Daily bias",
-                options=DAILY_BIAS,
-                key=f"${state_key}_daily_bias",
+                options=DAILY_BIAS_VALUES,
+                key=f"{state_key}_daily_bias",
                 index=safe_choice_index(
-                    DAILY_BIAS, analysis_defaults.get("daily_bias")),
+                    DAILY_BIAS_VALUES, analysis_defaults.get("daily_bias")),
             )
 
         with col2:
             st.markdown("#### Charts")
             chart_editor_value = render_chart_editor(
-                key=f"${state_key}_chart_editor",
+                key=f"{state_key}_chart_editor",
                 base_rows=chart_rows,
                 layout_columns=2,
             )
@@ -68,7 +68,7 @@ def render_pre_stage(
             stage_result["summary"] = st.text_area(
                 "Pre-market notes",
                 value=stage_data.get("summary") or "",
-                key=f"${state_key}_summary",
+                key=f"{state_key}_summary",
                 height=160,
             )
 

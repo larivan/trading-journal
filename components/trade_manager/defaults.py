@@ -1,16 +1,13 @@
 """Общие дефолтные значения для трейд-менеджера"""
 
 from typing import Any, Dict
-
-from config import ASSETS
+import streamlit as st
 from helpers import parse_date, parse_time
+from config import TM_DEFAULT_PREFIX
 
 
 def get_trade_defaults(
     trade: Dict[str, Any],
-    accounts,
-    analyses,
-    setups
 ) -> Dict[str, Dict[str, Any]]:
     """Возвращает дефолтные значения"""
     return {
@@ -20,7 +17,7 @@ def get_trade_defaults(
             "time": parse_time(trade.get("time_local")),
             "account": trade.get("account_id"),
             "asset": trade.get("asset"),
-            "analysis": trade.get("analysis_id"),
+            "analysis": _get_session_default("analysis") or trade.get("analysis_id"),
             "setup": trade.get("setup_id"),
             "risk_pct": float(trade.get("risk_pct") or 1.0),
         },
@@ -36,3 +33,7 @@ def get_trade_defaults(
             "estimation": trade.get("estimation"),
         },
     }
+
+
+def _get_session_default(name) -> Any:
+    return st.session_state.get(f"{TM_DEFAULT_PREFIX}{name}", None)

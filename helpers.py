@@ -76,6 +76,7 @@ def custom_selectbox(
     *,
     placeholder: Optional[str] = None,
     value: Optional[int] = None,
+    key: str
 ) -> Optional[int]:
     """Единый selectbox для options [{'label','value'}] с поддержкой дефолтов."""
     has_options = bool(options)
@@ -92,6 +93,7 @@ def custom_selectbox(
         label,
         available,
         index=index,
+        key=key,
         placeholder=placeholder if has_options else None,
         format_func=lambda option: option.get("label", "-"),
     )

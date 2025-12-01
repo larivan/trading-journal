@@ -1,16 +1,21 @@
 """Диалог редактирования дневных анализов."""
 
 from __future__ import annotations
-
 from datetime import datetime
 from typing import Any, Dict
-
 import streamlit as st
-
-from components.chart_editor import (
-    persist_chart_editor,
+from .state import visible_stage_types
+from .defaults import build_analysis_defaults
+from components.chart_editor import persist_chart_editor
+from components.trade_manager import render_trade_manager
+from utils.session_state import close_dialog, dialog_is_active
+from config import (
+    ANALYSIS_DIALOG_NAME,
+    ANALYSIS_ID_STATE,
+    ANALYSIS_SUCCESS_STATE,
+    ANALYSIS_MANAGER_KEY_PREFIX,
+    ANALYSIS_STATE_VALUES,
 )
-from config import ANALYSIS_STATE_VALUES
 from db import (
     add_analysis,
     add_analysis_stage,
@@ -20,20 +25,12 @@ from db import (
     update_analysis,
     update_analysis_stage,
 )
-from utils.session_state import close_dialog, dialog_is_active
-
-from .defaults import build_analysis_defaults
 from .sections import (
+    render_execution_stage,
     render_plan_section,
     render_post_stage,
     render_pre_stage,
 )
-from .state import visible_stage_types
-
-ANALYSIS_DIALOG_NAME = "analysis_manager"
-ANALYSIS_ID_STATE = "am_analysis_id"
-ANALYSIS_SUCCESS_STATE = "am_success_message"
-ANALYSIS_CONTEXT_STATE = "am_active_context"
 
 
 def render_analysis_manager() -> None:
@@ -42,7 +39,7 @@ def render_analysis_manager() -> None:
         st.toast(st.session_state.pop("am_success_message"), icon="🔥")
 
     if not dialog_is_active(ANALYSIS_DIALOG_NAME):
-        st.session_state.pop(ANALYSIS_CONTEXT_STATE, None)
+        render_trade_manager()
         return
 
     analysis_id = None
@@ -51,9 +48,10 @@ def render_analysis_manager() -> None:
         is_new_analysis = False
         analysis_id = st.session_state.get(ANALYSIS_ID_STATE)
 
-    state_key = f"am_analysis_id_${analysis_id}"
+    state_key = f"{ANALYSIS_MANAGER_KEY_PREFIX}{analysis_id or 'new'}"
 
     analysis: Dict[str, Any] = {}
+
     if not is_new_analysis:
         analysis = get_analysis(analysis_id) or {}
         if not analysis:
@@ -66,7 +64,6 @@ def render_analysis_manager() -> None:
     defaults = build_analysis_defaults(analysis)
 
     def _handle_dialog_dismiss() -> None:
-        st.session_state.pop(ANALYSIS_CONTEXT_STATE, None)
         st.session_state.pop(ANALYSIS_ID_STATE, None)
         close_dialog()
 
@@ -104,14 +101,21 @@ def render_analysis_manager() -> None:
             analysis_defaults=defaults["analysis"],
             visible="pre-market" in visible,
             expanded=(selected_stage == "pre-market"),
-            state_key=f"${state_key}_pre"
+            state_key=f"{state_key}_pre"
         )
 
         plan_forms, removed_plan_ids = render_plan_section(
             plan_entries=defaults["plans"],
             visible="plan" in visible,
             expanded=(selected_stage == "plan"),
-            state_key=f"${state_key}_plan",
+            state_key=f"{state_key}_plan",
+        )
+
+        render_execution_stage(
+            analysis_id=analysis_id,
+            visible="execution" in visible,
+            expanded=(selected_stage == "execution"),
+            state_key=f"{state_key}_execution",
         )
 
         post_analysis_values, post_values = render_post_stage(
@@ -119,7 +123,7 @@ def render_analysis_manager() -> None:
             defaults=defaults["analysis"],
             visible="post-market" in visible,
             expanded=(selected_stage == "post-market"),
-            state_key=f"${state_key}_post"
+            state_key=f"{state_key}_post"
         )
 
         if not submitted:
@@ -194,7 +198,8 @@ def render_analysis_manager() -> None:
                 if plan_stage_id:
                     update_analysis_stage(plan_stage_id, plan_payload)
                 else:
-                    plan_payload["time_local"] = plan_form.get("time_local") or datetime.now()
+                    plan_payload["time_local"] = plan_form.get(
+                        "time_local") or datetime.now()
                     plan_stage_id = add_analysis_stage(plan_payload)
             except Exception as exc:
                 message_col.error(f"Failed to save plan: {exc}")
@@ -240,7 +245,7 @@ def render_analysis_manager() -> None:
                 message_col.error(f"Failed to save charts: {exc}")
                 return
 
-        plan_state_key = f"${state_key}_plan"
+        plan_state_key = f"{state_key}_plan"
         plan_tabs_key = f"{plan_state_key}_tabs"
         st.session_state.pop(f"{plan_state_key}_plans", None)
         st.session_state.pop(f"{plan_state_key}_plans_removed", None)

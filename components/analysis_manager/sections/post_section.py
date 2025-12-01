@@ -2,7 +2,7 @@
 from __future__ import annotations
 import streamlit as st
 from typing import Any, Dict, List, Optional
-from config import DAILY_BIAS, DAY_RESULT_VALUES
+from config import DAILY_BIAS_VALUES, DAY_RESULT_VALUES
 from helpers import safe_choice_index
 from components.chart_editor import (
     chart_table_rows,
@@ -35,17 +35,17 @@ def render_post_stage(
         with col1:
             analysis_result["fact_bias"] = st.selectbox(
                 "Fact bias",
-                options=DAILY_BIAS,
+                options=DAILY_BIAS_VALUES,
                 placeholder="- Not set -",
-                key=f"${state_key}_fact_bias",
+                key=f"{state_key}_fact_bias",
                 index=safe_choice_index(
-                    DAILY_BIAS, defaults.get("fact_bias")),
+                    DAILY_BIAS_VALUES, defaults.get("fact_bias")),
             )
             analysis_result["day_result"] = st.selectbox(
                 "Day result",
                 options=DAY_RESULT_VALUES,
                 placeholder="- Not set -",
-                key=f"${state_key}_day_result",
+                key=f"{state_key}_day_result",
                 index=safe_choice_index(
                     DAY_RESULT_VALUES, defaults.get("day_result")),
             )
@@ -53,14 +53,14 @@ def render_post_stage(
         with col2:
             st.markdown("#### Charts")
             chart_editor_value = render_chart_editor(
-                key=f"${state_key}_chart_editor",
+                key=f"{state_key}_chart_editor",
                 base_rows=chart_rows,
                 layout_columns=2
             )
 
             stage_result["summary"] = st.text_area(
                 "Post-market notes",
-                key=f"${state_key}_summary",
+                key=f"{state_key}_summary",
                 value=stage_data.get("summary") or "",
                 height=160,
             )

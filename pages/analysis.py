@@ -6,8 +6,8 @@ import streamlit as st
 from components.analysis_manager import render_analysis_manager
 from components.entity_table import render_entity_table
 from config import (
-    ASSETS,
-    DAILY_BIAS,
+    ASSETS_VALUES,
+    DAILY_BIAS_VALUES,
     DAY_RESULT_VALUES,
     ANALYSIS_STATE_VALUES
 )
@@ -111,9 +111,11 @@ if selected_key == "custom":
             raw_from, raw_to = raw_date_range, default_to
         date_from = raw_from if isinstance(raw_from, date) else default_from
         date_to = raw_to if isinstance(raw_to, date) else default_to
-        asset_choice = fc2.selectbox("Инструмент", ["Все"] + ASSETS)
-        daily_bias_choice = fc3.selectbox("Daily bias", ["Все"] + DAILY_BIAS)
-        fact_bias_choice = fc4.selectbox("Fact bias", ["Все"] + DAILY_BIAS)
+        asset_choice = fc2.selectbox("Инструмент", ["Все"] + ASSETS_VALUES)
+        daily_bias_choice = fc3.selectbox(
+            "Daily bias", ["Все"] + DAILY_BIAS_VALUES)
+        fact_bias_choice = fc4.selectbox(
+            "Fact bias", ["Все"] + DAILY_BIAS_VALUES)
         day_result_choice = fc5.selectbox(
             "Результат", ["Все"] + DAY_RESULT_VALUES
         )

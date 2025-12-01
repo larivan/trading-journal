@@ -10,6 +10,7 @@ def render_review_stage(
     visible: bool,
     expanded: bool,
     defaults: Dict[str, Any],
+    state_key: str
 ) -> Optional[Dict[str, Any]]:
     """Показывает блок Review, если он нужен для текущего статуса."""
     data = defaults.copy()
@@ -21,9 +22,11 @@ def render_review_stage(
             "Cold thoughts",
             height=120,
             value=data["cold_thoughts"],
+            key=f"{state_key}_cold_thoughts"
         )
         data["estimation"] = st.feedback(
             "thumbs",
             default=data.get("estimation"),
+            key=f"{state_key}_estimation"
         )
         return data

@@ -21,21 +21,25 @@ PAGES = {
     },
 }
 
-# --- Справочники (энумы) ---
+LOCAL_TZ = 'UTC+3'  # Москва
+
+# Trades
+TRADE_DIALOG_NAME = "trade_manager"
+TRADE_ID_STATE = "tm_trade_id"
+TRADE_SUCCESS_STATE = "tm_success_message"
+TM_KEY_PREFIX = "tm_trade_id_"
+TM_DEFAULT_PREFIX = "tm_default_"
 TRADE_STATE_VALUES = ["Open", "Close", "Review", "Cancel", "Miss"]
 TRADE_RESULT_VALUES = ["Win", "Loss", "BE"]
 TRADE_SESSION_VALUES = ["Frankfurt", "LOKZ",
                         "Lunch", "Pre-NY", "NYKZ", "Other"]
 
-ANALYSIS_STATE_VALUES = ["pre-market", "plan", "post-market"]
-NOTE_TYPE_VALUES = ("Note", "Observation")
-
-# --- Дополнительные справочники для UI ---
-ASSETS = ["EUR/USD", "GBP/USD", "XAU/USD", "XAG/USD"]
-DAILY_BIAS = ["Bullish", "Bearish", "Neutral"]
+# Analysis
+ANALYSIS_DIALOG_NAME = "analysis_manager"
+ANALYSIS_ID_STATE = "am_analysis_id"
+ANALYSIS_SUCCESS_STATE = "am_success_message"
+ANALYSIS_MANAGER_KEY_PREFIX = "am_analysis_id_"
+ANALYSIS_STATE_VALUES = ["pre-market", "plan", "execution", "post-market"]
+ASSETS_VALUES = ["EUR/USD", "GBP/USD", "XAU/USD", "XAG/USD"]
+DAILY_BIAS_VALUES = ["Bullish", "Bearish", "Neutral"]
 DAY_RESULT_VALUES = ["profit", "loss", "null"]
-SETUPS = ["POI→confirmation", "Lq→confirmation", "POI→trigger→confirmation"]
-EMOTIONAL_PROBLEMS = ["emotional management",
-                      "premature exit", "fear of entry"]
-
-LOCAL_TZ = 'UTC+3'  # Москва

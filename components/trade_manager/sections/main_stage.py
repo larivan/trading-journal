@@ -3,7 +3,7 @@
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
-from config import ASSETS
+from config import ASSETS_VALUES
 from helpers import custom_selectbox, safe_choice_index
 
 OptionItem = Dict[str, Any]
@@ -15,6 +15,7 @@ def render_main_stage(
     account_options: List[OptionItem],
     analysis_options: List[OptionItem],
     setup_options: List[OptionItem],
+    state_key: str
 ) -> Dict[str, Any]:
     """Отрисовывает блок открытия сделки (дата, счёт, сетап и риск)."""
     data = defaults.copy()
@@ -25,40 +26,47 @@ def render_main_stage(
             "Date",
             value=data["date"] or "today",
             format="DD.MM.YYYY",
+            key=f"{state_key}_date"
         )
         data["time"] = oc2.time_input(
             "Time",
-            value=data["time"],
+            value=data["time"] or "now",
+            key=f"{state_key}_time"
         )
         data["account"] = custom_selectbox(
             "Account",
             account_options,
             placeholder="- Not set -",
             value=data.get("account"),
+            key=f"{state_key}_account"
         )
         data["asset"] = st.selectbox(
             "Asset",
-            ASSETS,
+            ASSETS_VALUES,
             placeholder="- Not set -",
-            index=safe_choice_index(ASSETS, data.get("asset")),
+            key=f"{state_key}_asset",
+            index=safe_choice_index(ASSETS_VALUES, data.get("asset")),
         )
         data["analysis"] = custom_selectbox(
-            "Daily analysis",
+            "Analysis",
             analysis_options,
             placeholder="- Not set -",
             value=data.get("analysis"),
+            key=f"{state_key}_analysis"
         )
         data["setup"] = custom_selectbox(
             "Setup",
             setup_options,
             placeholder="- Not set -",
             value=data.get("setup"),
+            key=f"{state_key}_setup"
         )
         data["risk_pct"] = st.slider(
             "Risk per trade, %",
             min_value=0.5,
             max_value=2.0,
             value=float(data["risk_pct"]),
+            key=f"{state_key}_risk_pct",
             step=0.1,
         )
     return data

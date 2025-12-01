@@ -33,6 +33,18 @@ def dialog_is_active(name: str) -> bool:
     return get_active_dialog() == name
 
 
+def get_previous_dialog() -> Optional[str]:
+    return st.session_state.get("previous_dialog")
+
+
+def set_previous_dialog(name) -> None:
+    st.session_state["previous_dialog"] = name
+
+
+def remove_previous_dialog() -> None:
+    st.session_state.pop("previous_dialog", None)
+
+
 def set_selected_entity(entity: EntityName, entity_id: Optional[int]) -> None:
     st.session_state[_selected_key(entity)] = entity_id
 
