@@ -1,18 +1,15 @@
 """Секция управления списком планов внутри этапа plan."""
 
 from __future__ import annotations
-
 from typing import Any, Dict, List, Tuple
 from uuid import uuid4
-
 import streamlit as st
-
+from components.vertical_tabs import render_vertical_tabs
 from components.chart_editor import (
     chart_editor_value_state_key,
     chart_table_rows,
     render_chart_editor,
 )
-from components.vertical_tabs import render_vertical_tabs
 
 
 PlanEntry = Dict[str, Any]

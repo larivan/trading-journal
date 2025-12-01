@@ -9,7 +9,9 @@ from config import (
     ASSETS_VALUES,
     DAILY_BIAS_VALUES,
     DAY_RESULT_VALUES,
-    ANALYSIS_STATE_VALUES
+    ANALYSIS_STATE_VALUES,
+    ANALYSIS_DIALOG_NAME,
+    ANALYSIS_ID_STATE
 )
 from db import delete_analysis, list_analysis
 from helpers import apply_page_config_from_file, format_local_date
@@ -20,9 +22,6 @@ from utils.session_state import (
 
 # === ОСНОВНАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ АНАЛИЗОВ ===
 apply_page_config_from_file(__file__)
-
-ANALYSIS_DIALOG_NAME = "analysis_manager"
-ANALYSIS_ID_STATE = "am_analysis_id"
 
 TAB_DEFINITIONS: Dict[str, str] = {
     "today": "Today",

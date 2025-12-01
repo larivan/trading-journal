@@ -5,6 +5,13 @@ import streamlit as st
 from components.chart_editor import persist_chart_editor, render_chart_editor
 from helpers import to_option_format, parse_date, parse_time
 from utils.trade_sessions import detect_trade_session
+from .state import get_allowed_statuses, visible_stages
+from .defaults import get_trade_defaults
+from .sections import (
+    render_main_stage,
+    render_close_stage,
+    render_review_stage,
+)
 from utils.session_state import (
     open_dialog,
     close_dialog,
@@ -17,14 +24,8 @@ from config import (
     TRADE_ID_STATE,
     TRADE_SUCCESS_STATE,
     TM_KEY_PREFIX,
-    LOCAL_TZ
-)
-from .state import get_allowed_statuses, visible_stages
-from .defaults import get_trade_defaults
-from .sections import (
-    render_main_stage,
-    render_close_stage,
-    render_review_stage,
+    LOCAL_TZ,
+    ANALYSIS_DIALOG_NAME
 )
 from db import (
     create_trade,
@@ -105,7 +106,7 @@ def render_trade_manager() -> None:
                         width="stretch"
                     ):
                         remove_previous_dialog()
-                        open_dialog("analysis_manager")
+                        open_dialog(ANALYSIS_DIALOG_NAME)
                         st.rerun()
 
                 submitted = c2.button(

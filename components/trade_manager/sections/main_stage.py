@@ -1,7 +1,6 @@
 """Блок открытия сделки."""
 
 from typing import Any, Dict, List, Optional
-
 import streamlit as st
 from config import ASSETS_VALUES
 from helpers import custom_selectbox, safe_choice_index

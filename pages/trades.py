@@ -17,7 +17,9 @@ from config import (
     ASSETS_VALUES,
     TRADE_RESULT_VALUES,
     TRADE_SESSION_VALUES,
-    TRADE_STATE_VALUES
+    TRADE_STATE_VALUES,
+    TRADE_ID_STATE,
+    TRADE_DIALOG_NAME
 )
 
 # === БАЗОВАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ ===
@@ -66,7 +68,7 @@ with actions_col:
         type="primary",
         width="stretch",
     ):
-        open_dialog("trade_manager")
+        open_dialog(TRADE_DIALOG_NAME)
 
 # === ПРИМЕНЕНИЕ ПЕРИОДОВ И КАСТОМНЫХ ФИЛЬТРОВ ===
 filter: Dict[str, Any] = {}
@@ -191,8 +193,8 @@ def _handle_open_trade(row: Dict[str, Any]) -> None:
     trade_id = row.get("id")
     if not trade_id:
         return
-    st.session_state["tm_trade_id"] = trade_id
-    open_dialog("trade_manager")
+    st.session_state[TRADE_ID_STATE] = trade_id
+    open_dialog(TRADE_DIALOG_NAME)
 
 
 def _handle_delete_trades(ids: List[Any]) -> None:

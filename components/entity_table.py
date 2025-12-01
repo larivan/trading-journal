@@ -729,6 +729,7 @@ def render_entity_table(
         row = id_to_row.get(open_id)
         if row is not None:
             on_open(row)
+            st.rerun()
 
     if (
         on_delete is not None

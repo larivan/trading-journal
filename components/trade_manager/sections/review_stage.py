@@ -1,7 +1,6 @@
 """Блок Review."""
 
 from typing import Any, Dict, Optional
-
 import streamlit as st
 
 

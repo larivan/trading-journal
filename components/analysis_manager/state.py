@@ -1,10 +1,8 @@
 """Утилиты состояния и вспомогательные функции для этапов анализа."""
 
 from __future__ import annotations
-
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
-
 from config import ANALYSIS_STATE_VALUES
 from db import add_analysis_stage, get_analysis_stage, list_analysis_stages
 

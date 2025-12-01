@@ -1,9 +1,7 @@
 """Построение значений по умолчанию для диалогов анализа."""
 
 from __future__ import annotations
-
 from typing import Any, Dict, List, Optional
-
 from db import (
     list_analysis_stage_charts,
     list_analysis_stages,
