@@ -125,7 +125,6 @@ _COMPONENT_CSS = """
 .st-entity-table__table-wrapper {
   width: 100%;
   overflow-x: auto;
-  margin-left: -40px;
 }
 .st-entity-table__table {
   width: 100%;
@@ -169,11 +168,9 @@ _COMPONENT_CSS = """
   max-width: 40px;
   text-align: center;
   position: sticky;
-  left: -40px;
+  left: 0px;
   z-index: 2;
-  background: #fff;
   border-right: none !important;
-  border-bottom: none !important;
   padding-left: 0.1rem;
   transform: translateX(-10px);
 }
@@ -181,7 +178,7 @@ _COMPONENT_CSS = """
   white-space: nowrap;
   text-align: left;
   position: sticky;
-  left: 0;
+  left: 40;
   width: 84px;
   z-index: 2; 
   border-left: none;
@@ -203,30 +200,6 @@ _COMPONENT_CSS = """
   align-items: center;
   justify-content: center;
   transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
-}
-.st-entity-table__table tbody .st-entity-table__checkbox {
-  opacity: 0;
-  pointer-events: none;
-}
-.st-entity-table__table tbody .st-entity-table__table-row:hover .st-entity-table__checkbox {
-  opacity: 1;
-  pointer-events: auto;
-}
-.st-entity-table__table tbody .st-entity-table__checkbox:checked {
-  opacity: 1;
-  pointer-events: auto;
-}
-.st-entity-table__checkbox--header {
-  opacity: 0;
-  pointer-events: none;
-}
-.st-entity-table__checkbox--header.is-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-.st-entity-table__cell--select:hover .st-entity-table__checkbox--header {
-  opacity: 1;
-  pointer-events: auto;
 }
 .st-entity-table__checkbox::after {
   content: "✓";
