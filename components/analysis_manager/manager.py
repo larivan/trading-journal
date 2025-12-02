@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, List
 import streamlit as st
-from .state import visible_stage_types
 from .defaults import build_analysis_defaults
 from components.chart_editor import persist_chart_editor
 from components.trade_manager import render_trade_manager
@@ -63,11 +62,11 @@ def render_analysis_manager() -> None:
 
     defaults = build_analysis_defaults(analysis)
 
-    def _handle_dialog_dismiss() -> None:
-        st.session_state.pop(ANALYSIS_ID_STATE, None)
-        close_dialog()
-
-    @st.dialog(_get_dialog_title(analysis, is_new_analysis), width="large", on_dismiss=_handle_dialog_dismiss)
+    @st.dialog(
+        _get_dialog_title(analysis, is_new_analysis),
+        width="large",
+        on_dismiss=_handle_dialog_dismiss
+    )
     def _dialog() -> None:
         with st.container(border=True):
             status_col, message_col, actions_col = st.columns(
@@ -94,7 +93,7 @@ def render_analysis_manager() -> None:
                     width="stretch"
                 )
 
-        visible = visible_stage_types(selected_stage)
+        visible = _visible_stage_types(selected_stage)
 
         pre_analysis_values, pre_values = render_pre_stage(
             stage_data=defaults["stages"].get("pre-market"),
@@ -245,17 +244,6 @@ def render_analysis_manager() -> None:
                 message_col.error(f"Failed to save charts: {exc}")
                 return
 
-        plan_state_key = f"{state_key}_plan"
-        plan_tabs_key = f"{plan_state_key}_tabs"
-        st.session_state.pop(f"{plan_state_key}_plans", None)
-        st.session_state.pop(f"{plan_state_key}_plans_removed", None)
-        st.session_state.pop(plan_tabs_key, None)
-        st.session_state.pop(f"{plan_tabs_key}_select_new_tab", None)
-        prefixes = (f"{plan_state_key}_summary_", f"{plan_state_key}_chart_")
-        for key in list(st.session_state.keys()):
-            if key.startswith(prefixes):
-                st.session_state.pop(key, None)
-
         st.rerun()
 
     if dialog_is_active(ANALYSIS_DIALOG_NAME):
@@ -270,6 +258,20 @@ def _get_dialog_title(data: Dict[str, Any], is_new: bool) -> str:
     asset = (data.get("asset") or "Analysis").strip() or "Analysis"
     date_value = (data.get("date_local") or "—").strip() or "—"
     return f"{asset} · {date_value}"
+
+
+def _handle_dialog_dismiss() -> None:
+    st.session_state.pop(ANALYSIS_ID_STATE, None)
+    close_dialog()
+
+
+def _visible_stage_types(current_stage: str) -> List[str]:
+    """Возвращает последовательность этапов, которые должны отображаться."""
+
+    if current_stage not in ANALYSIS_STATE_VALUES:
+        return [ANALYSIS_STATE_VALUES[0]]
+    idx = ANALYSIS_STATE_VALUES.index(current_stage)
+    return ANALYSIS_STATE_VALUES[: idx + 1]
 
 
 __all__ = ["render_analysis_manager"]

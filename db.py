@@ -7,20 +7,8 @@ from typing import Any, Dict, List, Optional, Union
 
 # Справочники вынесены в config.py
 from config import (
-    ANALYSIS_STATE_VALUES,
-    TRADE_RESULT_VALUES,
-    TRADE_SESSION_VALUES,
-    TRADE_STATE_VALUES,
+    ANALYSIS_STATE_VALUES
 )
-
-# =====================================================================
-# ENUMS / CONSTANTS
-# =====================================================================
-
-
-def _enum_sql(values: List[str]) -> str:
-    """Return SQL string for CHECK IN clause:  'a','b','c' """
-    return ",".join(f"'{v}'" for v in values)
 
 # =====================================================================
 # Paths & helpers
@@ -203,14 +191,14 @@ CREATE TABLE IF NOT EXISTS analysis (
     daily_bias  TEXT,
     fact_bias   TEXT,
     day_result  TEXT,
-    state       TEXT CHECK (state IN ({_enum_sql(ANALYSIS_STATE_VALUES)}))
+    state       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS analysis_stages (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     analysis_id  INTEGER NOT NULL,
     time_local   TEXT,
-    type         TEXT CHECK (type IN ({_enum_sql(ANALYSIS_STATE_VALUES)})),
+    type         TEXT,
     summary      TEXT,
     FOREIGN KEY (analysis_id) REFERENCES analysis(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
@@ -224,9 +212,9 @@ CREATE TABLE IF NOT EXISTS trades (
     setup_id           INTEGER,
     analysis_id        INTEGER,
     asset              TEXT NOT NULL,
-    session            TEXT CHECK (session IN ({_enum_sql(TRADE_SESSION_VALUES)})) NOT NULL,
-    state              TEXT CHECK (state IN ({_enum_sql(TRADE_STATE_VALUES)})) NOT NULL,
-    result             TEXT CHECK (result IN ({_enum_sql(TRADE_RESULT_VALUES)})),
+    session            TEXT NOT NULL,
+    state              TEXT NOT NULL,
+    result             TEXT,
     net_pnl            REAL,
     risk_pct           REAL,
     risk_reward        REAL,

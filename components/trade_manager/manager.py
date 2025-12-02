@@ -63,7 +63,11 @@ def render_trade_manager() -> None:
             st.rerun()
             return
 
-    @st.dialog(_get_dialog_title(trade, is_new_trade), width="large", on_dismiss=_handle_dialog_dismiss)
+    @st.dialog(
+        _get_dialog_title(trade, is_new_trade),
+        width="large",
+        on_dismiss=_handle_dialog_dismiss
+    )
     def _dialog() -> None:
         # Подготовка данных
         accounts = to_option_format(
