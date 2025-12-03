@@ -2,6 +2,7 @@
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Union
 
@@ -111,6 +112,29 @@ def get_conn() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
+
+
+def _managed_conn(conn: Optional[sqlite3.Connection]) -> tuple[sqlite3.Connection, bool]:
+    """Возвращает соединение и флаг владения (нужно ли закрывать/коммитить)."""
+    if conn is None:
+        return get_conn(), True
+    return conn, False
+
+
+@contextmanager
+def transaction(conn: Optional[sqlite3.Connection] = None):
+    """Контекст для атомарных операций: BEGIN/COMMIT/ROLLBACK + управление conn."""
+    connection, own = _managed_conn(conn)
+    try:
+        connection.execute("BEGIN")
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        if own:
+            connection.close()
 
 
 def _now_iso_utc() -> str:
@@ -385,7 +409,9 @@ def list_setups() -> List[Dict[str, Any]]:
 # =====================================================================
 
 
-def add_analysis(data: Dict[str, Any]) -> int:
+def add_analysis(data: Dict[str, Any],
+                 *,
+                 conn: Optional[sqlite3.Connection] = None) -> int:
     payload = _normalize_analysis_payload(data)
     if "date_local" not in payload:
         raise ValueError("date_local обязательно для анализа.")
@@ -394,17 +420,19 @@ def add_analysis(data: Dict[str, Any]) -> int:
     placeholders = ", ".join(["?"] * len(payload))
     values = list(payload.values())
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
             f"INSERT INTO analysis ({columns}) VALUES ({placeholders})",
             values,
         )
-        conn.commit()
+        if own:
+            conn.commit()
         return cur.lastrowid
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
 def list_analysis(filters: Optional[Dict[str, Any]] = None,
@@ -465,7 +493,9 @@ def get_analysis(analysis_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def update_analysis(analysis_id: int, data: Dict[str, Any]) -> None:
+def update_analysis(analysis_id: int, data: Dict[str, Any],
+                    *,
+                    conn: Optional[sqlite3.Connection] = None) -> None:
     payload = _normalize_analysis_payload(data)
     if not payload:
         return
@@ -473,7 +503,7 @@ def update_analysis(analysis_id: int, data: Dict[str, Any]) -> None:
     assignments = ", ".join(f"{col}=?" for col in payload.keys())
     values = list(payload.values())
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
@@ -482,32 +512,40 @@ def update_analysis(analysis_id: int, data: Dict[str, Any]) -> None:
         )
         if cur.rowcount == 0:
             raise ValueError(f"Анализ #{analysis_id} не найден.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def delete_analysis(analysis_id: int) -> None:
-    conn = get_conn()
+def delete_analysis(analysis_id: int,
+                    *,
+                    conn: Optional[sqlite3.Connection] = None) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute("DELETE FROM analysis WHERE id=?", (analysis_id,))
         if cur.rowcount == 0:
             raise ValueError(f"Анализ #{analysis_id} не найден.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 # =====================================================================
 # Charts
 # =====================================================================
 
 
-def add_chart(chart_url: str, caption: Optional[str] = None) -> int:
+def add_chart(chart_url: str, caption: Optional[str] = None,
+              *,
+              conn: Optional[sqlite3.Connection] = None) -> int:
     if not chart_url:
         raise ValueError("chart_url is required.")
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
@@ -515,10 +553,12 @@ def add_chart(chart_url: str, caption: Optional[str] = None) -> int:
             "VALUES (?, ?)",
             (chart_url, caption)
         )
-        conn.commit()
+        if own:
+            conn.commit()
         return cur.lastrowid
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
 def get_chart(chart_id: int) -> Optional[Dict[str, Any]]:
@@ -532,11 +572,13 @@ def get_chart(chart_id: int) -> Optional[Dict[str, Any]]:
 
 
 def update_chart(chart_id: int, chart_url: str,
-                 caption: Optional[str] = None) -> None:
+                 caption: Optional[str] = None,
+                 *,
+                 conn: Optional[sqlite3.Connection] = None) -> None:
     if not chart_url:
         raise ValueError("chart_url is required.")
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
@@ -549,19 +591,25 @@ def update_chart(chart_id: int, chart_url: str,
         )
         if cur.rowcount == 0:
             raise ValueError(f"Чарт #{chart_id} не найден.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def delete_chart(chart_id: int) -> None:
-    conn = get_conn()
+def delete_chart(chart_id: int,
+                 *,
+                 conn: Optional[sqlite3.Connection] = None) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute("DELETE FROM charts WHERE id=?", (chart_id,))
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
 def list_charts() -> List[Dict[str, Any]]:
@@ -589,8 +637,10 @@ def list_trade_charts(trade_id: Optional[int]) -> List[Dict[str, Any]]:
         conn.close()
 
 
-def attach_chart_to_trade(trade_id: int, chart_id: int) -> None:
-    conn = get_conn()
+def attach_chart_to_trade(trade_id: int, chart_id: int,
+                          *,
+                          conn: Optional[sqlite3.Connection] = None) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         chart_row = cur.execute(
@@ -607,22 +657,28 @@ def attach_chart_to_trade(trade_id: int, chart_id: int) -> None:
             "UPDATE charts SET trade_id=?, analysis_stage_id=NULL, setup_id=NULL WHERE id=?",
             (trade_id, chart_id),
         )
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def detach_chart_from_trade(trade_id: int, chart_id: int) -> None:
-    conn = get_conn()
+def detach_chart_from_trade(trade_id: int, chart_id: int,
+                            *,
+                            conn: Optional[sqlite3.Connection] = None) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
             "UPDATE charts SET trade_id=NULL WHERE trade_id=? AND id=?",
             (trade_id, chart_id),
         )
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
 def list_analysis_stage_charts(stage_id: int) -> List[Dict[str, Any]]:
@@ -637,8 +693,10 @@ def list_analysis_stage_charts(stage_id: int) -> List[Dict[str, Any]]:
         conn.close()
 
 
-def attach_chart_to_analysis_stage(stage_id: int, chart_id: int) -> None:
-    conn = get_conn()
+def attach_chart_to_analysis_stage(stage_id: int, chart_id: int,
+                                   *,
+                                   conn: Optional[sqlite3.Connection] = None) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         chart_row = cur.execute(
@@ -655,29 +713,37 @@ def attach_chart_to_analysis_stage(stage_id: int, chart_id: int) -> None:
             "UPDATE charts SET analysis_stage_id=?, trade_id=NULL, setup_id=NULL WHERE id=?",
             (stage_id, chart_id),
         )
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def detach_chart_from_analysis_stage(stage_id: int, chart_id: int) -> None:
-    conn = get_conn()
+def detach_chart_from_analysis_stage(stage_id: int, chart_id: int,
+                                     *,
+                                     conn: Optional[sqlite3.Connection] = None) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
             "UPDATE charts SET analysis_stage_id=NULL WHERE analysis_stage_id=? AND id=?",
             (stage_id, chart_id),
         )
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 # =====================================================================
 # Analysis stages
 # =====================================================================
 
 
-def add_analysis_stage(data: Dict[str, Any]) -> int:
+def add_analysis_stage(data: Dict[str, Any],
+                       *,
+                       conn: Optional[sqlite3.Connection] = None) -> int:
     payload = _normalize_analysis_stage_payload(data)
     if not payload:
         raise ValueError("Нет данных для создания этапа анализа.")
@@ -686,17 +752,19 @@ def add_analysis_stage(data: Dict[str, Any]) -> int:
     placeholders = ", ".join(["?"] * len(payload))
     values = list(payload.values())
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
             f"INSERT INTO analysis_stages ({columns}) VALUES ({placeholders})",
             values,
         )
-        conn.commit()
+        if own:
+            conn.commit()
         return cur.lastrowid
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
 def get_analysis_stage(stage_id: int) -> Optional[Dict[str, Any]]:
@@ -767,7 +835,9 @@ def list_analysis_stages(filters: Optional[Dict[str, Any]] = None,
         conn.close()
 
 
-def update_analysis_stage(stage_id: int, data: Dict[str, Any]) -> None:
+def update_analysis_stage(stage_id: int, data: Dict[str, Any],
+                          *,
+                          conn: Optional[sqlite3.Connection] = None) -> None:
     payload = _normalize_analysis_stage_payload(data)
     if not payload:
         return
@@ -775,7 +845,7 @@ def update_analysis_stage(stage_id: int, data: Dict[str, Any]) -> None:
     assignments = ", ".join(f"{col}=?" for col in payload.keys())
     values = list(payload.values())
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
@@ -784,21 +854,27 @@ def update_analysis_stage(stage_id: int, data: Dict[str, Any]) -> None:
         )
         if cur.rowcount == 0:
             raise ValueError(f"Этап анализа #{stage_id} не найден.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def delete_analysis_stage(stage_id: int) -> None:
-    conn = get_conn()
+def delete_analysis_stage(stage_id: int,
+                          *,
+                          conn: Optional[sqlite3.Connection] = None) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute("DELETE FROM analysis_stages WHERE id=?", (stage_id,))
         if cur.rowcount == 0:
             raise ValueError(f"Этап анализа #{stage_id} не найден.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
 # =====================================================================
@@ -837,7 +913,9 @@ WRITABLE_TRADE_FIELDS = [
 ]
 
 
-def create_trade(data: Dict[str, Any]) -> int:
+def create_trade(data: Dict[str, Any],
+                 *,
+                 conn: Optional[sqlite3.Connection] = None) -> int:
     if not data:
         raise ValueError("Нет данных для создания сделки.")
 
@@ -845,27 +923,31 @@ def create_trade(data: Dict[str, Any]) -> int:
     placeholders = ", ".join(["?"] * len(data))
     values = list(data.values())
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
             f"INSERT INTO trades ({columns}) VALUES ({placeholders})",
             values,
         )
-        conn.commit()
+        if own:
+            conn.commit()
         return cur.lastrowid
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def update_trade(trade_id: int, data: Dict[str, Any]) -> None:
+def update_trade(trade_id: int, data: Dict[str, Any],
+                 *,
+                 conn: Optional[sqlite3.Connection] = None) -> None:
     if not data:
         return
 
     assignments = ", ".join(f"{col}=?" for col in data.keys())
     values = list(data.values())
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
@@ -874,23 +956,29 @@ def update_trade(trade_id: int, data: Dict[str, Any]) -> None:
         )
         if cur.rowcount == 0:
             raise ValueError(f"Сделка #{trade_id} не найдена.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def delete_trade(trade_id: int) -> None:
+def delete_trade(trade_id: int,
+                 *,
+                 conn: Optional[sqlite3.Connection] = None) -> None:
     if trade_id is None:
         return
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute("DELETE FROM trades WHERE id=?", (trade_id,))
         if cur.rowcount == 0:
             raise ValueError(f"Сделка #{trade_id} не найдена.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
 TRADE_COLUMNS = [

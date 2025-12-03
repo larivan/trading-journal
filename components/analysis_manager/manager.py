@@ -21,6 +21,7 @@ from db import (
     attach_chart_to_analysis_stage,
     delete_analysis_stage,
     get_analysis,
+    transaction,
     update_analysis,
     update_analysis_stage,
 )
@@ -65,7 +66,7 @@ def render_analysis_manager() -> None:
     @st.dialog(
         _get_dialog_title(analysis, is_new_analysis),
         width="large",
-        on_dismiss=_handle_dialog_dismiss
+        on_dismiss=_handle_dialog_dismiss,
     )
     def _dialog() -> None:
         with st.container(border=True):
@@ -75,23 +76,19 @@ def render_analysis_manager() -> None:
                 vertical_alignment="bottom",
             )
             with status_col:
-                current_stage = (
-                    analysis.get("state")
-                    or ANALYSIS_STATE_VALUES[0]
-                )
+                current_stage = analysis.get("state") or ANALYSIS_STATE_VALUES[0]
                 selected_stage = st.selectbox(
                     "Analysis stage",
                     ANALYSIS_STATE_VALUES,
-                    index=ANALYSIS_STATE_VALUES.index(current_stage)
-                    if current_stage else 0,
+                    index=(
+                        ANALYSIS_STATE_VALUES.index(current_stage)
+                        if current_stage
+                        else 0
+                    ),
                 )
 
             with actions_col:
-                submitted = st.button(
-                    "Save",
-                    type="primary",
-                    width="stretch"
-                )
+                submitted = st.button("Save", type="primary", width="stretch")
 
         visible = _visible_stage_types(selected_stage)
 
@@ -100,7 +97,7 @@ def render_analysis_manager() -> None:
             analysis_defaults=defaults["analysis"],
             visible="pre-market" in visible,
             expanded=(selected_stage == "pre-market"),
-            state_key=f"{state_key}_pre"
+            state_key=f"{state_key}_pre",
         )
 
         plan_forms, removed_plan_ids = render_plan_section(
@@ -122,7 +119,7 @@ def render_analysis_manager() -> None:
             defaults=defaults["analysis"],
             visible="post-market" in visible,
             expanded=(selected_stage == "post-market"),
-            state_key=f"{state_key}_post"
+            state_key=f"{state_key}_post",
         )
 
         if not submitted:
@@ -136,113 +133,96 @@ def render_analysis_manager() -> None:
 
         current_analysis_id = analysis_id
         try:
+            with transaction() as conn:
+                if is_new_analysis:
+                    current_analysis_id = add_analysis(analysis_payload, conn=conn)
+                else:
+                    update_analysis(current_analysis_id, analysis_payload, conn=conn)
+
+                if pre_values:
+                    pre_stage_id = pre_values["stage_id"]
+                    pre_values.update(
+                        {
+                            "analysis_id": current_analysis_id,
+                            "type": "pre-market",
+                        }
+                    )
+                    if pre_stage_id:
+                        update_analysis_stage(pre_stage_id, pre_values, conn=conn)
+                    else:
+                        pre_stage_id = add_analysis_stage(pre_values, conn=conn)
+
+                    persist_chart_editor(
+                        attached_charts=pre_values["charts"]["rows_source"],
+                        editor_rows=pre_values["charts"]["editor_value"],
+                        conn=conn,
+                        attach_chart=lambda chart_id, stage_id=pre_stage_id: attach_chart_to_analysis_stage(
+                            stage_id, chart_id, conn=conn
+                        ),
+                    )
+
+                if removed_plan_ids:
+                    for stage_id in removed_plan_ids:
+                        if not stage_id:
+                            continue
+                        delete_analysis_stage(stage_id, conn=conn)
+
+                for plan_form in plan_forms:
+                    charts_payload = plan_form.get("charts") or {}
+                    plan_stage_id = plan_form.get("stage_id")
+                    plan_payload = {
+                        "analysis_id": current_analysis_id,
+                        "type": "plan",
+                        "summary": plan_form.get("summary") or "",
+                    }
+                    if plan_stage_id:
+                        update_analysis_stage(plan_stage_id, plan_payload, conn=conn)
+                    else:
+                        plan_payload["time_local"] = (
+                            plan_form.get("time_local") or datetime.now()
+                        )
+                        plan_stage_id = add_analysis_stage(plan_payload, conn=conn)
+
+                    persist_chart_editor(
+                        attached_charts=charts_payload.get("rows_source") or [],
+                        editor_rows=charts_payload.get("editor_value") or [],
+                        conn=conn,
+                        attach_chart=lambda chart_id, stage_id=plan_stage_id: attach_chart_to_analysis_stage(
+                            stage_id, chart_id, conn=conn
+                        ),
+                    )
+
+                if post_values:
+                    post_stage_id = post_values["stage_id"]
+                    post_values.update(
+                        {
+                            "analysis_id": current_analysis_id,
+                            "type": "post-market",
+                        }
+                    )
+                    if post_stage_id:
+                        update_analysis_stage(post_stage_id, post_values, conn=conn)
+                    else:
+                        post_values.update({"time_local": datetime.now()})
+                        post_stage_id = add_analysis_stage(post_values, conn=conn)
+
+                    persist_chart_editor(
+                        attached_charts=post_values["charts"]["rows_source"],
+                        editor_rows=post_values["charts"]["editor_value"],
+                        conn=conn,
+                        attach_chart=lambda chart_id, stage_id=post_stage_id: attach_chart_to_analysis_stage(
+                            stage_id, chart_id, conn=conn
+                        ),
+                    )
+
             if is_new_analysis:
-                current_analysis_id = add_analysis(analysis_payload)
                 st.session_state[ANALYSIS_ID_STATE] = current_analysis_id
                 st.session_state[ANALYSIS_SUCCESS_STATE] = "Analysis created."
             else:
-                update_analysis(current_analysis_id, analysis_payload)
                 st.session_state[ANALYSIS_SUCCESS_STATE] = "Analysis saved."
         except Exception as exc:
             message_col.error(f"Failed to save analysis: {exc}")
             return
-
-        if (pre_values):
-            pre_stage_id = pre_values["stage_id"]
-            pre_values.update({
-                "analysis_id": current_analysis_id,
-                "type": "pre-market",
-            })
-            try:
-                if (pre_stage_id):
-                    update_analysis_stage(pre_stage_id, pre_values)
-                else:
-                    pre_values.update({"time_local": datetime.now()})
-                    pre_stage_id = add_analysis_stage(pre_values)
-            except Exception as exc:
-                message_col.error(f"Failed to save analysis: {exc}")
-                return
-
-            try:
-                persist_chart_editor(
-                    attached_charts=pre_values["charts"]["rows_source"],
-                    editor_rows=pre_values["charts"]["editor_value"],
-                    attach_chart=lambda chart_id, stage_id=pre_stage_id: attach_chart_to_analysis_stage(
-                        stage_id, chart_id
-                    ),
-                )
-            except Exception as exc:
-                message_col.error(f"Failed to save charts: {exc}")
-                return
-
-        if removed_plan_ids:
-            for stage_id in removed_plan_ids:
-                if not stage_id:
-                    continue
-                try:
-                    delete_analysis_stage(stage_id)
-                except Exception as exc:
-                    message_col.error(f"Failed to remove plan: {exc}")
-                    return
-
-        for plan_form in plan_forms:
-            charts_payload = plan_form.get("charts") or {}
-            plan_stage_id = plan_form.get("stage_id")
-            plan_payload = {
-                "analysis_id": current_analysis_id,
-                "type": "plan",
-                "summary": plan_form.get("summary") or "",
-            }
-            try:
-                if plan_stage_id:
-                    update_analysis_stage(plan_stage_id, plan_payload)
-                else:
-                    plan_payload["time_local"] = plan_form.get(
-                        "time_local") or datetime.now()
-                    plan_stage_id = add_analysis_stage(plan_payload)
-            except Exception as exc:
-                message_col.error(f"Failed to save plan: {exc}")
-                return
-
-            try:
-                persist_chart_editor(
-                    attached_charts=charts_payload.get("rows_source") or [],
-                    editor_rows=charts_payload.get("editor_value") or [],
-                    attach_chart=lambda chart_id, stage_id=plan_stage_id: attach_chart_to_analysis_stage(
-                        stage_id, chart_id
-                    ),
-                )
-            except Exception as exc:
-                message_col.error(f"Failed to save charts: {exc}")
-                return
-
-        if (post_values):
-            post_stage_id = post_values["stage_id"]
-            post_values.update({
-                "analysis_id": current_analysis_id,
-                "type": "post-market",
-            })
-            try:
-                if (post_stage_id):
-                    update_analysis_stage(post_stage_id, post_values)
-                else:
-                    post_values.update({"time_local": datetime.now()})
-                    post_stage_id = add_analysis_stage(post_values)
-            except Exception as exc:
-                message_col.error(f"Failed to save analysis: {exc}")
-                return
-
-            try:
-                persist_chart_editor(
-                    attached_charts=post_values["charts"]["rows_source"],
-                    editor_rows=post_values["charts"]["editor_value"],
-                    attach_chart=lambda chart_id, stage_id=post_stage_id: attach_chart_to_analysis_stage(
-                        stage_id, chart_id
-                    ),
-                )
-            except Exception as exc:
-                message_col.error(f"Failed to save charts: {exc}")
-                return
 
         st.rerun()
 

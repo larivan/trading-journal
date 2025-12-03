@@ -679,6 +679,7 @@ def persist_chart_editor(
     attached_charts: List[ChartRow],
     editor_rows: List[ChartRow],
     attach_chart: Callable[[int], None],
+    conn: Optional[Any] = None,
 ) -> None:
     """Синхронизирует таблицу чартов с данными из редактора."""
     desired_rows: List[ChartRow] = []
@@ -697,7 +698,7 @@ def persist_chart_editor(
 
     for chart_id in set(current_by_id.keys()) - desired_ids:
         if chart_id is not None:
-            delete_chart(chart_id)
+            delete_chart(chart_id, conn=conn)
 
     for row in desired_rows:
         chart_id = row.get("id")
@@ -707,12 +708,12 @@ def persist_chart_editor(
         existing_url = (existing.get("chart_url") or "").strip()
         existing_caption = (existing.get("caption") or None)
         if row["chart_url"] != existing_url or row["caption"] != existing_caption:
-            update_chart(chart_id, row["chart_url"], row["caption"])
+            update_chart(chart_id, row["chart_url"], row["caption"], conn=conn)
 
     for row in desired_rows:
         if row.get("id") is not None:
             continue
-        chart_id = add_chart(row["chart_url"], row["caption"])
+        chart_id = add_chart(row["chart_url"], row["caption"], conn=conn)
         # Внешняя функция решает, к какой сущности привязать чарт.
         attach_chart(chart_id)
 

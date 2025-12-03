@@ -37,6 +37,7 @@ from db import (
     list_trade_charts,
     attach_chart_to_trade,
     update_trade,
+    transaction,
 )
 
 
@@ -211,53 +212,33 @@ def render_trade_manager() -> None:
                 "estimation": review_values["estimation"],
             })
 
-        if is_new_trade:
-            payload["local_tz"] = local_tz
+        try:
+            with transaction() as conn:
+                current_trade_id = trade_id
+                trade_charts = charts or []
+                if is_new_trade:
+                    payload["local_tz"] = local_tz
+                    current_trade_id = create_trade(payload, conn=conn)
+                else:
+                    update_trade(current_trade_id, payload, conn=conn)
 
-            try:
-                new_trade_id = create_trade(payload)
-            except Exception as exc:
-                message_col.error(f"Failed to create the trade: {exc}")
-                return
-
-            try:
                 persist_chart_editor(
-                    attached_charts=[],
+                    attached_charts=trade_charts,
                     editor_rows=current_charts,
-                    attach_chart=lambda chart_id, trade_id=new_trade_id: attach_chart_to_trade(  # noqa: E731
-                        trade_id, chart_id
+                    conn=conn,
+                    attach_chart=lambda chart_id, trade_id=current_trade_id: attach_chart_to_trade(  # noqa: E731
+                        trade_id, chart_id, conn=conn
                     ),
                 )
-            except Exception as exc:
-                message_col.error(
-                    f"Trade rolled back because charts could not be saved: {exc}"
-                )
-                return
 
-            st.session_state[TRADE_ID_STATE] = new_trade_id
-            st.session_state[TRADE_SUCCESS_STATE] = "Trade created."
-        else:
-            try:
-                update_trade(trade_id, payload)
-            except Exception as exc:
-                message_col.error(f"Failed to persist the trade: {exc}")
-                return
-
-            try:
-                persist_chart_editor(
-                    attached_charts=charts,
-                    editor_rows=current_charts,
-                    attach_chart=lambda chart_id, trade_id=trade_id: attach_chart_to_trade(  # noqa: E731
-                        trade_id, chart_id
-                    ),
-                )
-            except Exception as exc:  # pragma: no cover - UI feedback
-                message_col.error(
-                    f"Trade saved but failed to update charts: {exc}"
-                )
-                return
-
-            st.session_state[TRADE_SUCCESS_STATE] = "Trade saved."
+            if is_new_trade:
+                st.session_state[TRADE_ID_STATE] = current_trade_id
+                st.session_state[TRADE_SUCCESS_STATE] = "Trade created."
+            else:
+                st.session_state[TRADE_SUCCESS_STATE] = "Trade saved."
+        except Exception as exc:  # pragma: no cover - UI feedback
+            message_col.error(f"Failed to save the trade: {exc}")
+            return
         st.rerun()
 
     if dialog_is_active(TRADE_DIALOG_NAME):
