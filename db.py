@@ -612,26 +612,34 @@ def delete_chart(chart_id: int,
             conn.close()
 
 
-def list_charts() -> List[Dict[str, Any]]:
+def list_charts(*,
+                trade_id: Optional[int] = None,
+                analysis_stage_id: Optional[int] = None,
+                setup_id: Optional[int] = None,
+                unattached: bool = False) -> List[Dict[str, Any]]:
+    conditions: List[str] = []
+    params: List[Any] = []
+
+    if trade_id is not None:
+        conditions.append("trade_id=?")
+        params.append(trade_id)
+    if analysis_stage_id is not None:
+        conditions.append("analysis_stage_id=?")
+        params.append(analysis_stage_id)
+    if setup_id is not None:
+        conditions.append("setup_id=?")
+        params.append(setup_id)
+    if unattached:
+        conditions.append("trade_id IS NULL")
+        conditions.append("analysis_stage_id IS NULL")
+        conditions.append("setup_id IS NULL")
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    query = f"SELECT * FROM charts {where_clause} ORDER BY id ASC"
+
     conn = get_conn()
     try:
-        rows = conn.execute(
-            "SELECT * FROM charts ORDER BY id DESC"
-        ).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def list_trade_charts(trade_id: Optional[int]) -> List[Dict[str, Any]]:
-    if trade_id is None:
-        return []
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            "SELECT * FROM charts WHERE trade_id=? ORDER BY id ASC",
-            (trade_id,),
-        ).fetchall()
+        rows = conn.execute(query, params).fetchall()
         return _rows_to_dicts(rows)
     finally:
         conn.close()
@@ -679,18 +687,6 @@ def detach_chart_from_trade(trade_id: int, chart_id: int,
     finally:
         if own:
             conn.close()
-
-
-def list_analysis_stage_charts(stage_id: int) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            "SELECT * FROM charts WHERE analysis_stage_id=? ORDER BY id ASC",
-            (stage_id,),
-        ).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
 
 
 def attach_chart_to_analysis_stage(stage_id: int, chart_id: int,

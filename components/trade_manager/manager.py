@@ -34,7 +34,7 @@ from db import (
     list_accounts,
     list_analysis,
     list_setups,
-    list_trade_charts,
+    list_charts,
     attach_chart_to_trade,
     update_trade,
     transaction,
@@ -84,7 +84,7 @@ def render_trade_manager() -> None:
             formatter=lambda analysis: f"{analysis.get('date_local')} · {analysis.get('asset')}",
         )
         defaults = get_trade_defaults(trade)
-        charts = list_trade_charts(trade_id)
+        charts = list_charts(trade_id=trade_id) if trade_id else []
 
         # Рендерим хедер с выбором статуса и кнопками действий
         with st.container(border=True):
