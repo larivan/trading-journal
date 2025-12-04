@@ -5,7 +5,7 @@ import streamlit as st
 from components.chart_editor import persist_chart_editor, render_chart_editor
 from helpers import to_option_format, parse_date, parse_time
 from utils.trade_sessions import detect_trade_session
-from .state import get_allowed_statuses, visible_stages
+from .state import get_allowed_statuses, map_status_to_outcome, visible_stages
 from .defaults import get_trade_defaults
 from .sections import (
     render_main_stage,
@@ -122,9 +122,16 @@ def render_trade_manager() -> None:
 
         stages_col, side_col = st.columns([1, 2])
 
+        selected_outcome = map_status_to_outcome(
+            selected_status, trade.get("outcome"))
+
         # Рендерим стадии сделки
         with stages_col:
             visible = visible_stages(selected_status)
+            close_visible = ("close" in visible) and not (
+                selected_status == "Review"
+                and selected_outcome in ("canceled", "missed")
+            )
 
             main_values = render_main_stage(
                 expanded=(selected_status in ("Open", "Cancel", "Miss")),
@@ -136,7 +143,7 @@ def render_trade_manager() -> None:
             )
 
             close_values = render_close_stage(
-                visible="close" in visible,
+                visible=close_visible,
                 expanded=("Close" == selected_status),
                 defaults=defaults['close'],
                 state_key=f"{state_key}_close"
@@ -195,6 +202,7 @@ def render_trade_manager() -> None:
             "risk_pct": float(main_values["risk_pct"]),
             "session": session_value,
             "state": selected_status,
+            "outcome": selected_outcome,
         }
 
         if close_values:

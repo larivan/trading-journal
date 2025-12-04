@@ -7,9 +7,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Union
 
 # Справочники вынесены в config.py
-from config import (
-    ANALYSIS_STATE_VALUES
-)
+from config import ANALYSIS_STATE_VALUES
 
 # =====================================================================
 # Paths & helpers
@@ -25,6 +23,7 @@ TRADE_ORDER_COLUMNS = {
     "analysis_id",
     "asset",
     "state",
+    "outcome",
     "result",
     "session",
     "net_pnl",
@@ -114,7 +113,9 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
-def _managed_conn(conn: Optional[sqlite3.Connection]) -> tuple[sqlite3.Connection, bool]:
+def _managed_conn(
+    conn: Optional[sqlite3.Connection],
+) -> tuple[sqlite3.Connection, bool]:
     """Возвращает соединение и флаг владения (нужно ли закрывать/коммитить)."""
     if conn is None:
         return get_conn(), True
@@ -196,6 +197,7 @@ def _normalize_analysis_stage_payload(data: Dict[str, Any]) -> Dict[str, Any]:
         payload[key] = value
     return payload
 
+
 # =====================================================================
 # Schema (built from constants)
 # =====================================================================
@@ -238,6 +240,7 @@ CREATE TABLE IF NOT EXISTS trades (
     asset              TEXT NOT NULL,
     session            TEXT NOT NULL,
     state              TEXT NOT NULL,
+    outcome            TEXT NOT NULL DEFAULT 'open',
     result             TEXT,
     net_pnl            REAL,
     risk_pct           REAL,
@@ -325,6 +328,7 @@ CREATE TABLE IF NOT EXISTS trade_notes (
 CREATE INDEX IF NOT EXISTS idx_trades_date_local   ON trades(date_local);
 CREATE INDEX IF NOT EXISTS idx_trades_account      ON trades(account_id);
 CREATE INDEX IF NOT EXISTS idx_trades_asset        ON trades(asset);
+CREATE INDEX IF NOT EXISTS idx_trades_outcome      ON trades(outcome);
 CREATE INDEX IF NOT EXISTS idx_trades_result       ON trades(result);
 CREATE INDEX IF NOT EXISTS idx_trades_setup        ON trades(setup_id);
 
@@ -347,22 +351,26 @@ def init_db() -> None:
     finally:
         conn.close()
 
+
 # =====================================================================
 # Accounts & Setups
 # =====================================================================
 
 
-def create_account(name: str, broker: Optional[str] = None,
-                   currency: str = "USD",
-                   starting_balance: Optional[float] = None,
-                   is_prop: int = 0) -> int:
+def create_account(
+    name: str,
+    broker: Optional[str] = None,
+    currency: str = "USD",
+    starting_balance: Optional[float] = None,
+    is_prop: int = 0,
+) -> int:
     conn = get_conn()
     try:
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO accounts (name, broker, currency, starting_balance, is_prop, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (name, broker, currency, starting_balance, is_prop, _now_iso_utc())
+            (name, broker, currency, starting_balance, is_prop, _now_iso_utc()),
         )
         conn.commit()
         return cur.lastrowid
@@ -387,7 +395,7 @@ def create_setup(name: str, description: Optional[str] = None) -> int:
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO setups (name, description, created_at) VALUES (?, ?, ?)",
-            (name, description, _now_iso_utc())
+            (name, description, _now_iso_utc()),
         )
         conn.commit()
         return cur.lastrowid
@@ -404,14 +412,15 @@ def list_setups() -> List[Dict[str, Any]]:
     finally:
         conn.close()
 
+
 # =====================================================================
 # Analysis (daily overview)
 # =====================================================================
 
 
-def add_analysis(data: Dict[str, Any],
-                 *,
-                 conn: Optional[sqlite3.Connection] = None) -> int:
+def add_analysis(
+    data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> int:
     payload = _normalize_analysis_payload(data)
     if "date_local" not in payload:
         raise ValueError("date_local обязательно для анализа.")
@@ -435,9 +444,11 @@ def add_analysis(data: Dict[str, Any],
             conn.close()
 
 
-def list_analysis(filters: Optional[Dict[str, Any]] = None,
-                  order_by: Optional[str] = None,
-                  ascending: bool = False) -> List[Dict[str, Any]]:
+def list_analysis(
+    filters: Optional[Dict[str, Any]] = None,
+    order_by: Optional[str] = None,
+    ascending: bool = False,
+) -> List[Dict[str, Any]]:
     filters = filters or {}
     select_clause = ", ".join(ANALYSIS_COLUMNS)
     q = f"SELECT {select_clause} FROM analysis WHERE 1=1"
@@ -465,7 +476,8 @@ def list_analysis(filters: Optional[Dict[str, Any]] = None,
     if order_by:
         if order_by not in ANALYSIS_ORDER_COLUMNS:
             raise ValueError(
-                f"order_by must be one of: {sorted(ANALYSIS_ORDER_COLUMNS)}")
+                f"order_by must be one of: {sorted(ANALYSIS_ORDER_COLUMNS)}"
+            )
         q += (
             f" ORDER BY {ANALYSIS_ORDER_COLUMNS[order_by]} "
             f"{'ASC' if ascending else 'DESC'}"
@@ -493,9 +505,9 @@ def get_analysis(analysis_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def update_analysis(analysis_id: int, data: Dict[str, Any],
-                    *,
-                    conn: Optional[sqlite3.Connection] = None) -> None:
+def update_analysis(
+    analysis_id: int, data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> None:
     payload = _normalize_analysis_payload(data)
     if not payload:
         return
@@ -519,9 +531,9 @@ def update_analysis(analysis_id: int, data: Dict[str, Any],
             conn.close()
 
 
-def delete_analysis(analysis_id: int,
-                    *,
-                    conn: Optional[sqlite3.Connection] = None) -> None:
+def delete_analysis(
+    analysis_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
@@ -534,14 +546,18 @@ def delete_analysis(analysis_id: int,
         if own:
             conn.close()
 
+
 # =====================================================================
 # Charts
 # =====================================================================
 
 
-def add_chart(chart_url: str, caption: Optional[str] = None,
-              *,
-              conn: Optional[sqlite3.Connection] = None) -> int:
+def add_chart(
+    chart_url: str,
+    caption: Optional[str] = None,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> int:
     if not chart_url:
         raise ValueError("chart_url is required.")
 
@@ -549,9 +565,8 @@ def add_chart(chart_url: str, caption: Optional[str] = None,
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO charts (chart_url, caption) "
-            "VALUES (?, ?)",
-            (chart_url, caption)
+            "INSERT INTO charts (chart_url, caption) " "VALUES (?, ?)",
+            (chart_url, caption),
         )
         if own:
             conn.commit()
@@ -571,10 +586,13 @@ def get_chart(chart_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def update_chart(chart_id: int, chart_url: str,
-                 caption: Optional[str] = None,
-                 *,
-                 conn: Optional[sqlite3.Connection] = None) -> None:
+def update_chart(
+    chart_id: int,
+    chart_url: str,
+    caption: Optional[str] = None,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> None:
     if not chart_url:
         raise ValueError("chart_url is required.")
 
@@ -598,9 +616,7 @@ def update_chart(chart_id: int, chart_url: str,
             conn.close()
 
 
-def delete_chart(chart_id: int,
-                 *,
-                 conn: Optional[sqlite3.Connection] = None) -> None:
+def delete_chart(chart_id: int, *, conn: Optional[sqlite3.Connection] = None) -> None:
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
@@ -612,11 +628,13 @@ def delete_chart(chart_id: int,
             conn.close()
 
 
-def list_charts(*,
-                trade_id: Optional[int] = None,
-                analysis_stage_id: Optional[int] = None,
-                setup_id: Optional[int] = None,
-                unattached: bool = False) -> List[Dict[str, Any]]:
+def list_charts(
+    *,
+    trade_id: Optional[int] = None,
+    analysis_stage_id: Optional[int] = None,
+    setup_id: Optional[int] = None,
+    unattached: bool = False,
+) -> List[Dict[str, Any]]:
     conditions: List[str] = []
     params: List[Any] = []
 
@@ -645,9 +663,9 @@ def list_charts(*,
         conn.close()
 
 
-def attach_chart_to_trade(trade_id: int, chart_id: int,
-                          *,
-                          conn: Optional[sqlite3.Connection] = None) -> None:
+def attach_chart_to_trade(
+    trade_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
@@ -672,9 +690,9 @@ def attach_chart_to_trade(trade_id: int, chart_id: int,
             conn.close()
 
 
-def detach_chart_from_trade(trade_id: int, chart_id: int,
-                            *,
-                            conn: Optional[sqlite3.Connection] = None) -> None:
+def detach_chart_from_trade(
+    trade_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
@@ -689,9 +707,9 @@ def detach_chart_from_trade(trade_id: int, chart_id: int,
             conn.close()
 
 
-def attach_chart_to_analysis_stage(stage_id: int, chart_id: int,
-                                   *,
-                                   conn: Optional[sqlite3.Connection] = None) -> None:
+def attach_chart_to_analysis_stage(
+    stage_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
@@ -716,9 +734,9 @@ def attach_chart_to_analysis_stage(stage_id: int, chart_id: int,
             conn.close()
 
 
-def detach_chart_from_analysis_stage(stage_id: int, chart_id: int,
-                                     *,
-                                     conn: Optional[sqlite3.Connection] = None) -> None:
+def detach_chart_from_analysis_stage(
+    stage_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
@@ -732,14 +750,15 @@ def detach_chart_from_analysis_stage(stage_id: int, chart_id: int,
         if own:
             conn.close()
 
+
 # =====================================================================
 # Analysis stages
 # =====================================================================
 
 
-def add_analysis_stage(data: Dict[str, Any],
-                       *,
-                       conn: Optional[sqlite3.Connection] = None) -> int:
+def add_analysis_stage(
+    data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> int:
     payload = _normalize_analysis_stage_payload(data)
     if not payload:
         raise ValueError("Нет данных для создания этапа анализа.")
@@ -778,9 +797,11 @@ def get_analysis_stage(stage_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def list_analysis_stages(filters: Optional[Dict[str, Any]] = None,
-                         order_by: Optional[str] = None,
-                         ascending: bool = False) -> List[Dict[str, Any]]:
+def list_analysis_stages(
+    filters: Optional[Dict[str, Any]] = None,
+    order_by: Optional[str] = None,
+    ascending: bool = False,
+) -> List[Dict[str, Any]]:
     filters = filters or {}
     select_clause = ", ".join(ANALYSIS_STAGE_COLUMNS)
     q = (
@@ -815,7 +836,8 @@ def list_analysis_stages(filters: Optional[Dict[str, Any]] = None,
     if order_by:
         if order_by not in ANALYSIS_STAGE_ORDER_COLUMNS:
             raise ValueError(
-                f"order_by must be one of: {sorted(ANALYSIS_STAGE_ORDER_COLUMNS)}")
+                f"order_by must be one of: {sorted(ANALYSIS_STAGE_ORDER_COLUMNS)}"
+            )
         q += (
             f" ORDER BY {ANALYSIS_STAGE_ORDER_COLUMNS[order_by]} "
             f"{'ASC' if ascending else 'DESC'}"
@@ -831,9 +853,9 @@ def list_analysis_stages(filters: Optional[Dict[str, Any]] = None,
         conn.close()
 
 
-def update_analysis_stage(stage_id: int, data: Dict[str, Any],
-                          *,
-                          conn: Optional[sqlite3.Connection] = None) -> None:
+def update_analysis_stage(
+    stage_id: int, data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> None:
     payload = _normalize_analysis_stage_payload(data)
     if not payload:
         return
@@ -857,9 +879,9 @@ def update_analysis_stage(stage_id: int, data: Dict[str, Any],
             conn.close()
 
 
-def delete_analysis_stage(stage_id: int,
-                          *,
-                          conn: Optional[sqlite3.Connection] = None) -> None:
+def delete_analysis_stage(
+    stage_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
@@ -876,6 +898,7 @@ def delete_analysis_stage(stage_id: int,
 # =====================================================================
 # Trade queries
 # =====================================================================
+
 
 def get_trade_by_id(trade_id: int) -> Optional[Dict[str, Any]]:
     conn = get_conn()
@@ -898,6 +921,7 @@ WRITABLE_TRADE_FIELDS = [
     "risk_pct",
     "session",
     "state",
+    "outcome",
     "result",
     "net_pnl",
     "risk_reward",
@@ -909,9 +933,9 @@ WRITABLE_TRADE_FIELDS = [
 ]
 
 
-def create_trade(data: Dict[str, Any],
-                 *,
-                 conn: Optional[sqlite3.Connection] = None) -> int:
+def create_trade(
+    data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> int:
     if not data:
         raise ValueError("Нет данных для создания сделки.")
 
@@ -934,9 +958,9 @@ def create_trade(data: Dict[str, Any],
             conn.close()
 
 
-def update_trade(trade_id: int, data: Dict[str, Any],
-                 *,
-                 conn: Optional[sqlite3.Connection] = None) -> None:
+def update_trade(
+    trade_id: int, data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> None:
     if not data:
         return
 
@@ -959,9 +983,7 @@ def update_trade(trade_id: int, data: Dict[str, Any],
             conn.close()
 
 
-def delete_trade(trade_id: int,
-                 *,
-                 conn: Optional[sqlite3.Connection] = None) -> None:
+def delete_trade(trade_id: int, *, conn: Optional[sqlite3.Connection] = None) -> None:
     if trade_id is None:
         return
     conn, own = _managed_conn(conn)
@@ -989,6 +1011,7 @@ TRADE_COLUMNS = [
     "risk_pct",
     "session",
     "state",
+    "outcome",
     "result",
     "net_pnl",
     "risk_reward",
@@ -1008,9 +1031,11 @@ TRADE_COMPAT_COLUMNS = [
 ]
 
 
-def list_trades(filters: Optional[Dict[str, Any]] = None,
-                order_by: Optional[str] = None,
-                ascending: bool = True) -> List[Dict[str, Any]]:
+def list_trades(
+    filters: Optional[Dict[str, Any]] = None,
+    order_by: Optional[str] = None,
+    ascending: bool = True,
+) -> List[Dict[str, Any]]:
     filters = filters or {}
     select_clause = ", ".join(TRADE_COLUMNS + TRADE_COMPAT_COLUMNS)
     q = f"SELECT {select_clause} FROM trades WHERE 1=1"
@@ -1022,6 +1047,7 @@ def list_trades(filters: Optional[Dict[str, Any]] = None,
         "setup_id": "setup_id",
         "analysis_id": "analysis_id",
         "state": "state",
+        "outcome": "outcome",
         "result": "result",
         "session": "session",
         "estimation": "estimation",
