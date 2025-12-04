@@ -759,7 +759,10 @@ def detach_chart_from_analysis_stage(
 def add_analysis_stage(
     data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
 ) -> int:
-    payload = _normalize_analysis_stage_payload(data)
+    payload_data = dict(data or {})
+    if not payload_data.get("time_local"):
+        payload_data["time_local"] = datetime.now()
+    payload = _normalize_analysis_stage_payload(payload_data)
     if not payload:
         raise ValueError("Нет данных для создания этапа анализа.")
 

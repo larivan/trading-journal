@@ -110,6 +110,7 @@ def render_trade_manager() -> None:
                         ":material/arrow_back: Back",
                         width="stretch"
                     ):
+                        _handle_dialog_dismiss()
                         remove_previous_dialog()
                         open_dialog(ANALYSIS_DIALOG_NAME)
                         st.rerun()
