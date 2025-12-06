@@ -1,6 +1,6 @@
 """Блок After close."""
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Optional
 import streamlit as st
 from config import TRADE_RESULT_VALUES
 from helpers import safe_choice_index
@@ -12,7 +12,7 @@ def render_close_stage(
     expanded: bool,
     defaults: Dict[str, Any],
     state_key: str
-) -> Tuple[Dict[str, Any], List[str]]:
+) -> Optional[Dict[str, Any]]:
     """Рисует секцию Close и возвращает введённые значения."""
     data = defaults.copy()
     if not visible:
@@ -32,19 +32,6 @@ def render_close_stage(
             value=float(data["net_pnl"]),
             key=f"{state_key}_net_pnl",
             step=1.0,
-        )
-        cc3, cc4 = st.columns(2)
-        data["risk_reward"] = cc3.number_input(
-            "R:R",
-            value=float(data["risk_reward"]),
-            key=f"{state_key}_risk_reward",
-            step=0.1,
-        )
-        data["reward_percent"] = cc4.number_input(
-            "Reward %",
-            value=float(data["reward_percent"]),
-            key=f"{state_key}_reward_percent",
-            step=0.5,
         )
 
         data["hot_thoughts"] = st.text_area(

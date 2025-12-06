@@ -1,6 +1,6 @@
 """Основной компонент трейд-менеджера."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import streamlit as st
 from components.note_manager import render_note_manager
 from components.chart_editor import persist_chart_editor, render_chart_editor
@@ -81,8 +81,12 @@ def render_trade_manager() -> None:
     )
     def _dialog() -> None:
         # Подготовка данных
+        account_rows = list_accounts(include_archived=True)
+        account_lookup = {
+            acc["id"]: acc for acc in account_rows if acc.get("id") is not None
+        }
         accounts = to_option_format(
-            list_accounts(),
+            account_rows,
             formatter=lambda acc: f"{acc['name']}",
         )
         setups = to_option_format(
@@ -193,6 +197,9 @@ def render_trade_manager() -> None:
             if not main_values["asset"]:
                 message_col.error("Select an asset.")
                 return
+            if not main_values["account"]:
+                message_col.error("Select an account.")
+                return
 
         if selected_status == "Close":
             if not close_values:
@@ -226,12 +233,24 @@ def render_trade_manager() -> None:
             "outcome": selected_outcome,
         }
 
+        risk_reward_value = None
+        reward_percent_value = None
+        if close_values:
+            net_pnl_value = float(close_values["net_pnl"])
+            risk_reward_value, reward_percent_value = _calculate_rewards(
+                net_pnl=net_pnl_value,
+                risk_pct=float(main_values["risk_pct"]),
+                account_balance=account_lookup.get(main_values["account"], {}).get(
+                    "starting_balance"
+                ),
+            )
+
         if close_values:
             payload.update({
                 "result": None if not close_values["result"] else close_values["result"],
-                "net_pnl": float(close_values["net_pnl"]),
-                "risk_reward": float(close_values["risk_reward"]),
-                "reward_percent": float(close_values["reward_percent"]),
+                "net_pnl": net_pnl_value,
+                "risk_reward": risk_reward_value,
+                "reward_percent": reward_percent_value,
                 "hot_thoughts": close_values["hot_thoughts"].strip() or None,
             })
 
@@ -305,3 +324,31 @@ def _handle_dialog_dismiss() -> None:
     clear_note_selector_state(
         f"{TM_KEY_PREFIX}{current_trade_id or 'new'}_note_selector"
     )
+
+
+def _calculate_rewards(
+    *,
+    net_pnl: Optional[float],
+    risk_pct: Optional[float],
+    account_balance: Optional[Any],
+) -> tuple[Optional[float], Optional[float]]:
+    """Высчитывает R:R и Reward % исходя из Net PnL, размера счёта и процента риска."""
+    try:
+        balance = float(
+            account_balance) if account_balance is not None else None
+    except (TypeError, ValueError):
+        balance = None
+
+    if net_pnl is None or balance in (None, 0):
+        return None, None
+
+    risk_amount = None
+    if risk_pct is not None:
+        try:
+            risk_amount = balance * float(risk_pct) / 100
+        except (TypeError, ValueError):
+            risk_amount = None
+
+    reward_percent = (float(net_pnl) / balance) * 100 if balance else None
+    risk_reward = (float(net_pnl) / risk_amount) if risk_amount else None
+    return risk_reward, reward_percent
