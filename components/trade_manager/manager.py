@@ -2,7 +2,9 @@
 
 from typing import Any, Dict, List
 import streamlit as st
+from components.note_manager import render_note_manager
 from components.chart_editor import persist_chart_editor, render_chart_editor
+from components.note_selector import render_note_selector, clear_note_selector_state
 from helpers import to_option_format, parse_date, parse_time
 from utils.trade_sessions import detect_trade_session
 from .state import get_allowed_statuses, map_status_to_outcome, visible_stages
@@ -33,9 +35,12 @@ from db import (
     get_trade_by_id,
     list_accounts,
     list_analysis,
+    list_trade_notes,
     list_setups,
     list_charts,
     attach_chart_to_trade,
+    attach_note_to_trade,
+    detach_note_from_trade,
     update_trade,
     transaction,
 )
@@ -43,6 +48,11 @@ from db import (
 
 def render_trade_manager() -> None:
     """Единое окно создания и редактирования сделок."""
+
+    if not dialog_is_active(TRADE_DIALOG_NAME):
+        render_note_manager()
+        return
+
     trade_id = None
     is_new_trade = True
     if TRADE_ID_STATE in st.session_state:
@@ -85,6 +95,7 @@ def render_trade_manager() -> None:
         )
         defaults = get_trade_defaults(trade)
         charts = list_charts(trade_id=trade_id) if trade_id else []
+        base_trade_notes = list_trade_notes(trade_id) if trade_id else []
 
         # Рендерим хедер с выбором статуса и кнопками действий
         with st.container(border=True):
@@ -112,7 +123,7 @@ def render_trade_manager() -> None:
                     ):
                         _handle_dialog_dismiss()
                         remove_previous_dialog()
-                        open_dialog(ANALYSIS_DIALOG_NAME)
+                        open_dialog(get_previous_dialog())
                         st.rerun()
 
                 submitted = c2.button(
@@ -163,6 +174,13 @@ def render_trade_manager() -> None:
                 key=f"{state_key}_chart_editor",
                 base_rows=charts,
                 layout_columns=2,
+            )
+            staged_note_ids = render_note_selector(
+                entity_type="trade",
+                entity_id=trade_id,
+                state_key=f"{state_key}_note_selector",
+                previous_dialog_name=TRADE_DIALOG_NAME,
+                excerpt_limit=45,
             )
 
         if not submitted:
@@ -221,6 +239,13 @@ def render_trade_manager() -> None:
                 "estimation": review_values["estimation"],
             })
 
+        base_note_ids = {
+            note.get("id") for note in base_trade_notes if note.get("id") is not None
+        }
+        staged_note_ids_set = {
+            int(nid) for nid in (staged_note_ids or []) if nid is not None
+        }
+
         try:
             with transaction() as conn:
                 current_trade_id = trade_id
@@ -239,6 +264,10 @@ def render_trade_manager() -> None:
                         trade_id, chart_id, conn=conn
                     ),
                 )
+                for note_id in base_note_ids - staged_note_ids_set:
+                    detach_note_from_trade(current_trade_id, note_id, conn=conn)
+                for note_id in staged_note_ids_set - base_note_ids:
+                    attach_note_to_trade(current_trade_id, note_id, conn=conn)
 
             if is_new_trade:
                 st.session_state[TRADE_ID_STATE] = current_trade_id
@@ -266,6 +295,10 @@ def _get_dialog_title(data: Dict[str, Any], is_new_trade: bool) -> str:
 
 
 def _handle_dialog_dismiss() -> None:
+    current_trade_id = st.session_state.get(TRADE_ID_STATE)
     close_dialog()
     st.session_state.pop(TRADE_ID_STATE, None)
     st.session_state.pop("tm_default_analysis_id", None)
+    clear_note_selector_state(
+        f"{TM_KEY_PREFIX}{current_trade_id or 'new'}_note_selector"
+    )

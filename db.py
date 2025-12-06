@@ -603,6 +603,122 @@ def delete_note(note_id: int, *, conn: Optional[sqlite3.Connection] = None) -> N
             conn.close()
 
 
+def attach_note_to_trade(
+    trade_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    if trade_id is None or note_id is None:
+        return
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT OR IGNORE INTO trade_notes (trade_id, note_id) VALUES (?, ?)",
+            (trade_id, note_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def detach_note_from_trade(
+    trade_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    if trade_id is None or note_id is None:
+        return
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM trade_notes WHERE trade_id=? AND note_id=?",
+            (trade_id, note_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def list_trade_notes(trade_id: int) -> List[Dict[str, Any]]:
+    if trade_id is None:
+        return []
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT {', '.join(NOTE_SELECT_COLUMNS)}
+            FROM notes n
+            JOIN trade_notes tn ON tn.note_id = n.id
+            WHERE tn.trade_id=?
+            ORDER BY n.date_local DESC, n.time_local DESC, n.id DESC
+            """,
+            (trade_id,),
+        ).fetchall()
+        return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
+def attach_note_to_analysis_stage(
+    stage_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    if stage_id is None or note_id is None:
+        return
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT OR IGNORE INTO analysis_notes (analysis_stage_id, note_id) VALUES (?, ?)",
+            (stage_id, note_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def detach_note_from_analysis_stage(
+    stage_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    if stage_id is None or note_id is None:
+        return
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM analysis_notes WHERE analysis_stage_id=? AND note_id=?",
+            (stage_id, note_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def list_analysis_stage_notes(stage_id: int) -> List[Dict[str, Any]]:
+    if stage_id is None:
+        return []
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT {', '.join(NOTE_SELECT_COLUMNS)}
+            FROM notes n
+            JOIN analysis_notes an ON an.note_id = n.id
+            WHERE an.analysis_stage_id=?
+            ORDER BY n.date_local DESC, n.time_local DESC, n.id DESC
+            """,
+            (stage_id,),
+        ).fetchall()
+        return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
 # =====================================================================
 # Analysis (daily overview)
 # =====================================================================

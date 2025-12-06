@@ -26,8 +26,14 @@ from db import (
     transaction,
     update_note,
 )
+from utils.session_state import (
+    open_dialog,
+    close_dialog,
+    dialog_is_active,
+    get_previous_dialog,
+    remove_previous_dialog,
+)
 from helpers import parse_date
-from utils.session_state import close_dialog, dialog_is_active
 
 
 def render_note_manager() -> None:
@@ -61,18 +67,6 @@ def render_note_manager() -> None:
         on_dismiss=_handle_dialog_dismiss,
     )
     def _dialog() -> None:
-        message_col, actions_col = st.columns(
-            [0.7, 0.3],
-            vertical_alignment="bottom",
-        )
-        with actions_col:
-            save_clicked = st.button(
-                "Save",
-                type="primary",
-                width="stretch",
-                key=f"{state_key}_save",
-            )
-
         title_value = st.text_input(
             "Title",
             value=note.get("title") or "",
@@ -93,49 +87,85 @@ def render_note_manager() -> None:
             layout_columns=2,
         )
 
-        if not save_clicked:
-            return
+        st.divider()
 
-        body_clean = (body_value or "").strip()
-        if not body_clean:
-            message_col.error("Fill in the content.")
-            return
-
-        now_value = datetime.now()
-        payload: Dict[str, Any] = {
-            "title": (title_value or "").strip() or None,
-            "body": body_clean,
-            "date_local": now_value.date().isoformat(),
-            "time_local": now_value.strftime("%H:%M:%S"),
-        }
-
-        try:
-            with transaction() as conn:
-                current_note_id = note_id
-                if is_new_note:
-                    current_note_id = create_note(payload, conn=conn)
-                else:
-                    update_note(current_note_id, payload, conn=conn)
-
-                persist_chart_editor(
-                    attached_charts=charts,
-                    editor_rows=chart_values,
-                    conn=conn,
-                    attach_chart=lambda chart_id, note_id=current_note_id: attach_chart_to_note(  # noqa: E731
-                        note_id, chart_id, conn=conn
-                    ),
+        if get_previous_dialog():
+            actions_col, message_col = st.columns(
+                [0.4, 0.6],
+                vertical_alignment="bottom",
+            )
+            with actions_col:
+                c1, c2 = st.columns(2)
+                if c1.button(
+                    ":material/arrow_back: Back",
+                    width="stretch"
+                ):
+                    close_dialog()
+                    open_dialog(get_previous_dialog())
+                    remove_previous_dialog()
+                    st.rerun()
+                save_clicked = c2.button(
+                    "Save",
+                    type="primary",
+                    width="stretch",
+                    key=f"{state_key}_save",
+                )
+        else:
+            actions_col, message_col = st.columns(
+                [0.2, 0.8],
+                vertical_alignment="bottom",
+            )
+            with actions_col:
+                save_clicked = st.button(
+                    "Save",
+                    type="primary",
+                    width="stretch",
+                    key=f"{state_key}_save",
                 )
 
-            if is_new_note:
-                st.session_state[NOTE_ID_STATE] = current_note_id
-                st.session_state[NOTE_SUCCESS_STATE] = "Note created."
-            else:
-                st.session_state[NOTE_SUCCESS_STATE] = "Note saved."
-        except Exception as exc:  # pragma: no cover - UI feedback
-            message_col.error(f"Failed to save note: {exc}")
-            return
+        if save_clicked:
 
-        st.rerun()
+            body_clean = (body_value or "").strip()
+            if not body_clean:
+                message_col.error("Fill in the content.")
+                return
+
+            now_value = datetime.now()
+            payload: Dict[str, Any] = {
+                "title": (title_value or "").strip() or None,
+                "body": body_clean,
+                "date_local": now_value.date().isoformat(),
+                "time_local": now_value.strftime("%H:%M:%S"),
+            }
+
+            try:
+                with transaction() as conn:
+                    current_note_id = note_id
+                    if is_new_note:
+                        current_note_id = create_note(payload, conn=conn)
+                    else:
+                        update_note(current_note_id, payload, conn=conn)
+
+                    persist_chart_editor(
+                        attached_charts=charts,
+                        editor_rows=chart_values,
+                        conn=conn,
+                        attach_chart=lambda chart_id, note_id=current_note_id: attach_chart_to_note(  # noqa: E731
+                            note_id, chart_id, conn=conn
+                        ),
+                    )
+
+                if is_new_note:
+                    st.session_state[NOTE_ID_STATE] = current_note_id
+                    st.session_state[NOTE_SUCCESS_STATE] = "Note created."
+                else:
+                    st.session_state[NOTE_SUCCESS_STATE] = "Note saved."
+
+            except Exception as exc:  # pragma: no cover - UI feedback
+                message_col.error(f"Failed to save note: {exc}")
+                return
+
+            st.rerun()
 
     if dialog_is_active(NOTE_DIALOG_NAME):
         _dialog()
