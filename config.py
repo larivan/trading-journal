@@ -13,6 +13,12 @@ PAGES = {
         'default': False,
         'layout': 'wide',
     },
+    'accounts': {
+        'title': 'Accounts',
+        'icon': ':material/account_balance_wallet:',
+        'default': False,
+        'layout': 'wide',
+    },
     'analysis': {
         'title': 'Analysis Database',
         'icon': ':material/insights:',
@@ -40,6 +46,12 @@ TRADE_OUTCOME_VALUES = ["open", "closed", "canceled", "missed"]
 TRADE_RESULT_VALUES = ["Win", "Loss", "BE"]
 TRADE_SESSION_VALUES = ["Frankfurt", "LOKZ",
                         "Lunch", "Pre-NY", "NYKZ", "Other"]
+
+# Accounts
+ACCOUNT_DIALOG_NAME = "account_manager"
+ACCOUNT_ID_STATE = "acc_account_id"
+ACCOUNT_SUCCESS_STATE = "acc_success_message"
+ACCOUNT_MANAGER_KEY_PREFIX = "acc_account_id_"
 
 # Analysis
 ANALYSIS_DIALOG_NAME = "analysis_manager"
