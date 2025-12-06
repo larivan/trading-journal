@@ -170,11 +170,13 @@ def render_trade_manager() -> None:
 
         # Панель с редактором графиков
         with side_col:
+            st.markdown("#### Charts")
             current_charts = render_chart_editor(
                 key=f"{state_key}_chart_editor",
                 base_rows=charts,
                 layout_columns=2,
             )
+            st.markdown("#### Observations")
             staged_note_ids = render_note_selector(
                 entity_type="trade",
                 entity_id=trade_id,
@@ -265,7 +267,8 @@ def render_trade_manager() -> None:
                     ),
                 )
                 for note_id in base_note_ids - staged_note_ids_set:
-                    detach_note_from_trade(current_trade_id, note_id, conn=conn)
+                    detach_note_from_trade(
+                        current_trade_id, note_id, conn=conn)
                 for note_id in staged_note_ids_set - base_note_ids:
                     attach_note_to_trade(current_trade_id, note_id, conn=conn)
 
