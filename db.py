@@ -3,8 +3,8 @@ import json
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import date, datetime, time, timedelta
-from typing import Any, Dict, List, Optional, Union
+from datetime import date, datetime, time
+from typing import Any, Dict, List, Optional
 
 # Справочники вынесены в config.py
 from config import ANALYSIS_STATE_VALUES
@@ -93,8 +93,23 @@ NOTE_ORDER_COLUMNS = {
     "date_local": "date_local",
     "time_local": "time_local",
     "title": "title",
-    "note_type": "note_type",
 }
+
+NOTE_WRITABLE_FIELDS = [
+    "title",
+    "body",
+    "date_local",
+    "time_local",
+]
+
+NOTE_SELECT_COLUMNS = [
+    "id",
+    "title",
+    "body",
+    "body AS body_plain",
+    "date_local",
+    "time_local",
+]
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -198,6 +213,35 @@ def _normalize_analysis_stage_payload(data: Dict[str, Any]) -> Dict[str, Any]:
     return payload
 
 
+def _normalize_note_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    for key in NOTE_WRITABLE_FIELDS:
+        if key not in data:
+            continue
+        value = data[key]
+        if value is None:
+            payload[key] = None
+            continue
+        if key == "title":
+            payload[key] = str(value).strip() or None
+            continue
+        if key == "body":
+            payload[key] = str(value).strip()
+            continue
+        if key == "date_local" and isinstance(value, date):
+            payload[key] = value.isoformat()
+            continue
+        if key == "time_local":
+            if isinstance(value, time):
+                payload[key] = value.strftime("%H:%M:%S")
+            elif isinstance(value, datetime):
+                payload[key] = value.strftime("%H:%M:%S")
+            else:
+                payload[key] = str(value)
+            continue
+        payload[key] = value
+    return payload
+
 # =====================================================================
 # Schema (built from constants)
 # =====================================================================
@@ -277,10 +321,9 @@ CREATE TABLE IF NOT EXISTS setups (
 CREATE TABLE IF NOT EXISTS notes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     title       TEXT,
-    body        TEXT,
-    date_local  TEXT,
-    time_local  TEXT,
-    note_type   TEXT
+    body        TEXT NOT NULL,
+    date_local  TEXT NOT NULL,
+    time_local  TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS charts (
@@ -290,15 +333,18 @@ CREATE TABLE IF NOT EXISTS charts (
     trade_id          INTEGER,
     analysis_stage_id INTEGER,
     setup_id          INTEGER,
+    note_id           INTEGER,
     CHECK (
         (CASE WHEN trade_id IS NOT NULL THEN 1 ELSE 0 END) +
         (CASE WHEN analysis_stage_id IS NOT NULL THEN 1 ELSE 0 END) +
-        (CASE WHEN setup_id IS NOT NULL THEN 1 ELSE 0 END)
+        (CASE WHEN setup_id IS NOT NULL THEN 1 ELSE 0 END) +
+        (CASE WHEN note_id IS NOT NULL THEN 1 ELSE 0 END)
         <= 1
     ),
     FOREIGN KEY (trade_id)          REFERENCES trades(id)           ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (analysis_stage_id) REFERENCES analysis_stages(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (setup_id)          REFERENCES setups(id)          ON DELETE CASCADE ON UPDATE CASCADE
+    FOREIGN KEY (setup_id)          REFERENCES setups(id)          ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (note_id)           REFERENCES notes(id)           ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- =========================
@@ -338,6 +384,7 @@ CREATE INDEX IF NOT EXISTS idx_analysis_stages_analysis_id ON analysis_stages(an
 CREATE INDEX IF NOT EXISTS idx_charts_trade_id             ON charts(trade_id);
 CREATE INDEX IF NOT EXISTS idx_charts_analysis_stage_id    ON charts(analysis_stage_id);
 CREATE INDEX IF NOT EXISTS idx_charts_setup_id             ON charts(setup_id);
+CREATE INDEX IF NOT EXISTS idx_charts_note_id              ON charts(note_id);
 """
 
 
@@ -411,6 +458,149 @@ def list_setups() -> List[Dict[str, Any]]:
         return _rows_to_dicts(rows)
     finally:
         conn.close()
+
+
+# =====================================================================
+# Notes
+# =====================================================================
+
+
+def create_note(
+    data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> int:
+    payload = _normalize_note_payload(data or {})
+    body_value = (payload.get("body") or "").strip()
+    if not body_value:
+        raise ValueError("body обязательно для заметки.")
+
+    payload["body"] = body_value
+    payload["title"] = (payload.get("title") or "") or None
+    payload.setdefault("date_local", date.today().isoformat())
+    payload.setdefault("time_local", datetime.now().strftime("%H:%M:%S"))
+
+    columns = ", ".join(payload.keys())
+    placeholders = ", ".join(["?"] * len(payload))
+    values = list(payload.values())
+
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT INTO notes ({columns}) VALUES ({placeholders})",
+            values,
+        )
+        if own:
+            conn.commit()
+        return cur.lastrowid
+    finally:
+        if own:
+            conn.close()
+
+
+def list_notes(
+    filters: Optional[Dict[str, Any]] = None,
+    order_by: Optional[str] = None,
+    ascending: bool = False,
+) -> List[Dict[str, Any]]:
+    filters = filters or {}
+    select_clause = ", ".join(NOTE_SELECT_COLUMNS)
+    q = f"SELECT {select_clause} FROM notes WHERE 1=1"
+    params: List[Any] = []
+
+    mapping = {
+        "date_from": "date_local >= ?",
+        "date_to": "date_local <= ?",
+    }
+    for key, value in filters.items():
+        if value in (None, ""):
+            continue
+        if key in ("date_from", "date_to"):
+            q += f" AND {mapping[key]}"
+            params.append(value)
+        elif key == "query":
+            pattern = f"%{value}%"
+            q += " AND (title LIKE ? OR body LIKE ?)"
+            params.extend([pattern, pattern])
+
+    if order_by:
+        if order_by not in NOTE_ORDER_COLUMNS:
+            raise ValueError(
+                f"order_by must be one of: {sorted(NOTE_ORDER_COLUMNS)}")
+        q += (
+            f" ORDER BY {NOTE_ORDER_COLUMNS[order_by]} "
+            f"{'ASC' if ascending else 'DESC'}"
+        )
+    else:
+        q += " ORDER BY date_local DESC, time_local DESC, id DESC"
+
+    conn = get_conn()
+    try:
+        rows = conn.execute(q, params).fetchall()
+        return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
+def get_note(note_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            f"SELECT {', '.join(NOTE_SELECT_COLUMNS)} FROM notes WHERE id=?",
+            (note_id,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_note(
+    note_id: int, data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    payload = _normalize_note_payload(data or {})
+    if "body" in payload:
+        body_value = (payload["body"] or "").strip()
+        if not body_value:
+            raise ValueError("body обязательно для заметки.")
+        payload["body"] = body_value
+    if "title" in payload:
+        payload["title"] = (payload["title"] or "").strip() or None
+    if not payload:
+        return
+
+    assignments = ", ".join(f"{col}=?" for col in payload.keys())
+    values = list(payload.values())
+
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE notes SET {assignments} WHERE id=?",
+            values + [note_id],
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f"Заметка #{note_id} не найдена.")
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def delete_note(note_id: int, *, conn: Optional[sqlite3.Connection] = None) -> None:
+    if note_id is None:
+        return
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM charts WHERE note_id=?", (note_id,))
+        cur.execute("DELETE FROM notes WHERE id=?", (note_id,))
+        if cur.rowcount == 0:
+            raise ValueError(f"Заметка #{note_id} не найдена.")
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
 
 
 # =====================================================================
@@ -633,6 +823,7 @@ def list_charts(
     trade_id: Optional[int] = None,
     analysis_stage_id: Optional[int] = None,
     setup_id: Optional[int] = None,
+    note_id: Optional[int] = None,
     unattached: bool = False,
 ) -> List[Dict[str, Any]]:
     conditions: List[str] = []
@@ -647,10 +838,14 @@ def list_charts(
     if setup_id is not None:
         conditions.append("setup_id=?")
         params.append(setup_id)
+    if note_id is not None:
+        conditions.append("note_id=?")
+        params.append(note_id)
     if unattached:
         conditions.append("trade_id IS NULL")
         conditions.append("analysis_stage_id IS NULL")
         conditions.append("setup_id IS NULL")
+        conditions.append("note_id IS NULL")
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     query = f"SELECT * FROM charts {where_clause} ORDER BY id ASC"
@@ -670,17 +865,17 @@ def attach_chart_to_trade(
     try:
         cur = conn.cursor()
         chart_row = cur.execute(
-            "SELECT id, trade_id, analysis_stage_id, setup_id FROM charts WHERE id=?",
+            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM charts WHERE id=?",
             (chart_id,),
         ).fetchone()
         if not chart_row:
             raise ValueError(f"Чарт #{chart_id} не найден.")
-        if chart_row["analysis_stage_id"] or chart_row["setup_id"]:
+        if chart_row["analysis_stage_id"] or chart_row["setup_id"] or chart_row["note_id"]:
             raise ValueError("Чарт уже привязан к другой сущности.")
         if chart_row["trade_id"] not in (None, trade_id):
             raise ValueError("Чарт уже привязан к другой сделке.")
         cur.execute(
-            "UPDATE charts SET trade_id=?, analysis_stage_id=NULL, setup_id=NULL WHERE id=?",
+            "UPDATE charts SET trade_id=?, analysis_stage_id=NULL, setup_id=NULL, note_id=NULL WHERE id=?",
             (trade_id, chart_id),
         )
         if own:
@@ -714,17 +909,17 @@ def attach_chart_to_analysis_stage(
     try:
         cur = conn.cursor()
         chart_row = cur.execute(
-            "SELECT id, trade_id, analysis_stage_id, setup_id FROM charts WHERE id=?",
+            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM charts WHERE id=?",
             (chart_id,),
         ).fetchone()
         if not chart_row:
             raise ValueError(f"Чарт #{chart_id} не найден.")
-        if chart_row["trade_id"] or chart_row["setup_id"]:
+        if chart_row["trade_id"] or chart_row["setup_id"] or chart_row["note_id"]:
             raise ValueError("Чарт уже привязан к другой сущности.")
         if chart_row["analysis_stage_id"] not in (None, stage_id):
             raise ValueError("Чарт уже привязан к другому этапу анализа.")
         cur.execute(
-            "UPDATE charts SET analysis_stage_id=?, trade_id=NULL, setup_id=NULL WHERE id=?",
+            "UPDATE charts SET analysis_stage_id=?, trade_id=NULL, setup_id=NULL, note_id=NULL WHERE id=?",
             (stage_id, chart_id),
         )
         if own:
@@ -743,6 +938,50 @@ def detach_chart_from_analysis_stage(
         cur.execute(
             "UPDATE charts SET analysis_stage_id=NULL WHERE analysis_stage_id=? AND id=?",
             (stage_id, chart_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def attach_chart_to_note(
+    note_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        chart_row = cur.execute(
+            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM charts WHERE id=?",
+            (chart_id,),
+        ).fetchone()
+        if not chart_row:
+            raise ValueError(f"Чарт #{chart_id} не найден.")
+        if chart_row["trade_id"] or chart_row["analysis_stage_id"] or chart_row["setup_id"]:
+            raise ValueError("Чарт уже привязан к другой сущности.")
+        if chart_row["note_id"] not in (None, note_id):
+            raise ValueError("Чарт уже привязан к другой заметке.")
+        cur.execute(
+            "UPDATE charts SET note_id=?, trade_id=NULL, analysis_stage_id=NULL, setup_id=NULL WHERE id=?",
+            (note_id, chart_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def detach_chart_from_note(
+    note_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE charts SET note_id=NULL WHERE note_id=? AND id=?",
+            (note_id, chart_id),
         )
         if own:
             conn.commit()

@@ -19,6 +19,12 @@ PAGES = {
         'default': False,
         'layout': 'wide',
     },
+    'notes': {
+        'title': 'Notes Database',
+        'icon': ':material/sticky_note_2:',
+        'default': False,
+        'layout': 'wide',
+    },
 }
 
 LOCAL_TZ = 'UTC+3'  # Москва
@@ -44,3 +50,9 @@ ANALYSIS_STATE_VALUES = ["pre-market", "plan", "execution", "post-market"]
 ASSETS_VALUES = ["EUR/USD", "GBP/USD", "XAU/USD", "XAG/USD"]
 DAILY_BIAS_VALUES = ["Bullish", "Bearish", "Neutral"]
 DAY_RESULT_VALUES = ["profit", "loss", "null"]
+
+# Notes
+NOTE_DIALOG_NAME = "note_manager"
+NOTE_ID_STATE = "nm_note_id"
+NOTE_SUCCESS_STATE = "nm_success_message"
+NOTE_MANAGER_KEY_PREFIX = "nm_note_id_"
