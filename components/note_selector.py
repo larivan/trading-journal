@@ -241,14 +241,14 @@ _COMPONENT_CSS = """
   transform: translateX(-50%);
   width: min(320px, 90vw);
   max-height: 360px;
-  padding: 0.5rem;
+  padding: 1rem;
   border-radius: 0.55rem;
   border: 1px solid rgba(31, 42, 58, 0.18);
   background: #fff;
   box-shadow: 0 10px 30px rgba(31, 42, 58, 0.15);
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 1rem;
   z-index: 20;
 }
 .ns-popover[hidden] {
@@ -256,7 +256,7 @@ _COMPONENT_CSS = """
 }
 .ns-input {
   width: 100%;
-  padding: 0.35rem 0.55rem;
+  padding: 0.55rem;
   border-radius: 0.45rem;
   border: 1px solid rgba(31, 42, 58, 0.22);
   font-size: 0.9rem;
@@ -609,22 +609,24 @@ _note_selector_component = st.components.v2.component(
 def render_note_selector(
     *,
     entity_type: EntityType,
-    entity_id: Optional[int],
+    entity_id: Optional[int] = None,
     state_key: str,
     previous_dialog_name: Optional[str] = None,
     excerpt_limit: int = 45,
+    base_notes: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> List[int]:
     """Рендерит селектор и возвращает стадированный список id заметок."""
-    if not entity_id:
-        clear_note_selector_state(state_key)
-        st.info("Save the entity first to attach notes.")
-        return []
-
     keys = _state_keys(state_key)
-    base_notes = _list_attached_notes(entity_type, entity_id)
+    if base_notes is not None:
+        base_notes_value = list(base_notes)
+    elif entity_id:
+        base_notes_value = _list_attached_notes(entity_type, entity_id)
+    else:
+        base_notes_value = []
     all_notes = list_notes(order_by="date_local", ascending=False)
 
-    base_ids = [note.get("id") for note in base_notes if note.get("id") is not None]
+    base_ids = [note.get("id")
+                for note in base_notes_value if note.get("id") is not None]
     staged_ids = st.session_state.get(keys["staged_notes"])
     if not isinstance(staged_ids, list):
         staged_ids = list(base_ids)
@@ -642,7 +644,8 @@ def render_note_selector(
             st.session_state[keys["staged_notes"]] = staged_ids
         st.session_state[keys["pending_attach"]] = False
 
-    note_pool = {note["id"]: _note_payload(note, limit=excerpt_limit) for note in all_notes}
+    note_pool = {note["id"]: _note_payload(
+        note, limit=excerpt_limit) for note in all_notes}
     staged_payload = [note_pool[nid] for nid in staged_ids if nid in note_pool]
     all_payload = list(note_pool.values())
 
@@ -684,7 +687,8 @@ def render_note_selector(
                 st.rerun()
 
             if event_type == "detach" and ids:
-                staged_ids = [nid for nid in staged_ids if nid not in set(int(x) for x in ids)]
+                staged_ids = [nid for nid in staged_ids if nid not in set(
+                    int(x) for x in ids)]
                 st.session_state[keys["staged_notes"]] = staged_ids
                 st.rerun()
 
@@ -695,7 +699,8 @@ def render_note_selector(
                         delete_note(int(nid))
                     except Exception:
                         continue
-                staged_ids = [nid for nid in staged_ids if nid not in remove_ids]
+                staged_ids = [
+                    nid for nid in staged_ids if nid not in remove_ids]
                 st.session_state[keys["staged_notes"]] = staged_ids
                 st.rerun()
 

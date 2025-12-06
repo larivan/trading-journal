@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from db import (
     list_charts,
     list_analysis_stages,
+    list_analysis_stage_notes
 )
 
 
@@ -54,6 +55,7 @@ def _build_stage_defaults(
         "stage_id": stage_id,
         "summary": (stage.get("summary") if stage else None) or "",
         "charts": list_charts(analysis_stage_id=stage_id) if stage_id else [],
+        "notes": list_analysis_stage_notes(stage_id) if stage_id else [],
         "time_local": stage.get("time_local") if stage else None,
     }
     return base

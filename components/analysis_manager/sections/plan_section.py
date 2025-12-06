@@ -109,7 +109,7 @@ def _render_entry(entry: PlanEntry, container: Any, state_key: str) -> None:
             "Plan notes",
             value=entry.get("summary") or "",
             key=_summary_key(state_key, entry["key"]),
-            height=160,
+            height=100,
         )
 
 

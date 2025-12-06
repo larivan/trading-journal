@@ -8,6 +8,7 @@ from components.chart_editor import (
     chart_table_rows,
     render_chart_editor,
 )
+from components.note_selector import render_note_selector
 
 
 def render_post_stage(
@@ -49,6 +50,12 @@ def render_post_stage(
                 index=safe_choice_index(
                     DAY_RESULT_VALUES, defaults.get("day_result")),
             )
+            stage_result["summary"] = st.text_area(
+                "Summary",
+                key=f"{state_key}_summary",
+                value=stage_data.get("summary") or "",
+                height=100,
+            )
 
         with col2:
             st.markdown("#### Charts")
@@ -58,17 +65,24 @@ def render_post_stage(
                 layout_columns=2
             )
 
-            stage_result["summary"] = st.text_area(
-                "Post-market notes",
-                key=f"{state_key}_summary",
-                value=stage_data.get("summary") or "",
-                height=160,
+            st.markdown("#### Observations")
+            staged_note_ids = render_note_selector(
+                entity_type="analysis_stage",
+                entity_id=stage_data.get("stage_id") if stage_data else None,
+                state_key=f"{state_key}_note_selector",
+                previous_dialog_name=None,
+                excerpt_limit=45,
+                base_notes=stage_data.get("notes") if stage_data else None,
             )
 
         stage_result["charts"] = {
             "attached": stage_data.get("charts") or [],
             "rows_source": chart_rows,
             "editor_value": chart_editor_value,
+        }
+        stage_result["notes"] = {
+            "base_notes": stage_data.get("notes") if stage_data else [],
+            "staged_note_ids": staged_note_ids,
         }
     return analysis_result, stage_result
 

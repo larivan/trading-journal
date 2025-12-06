@@ -7,6 +7,7 @@ import streamlit as st
 from .defaults import build_analysis_defaults
 from components.chart_editor import persist_chart_editor
 from components.trade_manager import render_trade_manager
+from components.note_selector import clear_note_selector_state
 from utils.session_state import close_dialog, dialog_is_active
 from config import (
     ANALYSIS_DIALOG_NAME,
@@ -19,11 +20,13 @@ from db import (
     add_analysis,
     add_analysis_stage,
     attach_chart_to_analysis_stage,
+    attach_note_to_analysis_stage,
     delete_analysis_stage,
     get_analysis,
     transaction,
     update_analysis,
     update_analysis_stage,
+    detach_note_from_analysis_stage,
 )
 from .sections import (
     render_execution_stage,
@@ -76,7 +79,8 @@ def render_analysis_manager() -> None:
                 vertical_alignment="bottom",
             )
             with status_col:
-                current_stage = analysis.get("state") or ANALYSIS_STATE_VALUES[0]
+                current_stage = analysis.get(
+                    "state") or ANALYSIS_STATE_VALUES[0]
                 selected_stage = st.selectbox(
                     "Analysis stage",
                     ANALYSIS_STATE_VALUES,
@@ -135,9 +139,11 @@ def render_analysis_manager() -> None:
         try:
             with transaction() as conn:
                 if is_new_analysis:
-                    current_analysis_id = add_analysis(analysis_payload, conn=conn)
+                    current_analysis_id = add_analysis(
+                        analysis_payload, conn=conn)
                 else:
-                    update_analysis(current_analysis_id, analysis_payload, conn=conn)
+                    update_analysis(current_analysis_id,
+                                    analysis_payload, conn=conn)
 
                 if pre_values:
                     pre_stage_id = pre_values["stage_id"]
@@ -148,9 +154,11 @@ def render_analysis_manager() -> None:
                         }
                     )
                     if pre_stage_id:
-                        update_analysis_stage(pre_stage_id, pre_values, conn=conn)
+                        update_analysis_stage(
+                            pre_stage_id, pre_values, conn=conn)
                     else:
-                        pre_stage_id = add_analysis_stage(pre_values, conn=conn)
+                        pre_stage_id = add_analysis_stage(
+                            pre_values, conn=conn)
 
                     persist_chart_editor(
                         attached_charts=pre_values["charts"]["rows_source"],
@@ -176,15 +184,18 @@ def render_analysis_manager() -> None:
                         "summary": plan_form.get("summary") or "",
                     }
                     if plan_stage_id:
-                        update_analysis_stage(plan_stage_id, plan_payload, conn=conn)
+                        update_analysis_stage(
+                            plan_stage_id, plan_payload, conn=conn)
                     else:
                         plan_payload["time_local"] = (
                             plan_form.get("time_local") or datetime.now()
                         )
-                        plan_stage_id = add_analysis_stage(plan_payload, conn=conn)
+                        plan_stage_id = add_analysis_stage(
+                            plan_payload, conn=conn)
 
                     persist_chart_editor(
-                        attached_charts=charts_payload.get("rows_source") or [],
+                        attached_charts=charts_payload.get(
+                            "rows_source") or [],
                         editor_rows=charts_payload.get("editor_value") or [],
                         conn=conn,
                         attach_chart=lambda chart_id, stage_id=plan_stage_id: attach_chart_to_analysis_stage(
@@ -201,10 +212,12 @@ def render_analysis_manager() -> None:
                         }
                     )
                     if post_stage_id:
-                        update_analysis_stage(post_stage_id, post_values, conn=conn)
+                        update_analysis_stage(
+                            post_stage_id, post_values, conn=conn)
                     else:
                         post_values.update({"time_local": datetime.now()})
-                        post_stage_id = add_analysis_stage(post_values, conn=conn)
+                        post_stage_id = add_analysis_stage(
+                            post_values, conn=conn)
 
                     persist_chart_editor(
                         attached_charts=post_values["charts"]["rows_source"],
@@ -214,6 +227,20 @@ def render_analysis_manager() -> None:
                             stage_id, chart_id, conn=conn
                         ),
                     )
+                    base_note_ids = {
+                        note.get("id")
+                        for note in (post_values["notes"]["base_notes"] or [])
+                        if note.get("id") is not None
+                    }
+                    staged_note_ids = {
+                        int(nid) for nid in (post_values["notes"]["staged_note_ids"] or []) if nid is not None
+                    }
+                    for note_id in base_note_ids - staged_note_ids:
+                        detach_note_from_analysis_stage(
+                            post_stage_id, note_id, conn=conn)
+                    for note_id in staged_note_ids - base_note_ids:
+                        attach_note_to_analysis_stage(
+                            post_stage_id, note_id, conn=conn)
 
             if is_new_analysis:
                 st.session_state[ANALYSIS_ID_STATE] = current_analysis_id
@@ -241,7 +268,10 @@ def _get_dialog_title(data: Dict[str, Any], is_new: bool) -> str:
 
 
 def _handle_dialog_dismiss() -> None:
-    st.session_state.pop(ANALYSIS_ID_STATE, None)
+    analysis_id = st.session_state.pop(ANALYSIS_ID_STATE, None)
+    clear_note_selector_state(
+        f"{ANALYSIS_MANAGER_KEY_PREFIX}{analysis_id or 'new'}_post_note_selector"
+    )
     close_dialog()
 
 

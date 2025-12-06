@@ -56,6 +56,12 @@ def render_pre_stage(
                 index=safe_choice_index(
                     DAILY_BIAS_VALUES, analysis_defaults.get("daily_bias")),
             )
+            stage_result["summary"] = st.text_area(
+                "Note",
+                value=stage_data.get("summary") or "",
+                key=f"{state_key}_summary",
+                height=100,
+            )
 
         with col2:
             st.markdown("#### Charts")
@@ -63,13 +69,6 @@ def render_pre_stage(
                 key=f"{state_key}_chart_editor",
                 base_rows=chart_rows,
                 layout_columns=2,
-            )
-            st.divider()
-            stage_result["summary"] = st.text_area(
-                "Pre-market notes",
-                value=stage_data.get("summary") or "",
-                key=f"{state_key}_summary",
-                height=160,
             )
 
         stage_result["charts"] = {
