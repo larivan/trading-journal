@@ -62,6 +62,9 @@ _COMPONENT_HTML = """
 """.strip()
 
 _COMPONENT_CSS = """
+:host, * {
+  box-sizing: border-box;
+}
 :host {
   width: 100%;
 }
@@ -78,11 +81,7 @@ _COMPONENT_CSS = """
 .st-chart-editor__form {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.85rem;
-  border: 1px solid var(--st-secondary-background-color);
-  border-radius: 0.75rem;
-  background: var(--st-secondary-background-color);
+  gap: 0.85rem;
 }
 .st-chart-editor__inputs {
   display: flex;
@@ -102,7 +101,7 @@ _COMPONENT_CSS = """
   padding: 0.5rem 0.5rem;
   font-size: 0.95rem;
   color: var(--st-color-text-light, rgba(49, 51, 63, 0.6));
-  background: #fff;
+  background: rgb(246, 247, 251);
   transition: border-color 120ms ease, background 120ms ease;
   box-sizing: border-box;
 }
@@ -111,22 +110,30 @@ _COMPONENT_CSS = """
   outline: none;
 }
 .st-chart-editor__add {
-  align-self: flex-end;
-  margin-left: auto;
-  appearance: none;
-  border: none;
-  height: 40px;
-  min-width: 120px;
+  display: inline-flex;
+  -webkit-box-align: center;
+  align-items: center;
+  -webkit-box-pack: center;
+  justify-content: center;
+  font-weight: 400;
+  padding: 0.25rem 0.75rem;
   border-radius: 0.5rem;
-  padding: 0.55rem 1.5rem;
-  background: var(--st-primary-color);
-  color: #fff;
+  min-height: 2.5rem;
+  min-width: 120px;
+  margin: 0px;
+  line-height: 1.6;
+  text-transform: none;
+  font-size: inherit;
+  font-family: inherit;
+  color: inherit;
   cursor: pointer;
-  transition: opacity 120ms ease;
-}
-.st-chart-editor__add:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+  user-select: none;
+  background-color: rgb(255, 255, 255);
+  border: 1px solid rgba(31, 42, 58, 0.2);
+} 
+
+.st-chart-editor__add:hover {
+  background-color: rgba(150, 150, 202, 0.15);
 }
 .st-chart-editor__error {
   font-size: 0.85rem;
@@ -139,12 +146,13 @@ _COMPONENT_CSS = """
   gap: 1rem;
 }
 .st-chart-editor__empty {
-  border: 2px dashed rgba(49, 51, 63, 0.15);
-  border-radius: 0.85rem;
-  padding: 1.75rem;
+  justify-content: center;
+  padding: 0.75rem;
+  border: 2px dashed rgba(31, 42, 58, 0.18);
+  border-radius: 0.55rem;
+  color: rgba(31, 42, 58, 0.7);
+  font-size: 0.9rem;
   text-align: center;
-  color: var(--st-color-text-light, rgba(49, 51, 63, 0.6));
-  font-size: 0.95rem;
 }
 .st-chart-editor__cards {
   display: grid;
@@ -393,6 +401,11 @@ const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
   const galleryId = ensureGalleryId(cardsEl);
   const portalLinks = syncLightboxLinks(galleryId, charts);
   cardsEl.innerHTML = "";
+  if (!charts.length) {
+    cardsEl.style.display = "none";
+    return;
+  }
+  cardsEl.style.display = "grid";
   charts.forEach((chart, index) => {
     const card = document.createElement("div");
     card.className = "st-chart-card";
@@ -542,18 +555,22 @@ export default function(component) {
     commitCharts(next);
   };
 
+  const sanitizeUrl = () => {
+    const value = urlInput.value.trim();
+    if (value && !/^https?:\\/\\//i.test(value)) {
+      urlInput.value = "";
+    }
+  };
+
+  urlInput.oninput = sanitizeUrl;
+
   const addChart = () => {
+    sanitizeUrl();
     const url = urlInput.value.trim();
     const caption = captionInput.value.trim();
     if (!url) {
-      showError("Вставьте ссылку на изображение.");
       return;
     }
-    if (!/^https?:\\/\\//i.test(url)) {
-      showError("Ссылка должна начинаться с http(s).");
-      return;
-    }
-    showError("");
     const next = [
       ...currentCharts,
       {

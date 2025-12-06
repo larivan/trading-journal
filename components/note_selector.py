@@ -212,16 +212,29 @@ _COMPONENT_CSS = """
   flex-wrap: wrap;
 }
 .ns-btn {
-  align-self: flex-end;
-  appearance: none;
-  border: none;
-  font-size: 14px;
-  height: 40px;
-  min-width: 120px;
+  display: inline-flex;
+  -webkit-box-align: center;
+  align-items: center;
+  -webkit-box-pack: center;
+  justify-content: center;
+  font-weight: 400;
+  padding: 0.25rem 0.75rem;
   border-radius: 0.5rem;
-  padding: 0.55rem 1.5rem;
+  min-height: 2.5rem;
+  min-width: 120px;
+  margin: 0px;
+  line-height: 1.6;
+  text-transform: none;
+  font-size: inherit;
+  font-family: inherit;
+  color: inherit;
   cursor: pointer;
-  transition: opacity 120ms ease;
+  user-select: none;
+  background-color: rgb(255, 255, 255);
+  border: 1px solid rgba(31, 42, 58, 0.2);
+}
+.ns-btn:hover {
+  background-color: rgba(150, 150, 202, 0.15);
 }
 .ns-btn.ns-bulk-action[hidden] {
   display: none !important;
