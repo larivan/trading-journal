@@ -304,8 +304,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     name              TEXT NOT NULL,
     broker            TEXT,
-    currency          TEXT DEFAULT 'USD',
-    starting_balance  REAL,
+    currency          TEXT,
+    starting_balance  REAL NOT NULL,
     is_prop           INTEGER DEFAULT 0,
     created_at        TEXT,
     archived          INTEGER DEFAULT 0
@@ -419,7 +419,7 @@ def create_account(
         cur.execute(
             "INSERT INTO accounts (name, broker, currency, starting_balance, is_prop, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (name, broker, currency or "USD", starting_balance, is_prop, _now_iso_utc()),
+            (name, broker, currency, starting_balance, is_prop, _now_iso_utc()),
         )
         if own:
             conn.commit()

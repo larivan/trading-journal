@@ -127,6 +127,10 @@ def render_account_manager() -> None:
                 st.error("Provide the account name.")
                 return
 
+            if not balance_value:
+                st.error("Provide the starting balance.")
+                return
+
             payload: Dict[str, Any] = {
                 "name": name_clean,
                 "broker": (broker_value or "").strip() or None,
