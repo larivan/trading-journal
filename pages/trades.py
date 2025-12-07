@@ -15,7 +15,6 @@ from utils.session_state import (
 )
 from config import (
     ASSETS_VALUES,
-    TRADE_OUTCOME_VALUES,
     TRADE_RESULT_VALUES,
     TRADE_SESSION_VALUES,
     TRADE_STATE_VALUES,
@@ -83,7 +82,7 @@ selected_key = label_to_key.get(selected_label, "today")
 
 if selected_key == "custom":
     with st.container():
-        fc1, fc2, fc3, fc4, fc5, fc6, fc7, fc8 = st.columns(8)
+        fc1, fc2, fc3, fc4, fc5, fc6, fc7 = st.columns(7)
         date_from, date_to = fc1.date_input(
             "Диапазон дат",
             value=(
@@ -111,25 +110,18 @@ if selected_key == "custom":
             index=None,
         )
         state = fc5.selectbox(
-            "Status",
+            "State",
             TRADE_STATE_VALUES,
             placeholder="All",
             index=None,
         )
-        outcome = fc6.selectbox(
-            "Outcome",
-            TRADE_OUTCOME_VALUES,
-            placeholder="All",
-            index=None,
-            format_func=lambda value: value.title(),
-        )
-        result = fc7.selectbox(
+        result = fc6.selectbox(
             "Result",
             TRADE_RESULT_VALUES,
             placeholder="All",
             index=None,
         )
-        estimation = fc8.selectbox(
+        estimation = fc7.selectbox(
             "Estimation",
             list(ESTIMATION_VARS.values()),
             placeholder="All",
@@ -140,8 +132,6 @@ if selected_key == "custom":
         filter["account_id"] = account_id
     if state:
         filter["state"] = state
-    if outcome:
-        filter["outcome"] = outcome
     if result:
         filter["result"] = result
     if asset:
@@ -192,13 +182,7 @@ trade_table_columns: List[Dict[str, Any]] = [
     },
     {"field": "session", "label": "Session", "id": "session"},
     {"field": "asset", "label": "Asset", "id": "asset"},
-    {"field": "state", "label": "Status", "id": "state"},
-    {
-        "field": "outcome",
-        "label": "Outcome",
-        "id": "outcome",
-        "format": lambda value: str(value).title(),
-    },
+    {"field": "state", "label": "State", "id": "state"},
     {"field": "result", "label": "Result", "id": "result"},
     {"field": "net_pnl", "label": "PnL", "id": "net_pnl"},
     {"field": "risk_reward", "label": "R:R", "id": "risk_reward"},
