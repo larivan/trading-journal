@@ -11,7 +11,7 @@ def get_trade_defaults(
 ) -> Dict[str, Dict[str, Any]]:
     """Возвращает дефолтные значения"""
     return {
-        "state": trade.get("state") or "open",
+        "state": trade.get("state") or "Open",
         "open": {
             "date": parse_date(trade.get("date_local")),
             "time": parse_time(trade.get("time_local")),
@@ -21,7 +21,7 @@ def get_trade_defaults(
             "setup": trade.get("setup_id"),
             "risk_pct": float(trade.get("risk_pct") or 1.0),
         },
-        "close": {
+        "outcome": {
             "result": trade.get("result"),
             "net_pnl": trade.get("net_pnl") or 0.0,
             "risk_reward": trade.get("risk_reward") or 0.0,

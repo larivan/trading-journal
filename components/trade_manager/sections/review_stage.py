@@ -16,7 +16,7 @@ def render_review_stage(
     if not visible:
         return None
 
-    with st.expander("Trade review", expanded=expanded):
+    with st.expander("Reviewed", expanded=expanded):
         data["cold_thoughts"] = st.text_area(
             "Cold thoughts",
             height=120,

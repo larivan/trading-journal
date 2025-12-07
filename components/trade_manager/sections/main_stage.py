@@ -19,7 +19,15 @@ def render_main_stage(
     """Отрисовывает блок открытия сделки (дата, счёт, сетап и риск)."""
     data = defaults.copy()
 
-    with st.expander("Main details", expanded=expanded):
+    account_default = data.get("account")
+    if account_default is None and account_options:
+        account_default = account_options[0].get("value")
+
+    asset_index = safe_choice_index(ASSETS_VALUES, data.get("asset"))
+    if asset_index is None and ASSETS_VALUES:
+        asset_index = 0
+
+    with st.expander("Open", expanded=expanded):
         oc1, oc2 = st.columns(2)
         data["date"] = oc1.date_input(
             "Date",
@@ -36,7 +44,7 @@ def render_main_stage(
             "Account",
             account_options,
             placeholder="- Not set -",
-            value=data.get("account"),
+            value=account_default,
             key=f"{state_key}_account"
         )
         data["asset"] = st.selectbox(
@@ -44,7 +52,7 @@ def render_main_stage(
             ASSETS_VALUES,
             placeholder="- Not set -",
             key=f"{state_key}_asset",
-            index=safe_choice_index(ASSETS_VALUES, data.get("asset")),
+            index=asset_index,
         )
         data["analysis"] = custom_selectbox(
             "Analysis",

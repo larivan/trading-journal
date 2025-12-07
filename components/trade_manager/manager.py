@@ -7,11 +7,11 @@ from components.chart_editor import persist_chart_editor, render_chart_editor
 from components.note_selector import render_note_selector, clear_note_selector_state
 from helpers import to_option_format, parse_date, parse_time
 from utils.trade_sessions import detect_trade_session
-from .state import get_allowed_statuses, map_status_to_outcome, visible_stages
+from .state import get_allowed_states, visible_stages
 from .defaults import get_trade_defaults
 from .sections import (
     render_main_stage,
-    render_close_stage,
+    render_outcome_stage,
     render_review_stage,
 )
 from utils.session_state import (
@@ -101,21 +101,21 @@ def render_trade_manager() -> None:
         charts = list_charts(trade_id=trade_id) if trade_id else []
         base_trade_notes = list_trade_notes(trade_id) if trade_id else []
 
-        # Рендерим хедер с выбором статуса и кнопками действий
+        # Рендерим хедер с выбором состояния и кнопками действий
         with st.container(border=True):
-            status_col, message_col, actions_col = st.columns(
+            state_col, message_col, actions_col = st.columns(
                 [0.2, 0.5, 0.3],
                 gap="large",
                 vertical_alignment="bottom",
             )
-            with status_col:
-                current_status = trade.get("state")
-                allowed_statuses = get_allowed_statuses(current_status)
-                selected_status = st.selectbox(
-                    "Trade status",
-                    allowed_statuses,
-                    index=allowed_statuses.index(
-                        current_status) if current_status else 0
+            with state_col:
+                current_state = trade.get("state")
+                allowed_states = get_allowed_states(current_state)
+                selected_state = st.selectbox(
+                    "Trade state",
+                    allowed_states,
+                    index=allowed_states.index(
+                        current_state) if current_state else 0
                 )
 
             with actions_col:
@@ -138,19 +138,13 @@ def render_trade_manager() -> None:
 
         stages_col, side_col = st.columns([1, 2])
 
-        selected_outcome = map_status_to_outcome(
-            selected_status, trade.get("outcome"))
-
         # Рендерим стадии сделки
         with stages_col:
-            visible = visible_stages(selected_status)
-            close_visible = ("close" in visible) and not (
-                selected_status == "Review"
-                and selected_outcome in ("canceled", "missed")
-            )
+            visible = visible_stages(selected_state)
+            outcome_visible = "outcome" in visible
 
             main_values = render_main_stage(
-                expanded=(selected_status in ("Open", "Cancel", "Miss")),
+                expanded=(selected_state == "Open"),
                 defaults=defaults["open"],
                 account_options=accounts,
                 analysis_options=analyses,
@@ -158,16 +152,20 @@ def render_trade_manager() -> None:
                 state_key=f"{state_key}_main"
             )
 
-            close_values = render_close_stage(
-                visible=close_visible,
-                expanded=("Close" == selected_status),
-                defaults=defaults['close'],
-                state_key=f"{state_key}_close"
+            outcome_values = render_outcome_stage(
+                visible=outcome_visible,
+                expanded=(selected_state == "Outcome"),
+                defaults=defaults['outcome'],
+                state_key=f"{state_key}_outcome",
+                risk_pct=float(main_values["risk_pct"]),
+                account_balance=account_lookup.get(main_values["account"], {}).get(
+                    "starting_balance"
+                ),
             )
 
             review_values = render_review_stage(
                 visible="review" in visible,
-                expanded=("Review" == selected_status),
+                expanded=(selected_state == "Reviewed"),
                 defaults=defaults['review'],
                 state_key=f"{state_key}_review"
             )
@@ -193,25 +191,24 @@ def render_trade_manager() -> None:
             return
 
         # Валидация и сохранение сделки
-        if selected_status in ("Open", "Cancel", "Miss"):
-            if not main_values["asset"]:
-                message_col.error("Select an asset.")
-                return
-            if not main_values["account"]:
-                message_col.error("Select an account.")
-                return
+        if not main_values["asset"]:
+            message_col.error("Select an asset.")
+            return
+        if not main_values["account"]:
+            message_col.error("Select an account.")
+            return
 
-        if selected_status == "Close":
-            if not close_values:
-                message_col.error("Fill in the “After close” block.")
+        if selected_state in ("Outcome", "Reviewed"):
+            if not outcome_values:
+                message_col.error("Fill in the “Outcome” block.")
                 return
-            else:
-                if not close_values["result"]:
-                    message_col.error("Select the trade result.")
-                    return
-                if close_values["net_pnl"] is None:
-                    message_col.error("Provide Net PnL.")
-                    return
+            result_value = outcome_values["result"]
+            if not result_value:
+                message_col.error("Select the trade result.")
+                return
+            if result_value != "Miss" and outcome_values["net_pnl"] is None:
+                message_col.error("Provide Net PnL.")
+                return
 
         local_tz = trade.get("local_tz") or LOCAL_TZ
         session_value = detect_trade_session(
@@ -229,29 +226,33 @@ def render_trade_manager() -> None:
             "setup_id": main_values["setup"],
             "risk_pct": float(main_values["risk_pct"]),
             "session": session_value,
-            "state": selected_status,
-            "outcome": selected_outcome,
+            "state": selected_state,
+            "is_reviewed": 1 if selected_state == "Reviewed" else 0,
         }
 
         risk_reward_value = None
         reward_percent_value = None
-        if close_values:
-            net_pnl_value = float(close_values["net_pnl"])
-            risk_reward_value, reward_percent_value = _calculate_rewards(
-                net_pnl=net_pnl_value,
-                risk_pct=float(main_values["risk_pct"]),
-                account_balance=account_lookup.get(main_values["account"], {}).get(
-                    "starting_balance"
-                ),
-            )
+        if outcome_values:
+            result_value = outcome_values.get("result")
+            net_pnl_value = float(outcome_values.get("net_pnl") or 0.0)
+            risk_reward_value = outcome_values.get("risk_reward")
+            reward_percent_value = outcome_values.get("reward_percent")
+            if result_value != "Miss" and (risk_reward_value is None or reward_percent_value is None):
+                risk_reward_value, reward_percent_value = _calculate_rewards(
+                    net_pnl=net_pnl_value,
+                    risk_pct=float(main_values["risk_pct"]),
+                    account_balance=account_lookup.get(main_values["account"], {}).get(
+                        "starting_balance"
+                    ),
+                )
 
-        if close_values:
+        if outcome_values:
             payload.update({
-                "result": None if not close_values["result"] else close_values["result"],
+                "result": None if not outcome_values["result"] else outcome_values["result"],
                 "net_pnl": net_pnl_value,
                 "risk_reward": risk_reward_value,
                 "reward_percent": reward_percent_value,
-                "hot_thoughts": close_values["hot_thoughts"].strip() or None,
+                "hot_thoughts": outcome_values["hot_thoughts"].strip() or None,
             })
 
         if review_values:

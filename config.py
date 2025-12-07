@@ -41,9 +41,8 @@ TRADE_ID_STATE = "tm_trade_id"
 TRADE_SUCCESS_STATE = "tm_success_message"
 TM_KEY_PREFIX = "tm_trade_id_"
 TM_DEFAULT_PREFIX = "tm_default_"
-TRADE_STATE_VALUES = ["Open", "Close", "Review", "Cancel", "Miss"]
-TRADE_OUTCOME_VALUES = ["open", "closed", "canceled", "missed"]
-TRADE_RESULT_VALUES = ["Win", "Loss", "BE"]
+TRADE_STATE_VALUES = ["Open", "Outcome", "Reviewed"]
+TRADE_RESULT_VALUES = ["Win", "Loss", "BE", "Miss"]
 TRADE_SESSION_VALUES = ["Frankfurt", "LOKZ",
                         "Lunch", "Pre-NY", "NYKZ", "Other"]
 

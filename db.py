@@ -23,12 +23,12 @@ TRADE_ORDER_COLUMNS = {
     "analysis_id",
     "asset",
     "state",
-    "outcome",
     "result",
     "session",
     "net_pnl",
     "risk_reward",
     "reward_percent",
+    "is_reviewed",
 }
 
 ANALYSIS_COLUMNS = [
@@ -284,7 +284,6 @@ CREATE TABLE IF NOT EXISTS trades (
     asset              TEXT NOT NULL,
     session            TEXT NOT NULL,
     state              TEXT NOT NULL,
-    outcome            TEXT NOT NULL DEFAULT 'open',
     result             TEXT,
     net_pnl            REAL,
     risk_pct           REAL,
@@ -294,6 +293,7 @@ CREATE TABLE IF NOT EXISTS trades (
     emotional_problems TEXT,
     hot_thoughts       TEXT,
     cold_thoughts      TEXT,
+    is_reviewed        INTEGER NOT NULL DEFAULT 0,
     
     FOREIGN KEY (account_id)  REFERENCES accounts(id)  ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (setup_id)    REFERENCES setups(id)    ON DELETE SET NULL   ON UPDATE CASCADE,
@@ -374,7 +374,6 @@ CREATE TABLE IF NOT EXISTS trade_notes (
 CREATE INDEX IF NOT EXISTS idx_trades_date_local   ON trades(date_local);
 CREATE INDEX IF NOT EXISTS idx_trades_account      ON trades(account_id);
 CREATE INDEX IF NOT EXISTS idx_trades_asset        ON trades(asset);
-CREATE INDEX IF NOT EXISTS idx_trades_outcome      ON trades(outcome);
 CREATE INDEX IF NOT EXISTS idx_trades_result       ON trades(result);
 CREATE INDEX IF NOT EXISTS idx_trades_setup        ON trades(setup_id);
 
@@ -1364,7 +1363,6 @@ WRITABLE_TRADE_FIELDS = [
     "risk_pct",
     "session",
     "state",
-    "outcome",
     "result",
     "net_pnl",
     "risk_reward",
@@ -1373,6 +1371,7 @@ WRITABLE_TRADE_FIELDS = [
     "emotional_problems",
     "hot_thoughts",
     "cold_thoughts",
+    "is_reviewed",
 ]
 
 
@@ -1454,7 +1453,6 @@ TRADE_COLUMNS = [
     "risk_pct",
     "session",
     "state",
-    "outcome",
     "result",
     "net_pnl",
     "risk_reward",
@@ -1463,6 +1461,7 @@ TRADE_COLUMNS = [
     "emotional_problems",
     "hot_thoughts",
     "cold_thoughts",
+    "is_reviewed",
 ]
 
 TRADE_COMPAT_COLUMNS = [
@@ -1490,10 +1489,10 @@ def list_trades(
         "setup_id": "setup_id",
         "analysis_id": "analysis_id",
         "state": "state",
-        "outcome": "outcome",
         "result": "result",
         "session": "session",
         "estimation": "estimation",
+        "is_reviewed": "is_reviewed",
         "date_from": "date_local >= ?",
         "date_to": "date_local <= ?",
     }

@@ -76,7 +76,7 @@ def render_execution_stage(
                 },
                 {"field": "session", "label": "Session", "id": "session"},
                 {"field": "asset", "label": "Asset", "id": "asset"},
-                {"field": "state", "label": "Status", "id": "state"},
+                {"field": "state", "label": "State", "id": "state"},
                 {"field": "result", "label": "Result", "id": "result"},
                 {"field": "net_pnl", "label": "PnL", "id": "net_pnl"},
                 {"field": "risk_reward", "label": "R:R", "id": "risk_reward"},
