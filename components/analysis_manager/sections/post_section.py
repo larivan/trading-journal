@@ -1,110 +1,90 @@
 """Секция редактирования этапа post-market."""
-
 from __future__ import annotations
-
-from typing import Any, Dict, Optional
-
 import streamlit as st
-
+from typing import Any, Dict, List, Optional
+from config import DAILY_BIAS_VALUES, DAY_RESULT_VALUES
+from helpers import safe_choice_index
 from components.chart_editor import (
     chart_table_rows,
     render_chart_editor,
 )
-from components.note_editor import render_note_editor
-from config import DAILY_BIAS, DAY_RESULT_VALUES
-from db import (
-    add_note,
-    attach_note_to_analysis_stage,
-    detach_note_from_analysis_stage,
-    list_analysis_stage_charts,
-    list_analysis_stage_notes,
-    list_notes,
-)
+from components.note_selector import render_note_selector
 
 
 def render_post_stage(
     *,
     stage_data: Optional[Dict[str, Any]],
-    analysis: Dict[str, Any],
+    defaults: Dict[str, Any],
     visible: bool,
     expanded: bool,
+    state_key: str
 ) -> Optional[Dict[str, Any]]:
     """Редактирование этапа post-market."""
 
-    if not visible or not stage_data:
-        return
-    stage_id = stage_data["id"]
+    if not visible:
+        return None, None
+
+    analysis_result = {}
+    stage_result = {
+        "stage_id": stage_data.get("stage_id"),
+        "stage_type": "post-market",
+    }
+    chart_rows = chart_table_rows(stage_data.get("charts"))
     with st.expander("Post-market", expanded=expanded):
-        col1, col2 = st.columns([1, 2])
+        col1, col2 = st.columns([1, 3], gap="medium")
 
         with col1:
-            fact_bias_value = st.selectbox(
+            analysis_result["fact_bias"] = st.selectbox(
                 "Fact bias",
-                options=DAILY_BIAS,
-                index=DAILY_BIAS.index(analysis.get("fact_bias")) if analysis.get(
-                    "fact_bias") in DAILY_BIAS else 0,
-                key=f"stage_fact_bias_{stage_id}",
+                options=DAILY_BIAS_VALUES,
+                placeholder="- Not set -",
+                key=f"{state_key}_fact_bias",
+                index=safe_choice_index(
+                    DAILY_BIAS_VALUES, defaults.get("fact_bias")),
             )
-            day_result_value = st.selectbox(
+            analysis_result["day_result"] = st.selectbox(
                 "Day result",
                 options=DAY_RESULT_VALUES,
-                index=DAY_RESULT_VALUES.index(analysis.get("day_result")) if analysis.get(
-                    "day_result") in DAY_RESULT_VALUES else 0,
-                key=f"stage_day_result_{stage_id}",
+                placeholder="- Not set -",
+                key=f"{state_key}_day_result",
+                index=safe_choice_index(
+                    DAY_RESULT_VALUES, defaults.get("day_result")),
             )
-            summary_value = st.text_area(
-                "Note",
+            stage_result["summary"] = st.text_area(
+                "Summary",
+                key=f"{state_key}_summary",
                 value=stage_data.get("summary") or "",
-                height=220,
-                key=f"stage_summary_{stage_id}",
+                height=100,
             )
 
         with col2:
             st.markdown("#### Charts")
-            charts = list_analysis_stage_charts(stage_id)
-            chart_rows_source = chart_table_rows(charts)
             chart_editor_value = render_chart_editor(
-                key=f"chart_editor_stage_{stage_id}",
-                base_rows=chart_rows_source,
-                title="",
-                caption=None,
+                key=f"{state_key}_chart_editor",
+                base_rows=chart_rows,
+                layout_columns=2
             )
 
             st.markdown("#### Observations")
-            attached_notes = list_analysis_stage_notes(stage_id)
-            render_note_editor(
-                key=f"analysis_stage_{stage_id}",
-                attached_notes=attached_notes,
-                attach_note=lambda note_id, s_id=stage_id: attach_note_to_analysis_stage(
-                    s_id, note_id),
-                detach_note=lambda note_id, s_id=stage_id: detach_note_from_analysis_stage(
-                    s_id, note_id),
-                create_note=lambda title, body: add_note(title, body),
-                load_notes=list_notes,
-                selection_label="Связанные заметки",
-                popover_label="Создать заметку",
-                create_button_label="Добавить",
-                empty_warning="Текст заметки не может быть пустым.",
-                success_update_message="Список заметок обновлён.",
-                success_create_message="Заметка создана.",
-                error_update_message="Не удалось обновить заметки: {exc}",
-                error_create_message="Не удалось создать заметку: {exc}",
+            staged_note_ids = render_note_selector(
+                entity_type="analysis_stage",
+                entity_id=stage_data.get("stage_id") if stage_data else None,
+                state_key=f"{state_key}_note_selector",
+                previous_dialog_name=None,
+                excerpt_limit=45,
+                base_notes=stage_data.get("notes") if stage_data else None,
             )
 
-    return {
-        "stage_id": stage_id,
-        "stage_type": "post-market",
-        "analysis_updates": {
-            "fact_bias": fact_bias_value,
-            "day_result": day_result_value,
-        },
-        "summary": summary_value,
-        "charts": {
-            "attached": charts,
-            "rows_source": chart_rows_source,
+        stage_result["charts"] = {
+            "attached": stage_data.get("charts") or [],
+            "rows_source": chart_rows,
             "editor_value": chart_editor_value,
-        },
-    }
+        }
+        stage_result["notes"] = {
+            "base_notes": stage_data.get("notes") if stage_data else [],
+            "staged_note_ids": staged_note_ids,
+        }
+    return analysis_result, stage_result
 
 
 __all__ = ["render_post_stage"]

@@ -1,277 +1,287 @@
-"""Dialogs and helpers for managing daily analyses и их этапов."""
+"""Диалог редактирования дневных анализов."""
 
 from __future__ import annotations
-
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
-
+from typing import Any, Dict, List
 import streamlit as st
-
-from components.chart_editor import normalize_editor_rows, persist_chart_editor
-from components.state_header import render_entity_header
-from config import ANALYSIS_STATE_VALUES
+from .defaults import build_analysis_defaults
+from components.chart_editor import persist_chart_editor
+from components.trade_manager import render_trade_manager
+from components.note_selector import clear_note_selector_state
+from utils.session_state import close_dialog, dialog_is_active
+from config import (
+    ANALYSIS_DIALOG_NAME,
+    ANALYSIS_ID_STATE,
+    ANALYSIS_SUCCESS_STATE,
+    ANALYSIS_MANAGER_KEY_PREFIX,
+    ANALYSIS_STATE_VALUES,
+)
 from db import (
     add_analysis,
+    add_analysis_stage,
     attach_chart_to_analysis_stage,
-    delete_analysis,
+    attach_note_to_analysis_stage,
+    delete_analysis_stage,
     get_analysis,
+    transaction,
     update_analysis,
     update_analysis_stage,
+    detach_note_from_analysis_stage,
 )
-
-from .defaults import build_analysis_defaults
 from .sections import (
-    render_primary_fields,
+    render_execution_stage,
     render_plan_section,
-    render_pre_stage,
     render_post_stage,
+    render_pre_stage,
 )
-from .state import ensure_stage_records, visible_stage_types
-
-DialogCallback = Optional[Callable[[int], None]]
 
 
-def render_analysis_creator(
-    *,
-    on_created: DialogCallback = None,
-    on_cancel: Optional[Callable[[], None]] = None,
-) -> None:
-    """Диалог создания анализа."""
+def render_analysis_manager() -> None:
+    """Единое окно создания и редактирования дневных анализов."""
+    if "am_success_message" in st.session_state:
+        st.toast(st.session_state.pop("am_success_message"), icon="🔥")
 
-    @st.dialog("New analysis", width="small")
-    def _dialog() -> None:
-        defaults = build_analysis_defaults()
-        primary_payload = render_primary_fields(
-            form_key="analysis_create",
-            defaults=defaults,
-        )
+    if not dialog_is_active(ANALYSIS_DIALOG_NAME):
+        render_trade_manager()
+        return
 
-        col1, col2 = st.columns(2)
-        submitted = col1.button("Create", type="primary", use_container_width=True)
-        if not submitted:
-            if col2.button("Cancel", use_container_width=True):
-                if on_cancel:
-                    on_cancel()
+    analysis_id = None
+    is_new_analysis = True
+    if ANALYSIS_ID_STATE in st.session_state:
+        is_new_analysis = False
+        analysis_id = st.session_state.get(ANALYSIS_ID_STATE)
+
+    state_key = f"{ANALYSIS_MANAGER_KEY_PREFIX}{analysis_id or 'new'}"
+
+    analysis: Dict[str, Any] = {}
+
+    if not is_new_analysis:
+        analysis = get_analysis(analysis_id) or {}
+        if not analysis:
+            st.error("Analysis not found.")
+            st.session_state.pop(ANALYSIS_ID_STATE, None)
+            close_dialog()
+            st.rerun()
             return
-
-        analysis_payload = {
-            "date_local": primary_payload["date_local"],
-            "asset": primary_payload["asset"],
-            "state": ANALYSIS_STATE_VALUES[0],
-        }
-
-        try:
-            analysis_id = add_analysis(analysis_payload)
-            if on_created:
-                on_created(analysis_id)
-            else:
-                st.rerun()
-        except Exception as exc:  # pragma: no cover - UI feedback
-            st.error(f"Не удалось создать анализ: {exc}")
-
-    _dialog()
-
-
-def render_analysis_editor(
-    *,
-    analysis_id: Optional[int],
-    on_close: Optional[Callable[[], None]] = None,
-) -> None:
-    """Редактирование существующего анализа и его этапов."""
-
-    if not analysis_id:
-        st.info("Анализ не выбран.")
-        return
-    analysis = get_analysis(analysis_id)
-    if not analysis:
-        st.error("Анализ не найден.")
-        return
 
     defaults = build_analysis_defaults(analysis)
-    title = f"{defaults['asset']} · {defaults['date_local']}"
 
-    @st.dialog(title, width="large")
+    @st.dialog(
+        _get_dialog_title(analysis, is_new_analysis),
+        width="large",
+        on_dismiss=_handle_dialog_dismiss,
+    )
     def _dialog() -> None:
-        header_container = st.container(border=True)
-        with header_container:
-            def _submit_primary() -> None:
-                st.session_state[f"analysis_submit_{analysis_id}"] = True
+        with st.container(border=True):
+            status_col, message_col, actions_col = st.columns(
+                [0.2, 0.6, 0.2],
+                gap="large",
+                vertical_alignment="bottom",
+            )
+            with status_col:
+                current_stage = analysis.get(
+                    "state") or ANALYSIS_STATE_VALUES[0]
+                selected_stage = st.selectbox(
+                    "Analysis stage",
+                    ANALYSIS_STATE_VALUES,
+                    index=(
+                        ANALYSIS_STATE_VALUES.index(current_stage)
+                        if current_stage
+                        else 0
+                    ),
+                )
 
-            def _cancel_primary() -> None:
-                if on_close:
-                    on_close()
+            with actions_col:
+                submitted = st.button("Save", type="primary", width="stretch")
 
-            current_stage = analysis.get("state") or ANALYSIS_STATE_VALUES[0]
-            selected_stage = render_entity_header(
-                status_label="Текущий этап",
-                status_options=ANALYSIS_STATE_VALUES,
-                current_status=current_stage,
-                status_key=f"analysis_status_{analysis_id}",
-                actions=[
-                    {
-                        "label": "Save changes",
-                        "type": "primary",
-                        "key": f"analysis_header_save_{analysis_id}",
-                        "on_click": _submit_primary,
-                    },
-                    {
-                        "label": "Cancel",
-                        "type": "secondary",
-                        "key": f"analysis_header_cancel_{analysis_id}",
-                        "on_click": _cancel_primary,
-                        "disabled": on_close is None,
-                    },
-                ],
-            ) or current_stage
+        visible = _visible_stage_types(selected_stage)
 
-        primary_values = render_primary_fields(
-            form_key=f"analysis_edit_{analysis_id}",
-            defaults=defaults,
+        pre_analysis_values, pre_values = render_pre_stage(
+            stage_data=defaults["stages"].get("pre-market"),
+            analysis_defaults=defaults["analysis"],
+            visible="pre-market" in visible,
+            expanded=(selected_stage == "pre-market"),
+            state_key=f"{state_key}_pre",
         )
 
-        stage_map, plan_stages = ensure_stage_records(analysis_id)
-        visible_types = visible_stage_types(selected_stage)
-
-        pre_form: Optional[Dict[str, Any]] = None
-        post_form: Optional[Dict[str, Any]] = None
-        plan_forms: List[Dict[str, Any]] = []
-
-        for stage_type in ANALYSIS_STATE_VALUES:
-            render = stage_type in visible_types
-            expanded = stage_type == selected_stage
-            if stage_type == "plan":
-                plan_forms = render_plan_section(
-                    plan_stages=plan_stages,
-                    analysis_id=analysis_id,
-                    visible=render,
-                    expanded=expanded,
-                )
-            elif stage_type == "pre-market":
-                pre_form = render_pre_stage(
-                    stage_data=stage_map.get(stage_type),
-                    analysis=analysis,
-                    visible=render,
-                    expanded=expanded,
-                )
-            elif stage_type == "post-market":
-                post_form = render_post_stage(
-                    stage_data=stage_map.get(stage_type),
-                    analysis=analysis,
-                    visible=render,
-                    expanded=expanded,
-                )
-
-        submitted_primary = st.session_state.pop(
-            f"analysis_submit_{analysis_id}", False
+        plan_forms, removed_plan_ids = render_plan_section(
+            plan_entries=defaults["plans"],
+            visible="plan" in visible,
+            expanded=(selected_stage == "plan"),
+            state_key=f"{state_key}_plan",
         )
-        if submitted_primary:
-            forms_to_save: List[Dict[str, Any]] = []
-            if pre_form:
-                forms_to_save.append(pre_form)
-            if post_form:
-                forms_to_save.append(post_form)
-            forms_to_save.extend(plan_forms)
 
-            analysis_updates: Dict[str, Any] = {
-                "state": selected_stage,
-                "date_local": primary_values["date_local"],
-                "asset": primary_values["asset"],
-            }
-            for form in forms_to_save:
-                updates = form.get("analysis_updates")
-                if updates:
-                    analysis_updates.update(updates)
+        render_execution_stage(
+            analysis_id=analysis_id,
+            visible="execution" in visible,
+            expanded=(selected_stage == "execution"),
+            state_key=f"{state_key}_execution",
+        )
 
-            try:
-                update_analysis(analysis_id, analysis_updates)
-                for form in forms_to_save:
-                    _persist_stage_form(analysis_id, form)
-                st.success("Изменения сохранены.")
-                st.rerun()
-            except Exception as exc:  # pragma: no cover
-                st.error(f"Не удалось сохранить: {exc}")
+        post_analysis_values, post_values = render_post_stage(
+            stage_data=defaults["stages"].get("post-market"),
+            defaults=defaults["analysis"],
+            visible="post-market" in visible,
+            expanded=(selected_stage == "post-market"),
+            state_key=f"{state_key}_post",
+        )
 
-        if st.button("Закрыть", use_container_width=True):
-            if on_close:
-                on_close()
-
-    _dialog()
-
-
-def render_analysis_remover(
-    *,
-    analysis_id: Optional[int],
-    on_cancel: Optional[Callable[[], None]] = None,
-    on_deleted: Optional[Callable[[], None]] = None,
-) -> None:
-    """Диалог удаления анализа."""
-
-    @st.dialog("Удаление анализа")
-    def _dialog() -> None:
-        if not analysis_id:
-            st.warning("Анализ не выбран.")
-            if st.button("Закрыть", use_container_width=True):
-                if on_cancel:
-                    on_cancel()
+        if not submitted:
             return
 
-        st.warning(
-            "Анализ будет удалён вместе с этапами, чартами и заметками. Подтвердите действие.",
-            icon="⚠️",
-        )
-        col_ok, col_cancel = st.columns(2)
-        if col_ok.button(
-            "Удалить",
-            type="primary",
-            use_container_width=True,
-        ):
-            try:
-                delete_analysis(analysis_id)
-                st.success("Анализ удалён.")
-                if on_deleted:
-                    on_deleted()
+        analysis_payload: Dict[str, Any] = {"state": selected_stage}
+        if pre_analysis_values:
+            analysis_payload.update(pre_analysis_values)
+        if post_analysis_values:
+            analysis_payload.update(post_analysis_values)
+
+        current_analysis_id = analysis_id
+        try:
+            with transaction() as conn:
+                if is_new_analysis:
+                    current_analysis_id = add_analysis(
+                        analysis_payload, conn=conn)
                 else:
-                    st.rerun()
-            except Exception as exc:  # pragma: no cover
-                st.error(f"Не удалось удалить анализ: {exc}")
-        if col_cancel.button("Отмена", use_container_width=True):
-            if on_cancel:
-                on_cancel()
+                    update_analysis(current_analysis_id,
+                                    analysis_payload, conn=conn)
 
-    _dialog()
+                if pre_values:
+                    pre_stage_id = pre_values["stage_id"]
+                    pre_values.update(
+                        {
+                            "analysis_id": current_analysis_id,
+                            "type": "pre-market",
+                        }
+                    )
+                    if pre_stage_id:
+                        update_analysis_stage(
+                            pre_stage_id, pre_values, conn=conn)
+                    else:
+                        pre_stage_id = add_analysis_stage(
+                            pre_values, conn=conn)
+
+                    persist_chart_editor(
+                        attached_charts=pre_values["charts"]["rows_source"],
+                        editor_rows=pre_values["charts"]["editor_value"],
+                        conn=conn,
+                        attach_chart=lambda chart_id, stage_id=pre_stage_id: attach_chart_to_analysis_stage(
+                            stage_id, chart_id, conn=conn
+                        ),
+                    )
+
+                if removed_plan_ids:
+                    for stage_id in removed_plan_ids:
+                        if not stage_id:
+                            continue
+                        delete_analysis_stage(stage_id, conn=conn)
+
+                for plan_form in plan_forms:
+                    charts_payload = plan_form.get("charts") or {}
+                    plan_stage_id = plan_form.get("stage_id")
+                    plan_payload = {
+                        "analysis_id": current_analysis_id,
+                        "type": "plan",
+                        "summary": plan_form.get("summary") or "",
+                    }
+                    if plan_stage_id:
+                        update_analysis_stage(
+                            plan_stage_id, plan_payload, conn=conn)
+                    else:
+                        plan_payload["time_local"] = (
+                            plan_form.get("time_local") or datetime.now()
+                        )
+                        plan_stage_id = add_analysis_stage(
+                            plan_payload, conn=conn)
+
+                    persist_chart_editor(
+                        attached_charts=charts_payload.get(
+                            "rows_source") or [],
+                        editor_rows=charts_payload.get("editor_value") or [],
+                        conn=conn,
+                        attach_chart=lambda chart_id, stage_id=plan_stage_id: attach_chart_to_analysis_stage(
+                            stage_id, chart_id, conn=conn
+                        ),
+                    )
+
+                if post_values:
+                    post_stage_id = post_values["stage_id"]
+                    post_values.update(
+                        {
+                            "analysis_id": current_analysis_id,
+                            "type": "post-market",
+                        }
+                    )
+                    if post_stage_id:
+                        update_analysis_stage(
+                            post_stage_id, post_values, conn=conn)
+                    else:
+                        post_values.update({"time_local": datetime.now()})
+                        post_stage_id = add_analysis_stage(
+                            post_values, conn=conn)
+
+                    persist_chart_editor(
+                        attached_charts=post_values["charts"]["rows_source"],
+                        editor_rows=post_values["charts"]["editor_value"],
+                        conn=conn,
+                        attach_chart=lambda chart_id, stage_id=post_stage_id: attach_chart_to_analysis_stage(
+                            stage_id, chart_id, conn=conn
+                        ),
+                    )
+                    base_note_ids = {
+                        note.get("id")
+                        for note in (post_values["notes"]["base_notes"] or [])
+                        if note.get("id") is not None
+                    }
+                    staged_note_ids = {
+                        int(nid) for nid in (post_values["notes"]["staged_note_ids"] or []) if nid is not None
+                    }
+                    for note_id in base_note_ids - staged_note_ids:
+                        detach_note_from_analysis_stage(
+                            post_stage_id, note_id, conn=conn)
+                    for note_id in staged_note_ids - base_note_ids:
+                        attach_note_to_analysis_stage(
+                            post_stage_id, note_id, conn=conn)
+
+            if is_new_analysis:
+                st.session_state[ANALYSIS_ID_STATE] = current_analysis_id
+                st.session_state[ANALYSIS_SUCCESS_STATE] = "Analysis created."
+            else:
+                st.session_state[ANALYSIS_SUCCESS_STATE] = "Analysis saved."
+        except Exception as exc:
+            message_col.error(f"Failed to save analysis: {exc}")
+            return
+
+        st.rerun()
+
+    if dialog_is_active(ANALYSIS_DIALOG_NAME):
+        _dialog()
 
 
-def _persist_stage_form(analysis_id: int, form: Optional[Dict[str, Any]]) -> None:
-    if not form:
-        return
-    stage_id = form.get("stage_id")
-    stage_type = form.get("stage_type")
-    if stage_id is None or not stage_type:
-        return
+def _get_dialog_title(data: Dict[str, Any], is_new: bool) -> str:
+    if is_new:
+        return "New analysis"
+    if not data:
+        return "-"
+    asset = (data.get("asset") or "Analysis").strip() or "Analysis"
+    date_value = (data.get("date_local") or "—").strip() or "—"
+    return f"{asset} · {date_value}"
 
-    stage_payload = {
-        "analysis_id": analysis_id,
-        "type": stage_type,
-        "summary": (form.get("summary") or "").strip() or None,
-        "time_local": datetime.now().strftime("%H:%M:%S"),
-    }
-    update_analysis_stage(stage_id, stage_payload)
 
-    charts_info = form.get("charts")
-    if not charts_info:
-        return
-    chart_state_payload = (
-        charts_info.get("editor_value")
-        if charts_info.get("editor_value") is not None
-        else charts_info.get("rows_source")
+def _handle_dialog_dismiss() -> None:
+    analysis_id = st.session_state.pop(ANALYSIS_ID_STATE, None)
+    clear_note_selector_state(
+        f"{ANALYSIS_MANAGER_KEY_PREFIX}{analysis_id or 'new'}_post_note_selector"
     )
-    if chart_state_payload is None:
-        return
-    editor_rows = normalize_editor_rows(chart_state_payload)
-    persist_chart_editor(
-        attached_charts=charts_info.get("attached") or [],
-        editor_rows=editor_rows,
-        attach_chart=lambda chart_id, s_id=stage_id: attach_chart_to_analysis_stage(
-            s_id, chart_id
-        ),
-    )
+    close_dialog()
+
+
+def _visible_stage_types(current_stage: str) -> List[str]:
+    """Возвращает последовательность этапов, которые должны отображаться."""
+
+    if current_stage not in ANALYSIS_STATE_VALUES:
+        return [ANALYSIS_STATE_VALUES[0]]
+    idx = ANALYSIS_STATE_VALUES.index(current_stage)
+    return ANALYSIS_STATE_VALUES[: idx + 1]
+
+
+__all__ = ["render_analysis_manager"]

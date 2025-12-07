@@ -1,421 +1,354 @@
 """Основной компонент трейд-менеджера."""
 
-from typing import Any, Callable, Dict, List, Optional
-
+from typing import Any, Dict, List, Optional
 import streamlit as st
-
+from components.note_manager import render_note_manager
+from components.chart_editor import persist_chart_editor, render_chart_editor
+from components.note_selector import render_note_selector, clear_note_selector_state
+from helpers import to_option_format, parse_date, parse_time
+from utils.trade_sessions import detect_trade_session
+from .state import get_allowed_statuses, map_status_to_outcome, visible_stages
+from .defaults import get_trade_defaults
+from .sections import (
+    render_main_stage,
+    render_close_stage,
+    render_review_stage,
+)
+from utils.session_state import (
+    open_dialog,
+    close_dialog,
+    dialog_is_active,
+    get_previous_dialog,
+    remove_previous_dialog
+)
+from config import (
+    TRADE_DIALOG_NAME,
+    TRADE_ID_STATE,
+    TRADE_SUCCESS_STATE,
+    TM_KEY_PREFIX,
+    LOCAL_TZ,
+    ANALYSIS_DIALOG_NAME
+)
 from db import (
-    add_note,
-    attach_chart_to_trade,
-    attach_note_to_trade,
     create_trade,
     delete_trade,
-    detach_note_from_trade,
     get_trade_by_id,
     list_accounts,
     list_analysis,
-    list_notes,
-    list_setups,
-    list_trade_charts,
     list_trade_notes,
-    parse_emotional_problems,
+    list_setups,
+    list_charts,
+    attach_chart_to_trade,
+    attach_note_to_trade,
+    detach_note_from_trade,
     update_trade,
-)
-from components.chart_editor import (
-    chart_table_rows,
-    normalize_editor_rows,
-    persist_chart_editor,
-    render_chart_editor,
-)
-from components.note_editor import render_note_editor
-from components.state_header import render_entity_header
-from helpers import option_with_placeholder
-
-from config import LOCAL_TZ
-from .defaults import build_trade_defaults
-from .sections import (
-    render_closed_stage,
-    render_open_stage,
-    render_review_stage,
-)
-from .state import allowed_statuses, visible_stages
-from .constants import (
-    STATUS_STAGE,
-    RESULT_PLACEHOLDER,
-    CREATE_ALLOWED_STATUSES
+    transaction,
 )
 
 
-def render_trade_creator(
-    *,
-    on_created: Optional[Callable[[int], None]] = None,
-    on_cancel: Optional[Callable[[], None]] = None,
-) -> None:
-    """Показывает модалку создания новой сделки."""
+def render_trade_manager() -> None:
+    """Единое окно создания и редактирования сделок."""
 
-    @st.dialog("Создание сделки")
-    def _dialog() -> None:
-        trade_key = f"trade_creator"
+    if not dialog_is_active(TRADE_DIALOG_NAME):
+        render_note_manager()
+        return
 
-        accounts = option_with_placeholder(
-            list_accounts(),
-            placeholder="— Account not selected —",
-            formatter=lambda acc: f"{acc['name']} (#{acc['id']})",
-        )
-        setups = option_with_placeholder(
-            list_setups(),
-            placeholder="— Setup not selected —",
-            formatter=lambda setup: f"{setup['name']} (#{setup['id']})",
-        )
-        analyses = option_with_placeholder(
-            list_analysis(),
-            placeholder="— Analysis not linked —",
-            formatter=lambda analysis: f"{analysis.get('date_local') or 'No date'} · {analysis.get('asset') or '—'} (#{analysis['id']})",
-        )
+    trade_id = None
+    is_new_trade = True
+    if TRADE_ID_STATE in st.session_state:
+        is_new_trade = False
+        trade_id = st.session_state[TRADE_ID_STATE]
 
-        account_labels = list(accounts.keys())
-        setup_labels = list(setups.keys())
-        analysis_labels = list(analyses.keys())
+    if TRADE_SUCCESS_STATE in st.session_state:
+        st.toast(st.session_state.pop(TRADE_SUCCESS_STATE), icon="🔥")
 
-        defaults = build_trade_defaults({}, accounts, analyses, setups)
-        open_defaults = defaults["open"]
+    state_key = f"{TM_KEY_PREFIX}{trade_id or 'new'}"
 
-        status_container = st.container(border=True)
-        with status_container:
-            selected_state = st.selectbox(
-                "Trade status",
-                CREATE_ALLOWED_STATUSES,
-                index=0,
-                key=f"{trade_key}_status",
-                help="Доступные статусы при создании сделки.",
-            )
-
-        open_values = render_open_stage(
-            trade_key=trade_key,
-            visible=True,
-            expanded=True,
-            defaults=open_defaults,
-            account_labels=account_labels,
-            assets=open_defaults["asset_options"],
-            analysis_labels=analysis_labels,
-            setup_labels=setup_labels,
-        )
-
-        submitted = st.button(
-            "Create",
-            type="primary",
-            use_container_width=True,
-            key=f"{trade_key}_submit",
-        )
-        if not submitted:
-            return None
-
-        payload: Dict[str, Any] = {
-            "date_local": open_values["date"].isoformat(),
-            "time_local": open_values["time"].strftime("%H:%M:%S"),
-            "local_tz": LOCAL_TZ,
-            "account_id": accounts[open_values["account_label"]],
-            "asset": open_values["asset"],
-            "analysis_id": analyses[open_values["analysis_label"]],
-            "setup_id": setups[open_values["setup_label"]],
-            "risk_pct": float(open_values["risk_pct"]),
-            "state": selected_state,
-        }
-
-        new_trade_id = None
-
-        try:
-            new_trade_id = create_trade(payload)
-            st.success("Сделка создана.")
-        except Exception as exc:  # pragma: no cover - UI feedback
-            st.error(f"Failed to create the trade: {exc}")
-
-        cancel = st.button(
-            "Отмена",
-            key="tc_dialog_cancel",
-            use_container_width=True,
-        )
-        if new_trade_id and on_created:
-            on_created(new_trade_id)
-        if cancel and on_cancel:
-            on_cancel()
-
-    _dialog()
-
-
-def render_trade_editor(
-    *,
-    trade_id: Optional[int],
-    on_close: Optional[Callable[[], None]] = None,
-) -> None:
-    """Показыввает модалку для редактирования существующих сделок."""
-
-    @st.dialog("Редактирование сделки", width="large")
-    def _dialog() -> None:
-        if not trade_id:
-            st.info("Сделка не выбрана.")
-            return
+    trade: Dict[str, Any] = {}
+    if not is_new_trade:
         trade = get_trade_by_id(trade_id)
         if not trade:
-            st.error("Сделка не найдена.")
+            st.error("Trade not found.")
+            st.session_state.pop(TRADE_ID_STATE, None)
+            close_dialog()
+            st.rerun()
             return
 
-        trade_key = f"edit_{trade_id}"
-
-        accounts = option_with_placeholder(
-            list_accounts(),
-            placeholder="— Account not selected —",
-            formatter=lambda acc: f"{acc['name']} (#{acc['id']})",
+    @st.dialog(
+        _get_dialog_title(trade, is_new_trade),
+        width="large",
+        on_dismiss=_handle_dialog_dismiss
+    )
+    def _dialog() -> None:
+        # Подготовка данных
+        account_rows = list_accounts(include_archived=True)
+        account_lookup = {
+            acc["id"]: acc for acc in account_rows if acc.get("id") is not None
+        }
+        accounts = to_option_format(
+            account_rows,
+            formatter=lambda acc: f"{acc['name']}",
         )
-        setups = option_with_placeholder(
+        setups = to_option_format(
             list_setups(),
-            placeholder="— Setup not selected —",
-            formatter=lambda setup: f"{setup['name']} (#{setup['id']})",
+            formatter=lambda setup: f"{setup['name']}",
         )
-        analyses = option_with_placeholder(
+        analyses = to_option_format(
             list_analysis(),
-            placeholder="— Analysis not linked —",
-            formatter=lambda analysis: f"{analysis.get('date_local') or 'No date'} · {analysis.get('asset') or '—'} (#{analysis['id']})",
+            formatter=lambda analysis: f"{analysis.get('date_local')} · {analysis.get('asset')}",
         )
-        account_labels = list(accounts.keys())
-        setup_labels = list(setups.keys())
-        analysis_labels = list(analyses.keys())
+        defaults = get_trade_defaults(trade)
+        charts = list_charts(trade_id=trade_id) if trade_id else []
+        base_trade_notes = list_trade_notes(trade_id) if trade_id else []
 
-        defaults = build_trade_defaults(trade, accounts, analyses, setups)
-        open_defaults = defaults["open"]
-        closed_defaults = defaults["closed"].copy()
-        review_defaults = defaults["review"].copy()
-
-        emotional_defaults = parse_emotional_problems(
-            closed_defaults.pop("emotional"))
-
-        current_state = trade.get("state") or "open"
-        selected_state = current_state
-        closed_inputs: Dict[str, Any] = {}
-        review_inputs: Optional[Dict[str, Any]] = None
-        open_values = open_defaults.copy()
-        submitted = False
-        trade_charts = list_trade_charts(trade_id)
-        chart_rows_source = chart_table_rows(trade_charts)
-        trade_notes = list_trade_notes(trade_id)
-        all_notes = list_notes()
-
-        chart_editor_value: Optional[Any] = None
-
-        header_container = st.container(border=True)
-        with header_container:
-            allowed = allowed_statuses(current_state)
-            current_state = current_state if current_state in allowed else allowed[0]
-
-            def _submit_action() -> None:
-                st.session_state[f"tm_submit_triggered_{trade_key}"] = True
-
-            def _cancel_action() -> None:
-                if on_close:
-                    on_close()
-
-            selected_state = render_entity_header(
-                status_label="Trade status",
-                status_options=allowed,
-                current_status=current_state,
-                status_key=f"tm_status_{trade_key}",
-                actions=[
-                    {
-                        "label": "Save changes",
-                        "type": "primary",
-                        "key": f"tm_submit_{trade_key}",
-                        "on_click": _submit_action,
-                    },
-                    {
-                        "label": "Cancel",
-                        "key": f"tm_cancel_{trade_key}",
-                        "on_click": _cancel_action,
-                        "type": "secondary",
-                        "disabled": on_close is None,
-                    },
-                ],
+        # Рендерим хедер с выбором статуса и кнопками действий
+        with st.container(border=True):
+            status_col, message_col, actions_col = st.columns(
+                [0.2, 0.5, 0.3],
+                gap="large",
+                vertical_alignment="bottom",
             )
-            submitted = st.session_state.pop(f"tm_submit_triggered_{trade_key}", False)
+            with status_col:
+                current_status = trade.get("state")
+                allowed_statuses = get_allowed_statuses(current_status)
+                selected_status = st.selectbox(
+                    "Trade status",
+                    allowed_statuses,
+                    index=allowed_statuses.index(
+                        current_status) if current_status else 0
+                )
+
+            with actions_col:
+                c1, c2 = st.columns(2)
+                if get_previous_dialog():
+                    if c1.button(
+                        ":material/arrow_back: Back",
+                        width="stretch"
+                    ):
+                        _handle_dialog_dismiss()
+                        remove_previous_dialog()
+                        open_dialog(get_previous_dialog())
+                        st.rerun()
+
+                submitted = c2.button(
+                    "Save",
+                    type="primary",
+                    width="stretch"
+                )
 
         stages_col, side_col = st.columns([1, 2])
 
+        selected_outcome = map_status_to_outcome(
+            selected_status, trade.get("outcome"))
+
+        # Рендерим стадии сделки
         with stages_col:
-            stages = visible_stages(selected_state)
-            expanded_stage = STATUS_STAGE.get(selected_state, stages[0])
-            if expanded_stage not in stages:
-                expanded_stage = stages[0]
-
-            open_values = render_open_stage(
-                trade_key=trade_key,
-                visible="open" in stages,
-                expanded=(expanded_stage == "open"),
-                defaults=open_defaults,
-                account_labels=account_labels,
-                assets=open_defaults["asset_options"],
-                analysis_labels=analysis_labels,
-                setup_labels=setup_labels,
+            visible = visible_stages(selected_status)
+            close_visible = ("close" in visible) and not (
+                selected_status == "Review"
+                and selected_outcome in ("canceled", "missed")
             )
 
-            closed_inputs, emotional_defaults = render_closed_stage(
-                trade_key=trade_key,
-                visible="closed" in stages,
-                expanded=(expanded_stage == "closed"),
-                defaults=closed_defaults,
-                emotional_defaults=emotional_defaults,
+            main_values = render_main_stage(
+                expanded=(selected_status in ("Open", "Cancel", "Miss")),
+                defaults=defaults["open"],
+                account_options=accounts,
+                analysis_options=analyses,
+                setup_options=setups,
+                state_key=f"{state_key}_main"
             )
 
-            review_inputs = render_review_stage(
-                trade_key=trade_key,
-                visible="review" in stages,
-                expanded=(expanded_stage == "review"),
-                defaults=review_defaults,
+            close_values = render_close_stage(
+                visible=close_visible,
+                expanded=("Close" == selected_status),
+                defaults=defaults['close'],
+                state_key=f"{state_key}_close"
             )
 
+            review_values = render_review_stage(
+                visible="review" in visible,
+                expanded=("Review" == selected_status),
+                defaults=defaults['review'],
+                state_key=f"{state_key}_review"
+            )
+
+        # Панель с редактором графиков
         with side_col:
-            chart_editor_value = render_chart_editor(
-                key=f"tm_chart_editor_{trade_key}",
-                base_rows=chart_rows_source,
+            st.markdown("#### Charts")
+            current_charts = render_chart_editor(
+                key=f"{state_key}_chart_editor",
+                base_rows=charts,
+                layout_columns=2,
             )
-            st.divider()
-            render_note_editor(
-                key=f"trade_{trade_key}",
-                attached_notes=trade_notes,
-                attach_note=lambda note_id, t_id=trade_id: attach_note_to_trade(
-                    t_id, note_id
-                ),
-                detach_note=lambda note_id, t_id=trade_id: detach_note_from_trade(
-                    t_id, note_id
-                ),
-                create_note=lambda title, body: add_note(title, body),
-                all_notes=all_notes,
-                title="Notes",
-                selection_label="Linked notes",
-                popover_label="Add",
-                create_button_label="Create note",
-                empty_warning="Note body cannot be empty.",
-                success_update_message="Notes updated.",
-                success_create_message="Note created and attached.",
-                error_update_message="Failed to update notes: {exc}",
-                error_create_message="Failed to add note: {exc}",
-                column_ratio=(0.6, 0.4),
+            st.markdown("#### Observations")
+            staged_note_ids = render_note_selector(
+                entity_type="trade",
+                entity_id=trade_id,
+                state_key=f"{state_key}_note_selector",
+                previous_dialog_name=TRADE_DIALOG_NAME,
+                excerpt_limit=45,
             )
 
         if not submitted:
             return
 
-        errors: List[str] = []
-        if selected_state in ("closed", "reviewed"):
-            if not closed_inputs:
-                errors.append("Fill in the “After close” block.")
+        # Валидация и сохранение сделки
+        if selected_status in ("Open", "Cancel", "Miss"):
+            if not main_values["asset"]:
+                message_col.error("Select an asset.")
+                return
+            if not main_values["account"]:
+                message_col.error("Select an account.")
+                return
+
+        if selected_status == "Close":
+            if not close_values:
+                message_col.error("Fill in the “After close” block.")
+                return
             else:
-                if closed_inputs["result"] == RESULT_PLACEHOLDER:
-                    errors.append("Select the trade result.")
-                if closed_inputs["net_pnl"] is None:
-                    errors.append("Provide Net PnL.")
-        if errors:
-            for err in errors:
-                st.error(err)
-            return
+                if not close_values["result"]:
+                    message_col.error("Select the trade result.")
+                    return
+                if close_values["net_pnl"] is None:
+                    message_col.error("Provide Net PnL.")
+                    return
+
+        local_tz = trade.get("local_tz") or LOCAL_TZ
+        session_value = detect_trade_session(
+            main_values["date"],
+            main_values["time"],
+            local_tz_label=local_tz,
+        )
 
         payload: Dict[str, Any] = {
-            "date_local": open_values["date"].isoformat(),
-            "time_local": open_values["time"].strftime("%H:%M:%S"),
-            "account_id": accounts[open_values["account_label"]],
-            "asset": open_values["asset"],
-            "analysis_id": analyses[open_values["analysis_label"]],
-            "setup_id": setups[open_values["setup_label"]],
-            "risk_pct": float(open_values["risk_pct"]),
-            "state": selected_state,
+            "date_local": main_values["date"].isoformat(),
+            "time_local": main_values["time"].strftime("%H:%M:%S"),
+            "account_id": main_values["account"],
+            "asset": main_values["asset"],
+            "analysis_id": main_values["analysis"],
+            "setup_id": main_values["setup"],
+            "risk_pct": float(main_values["risk_pct"]),
+            "session": session_value,
+            "state": selected_status,
+            "outcome": selected_outcome,
         }
 
-        if closed_inputs:
+        risk_reward_value = None
+        reward_percent_value = None
+        if close_values:
+            net_pnl_value = float(close_values["net_pnl"])
+            risk_reward_value, reward_percent_value = _calculate_rewards(
+                net_pnl=net_pnl_value,
+                risk_pct=float(main_values["risk_pct"]),
+                account_balance=account_lookup.get(main_values["account"], {}).get(
+                    "starting_balance"
+                ),
+            )
+
+        if close_values:
             payload.update({
-                "result": None if closed_inputs["result"] == RESULT_PLACEHOLDER else closed_inputs["result"],
-                "net_pnl": float(closed_inputs["net_pnl"]),
-                "risk_reward": float(closed_inputs["risk_reward"]),
-                "reward_percent": float(closed_inputs["reward_percent"]),
-                "hot_thoughts": closed_inputs["hot_thoughts"].strip() or None,
-                "emotional_problems": emotional_defaults or None,
-            })
-        else:
-            payload.update({
-                "result": None,
-                "net_pnl": None,
-                "risk_reward": None,
-                "reward_percent": None,
-                "hot_thoughts": None,
-                "emotional_problems": None,
+                "result": None if not close_values["result"] else close_values["result"],
+                "net_pnl": net_pnl_value,
+                "risk_reward": risk_reward_value,
+                "reward_percent": reward_percent_value,
+                "hot_thoughts": close_values["hot_thoughts"].strip() or None,
             })
 
-        if review_inputs:
-            estimation_value = review_inputs["estimation"]
+        if review_values:
             payload.update({
-                "cold_thoughts": review_inputs["cold_thoughts"].strip() or None,
-                "estimation": estimation_value if estimation_value in (0, 1) else None,
-            })
-        else:
-            existing_estimation = trade.get("estimation")
-            payload.update({
-                "cold_thoughts": None if selected_state != "reviewed" else trade.get("cold_thoughts"),
-                "estimation": existing_estimation if selected_state == "reviewed" and existing_estimation in (0, 1) else None,
+                "cold_thoughts": review_values["cold_thoughts"].strip() or None,
+                "estimation": review_values["estimation"],
             })
 
-        chart_state_payload = chart_editor_value if chart_editor_value is not None else chart_rows_source
-        chart_editor_rows = normalize_editor_rows(chart_state_payload)
+        base_note_ids = {
+            note.get("id") for note in base_trade_notes if note.get("id") is not None
+        }
+        staged_note_ids_set = {
+            int(nid) for nid in (staged_note_ids or []) if nid is not None
+        }
 
         try:
-            persist_chart_editor(
-                attached_charts=trade_charts,
-                editor_rows=chart_editor_rows,
-                attach_chart=lambda chart_id, trade_id=trade_id: attach_chart_to_trade(
-                    trade_id, chart_id),
-            )
-            update_trade(trade_id, payload)
-            st.success("Trade updated.")
-            st.rerun()
+            with transaction() as conn:
+                current_trade_id = trade_id
+                trade_charts = charts or []
+                if is_new_trade:
+                    payload["local_tz"] = local_tz
+                    current_trade_id = create_trade(payload, conn=conn)
+                else:
+                    update_trade(current_trade_id, payload, conn=conn)
+
+                persist_chart_editor(
+                    attached_charts=trade_charts,
+                    editor_rows=current_charts,
+                    conn=conn,
+                    attach_chart=lambda chart_id, trade_id=current_trade_id: attach_chart_to_trade(  # noqa: E731
+                        trade_id, chart_id, conn=conn
+                    ),
+                )
+                for note_id in base_note_ids - staged_note_ids_set:
+                    detach_note_from_trade(
+                        current_trade_id, note_id, conn=conn)
+                for note_id in staged_note_ids_set - base_note_ids:
+                    attach_note_to_trade(current_trade_id, note_id, conn=conn)
+
+            if is_new_trade:
+                st.session_state[TRADE_ID_STATE] = current_trade_id
+                st.session_state[TRADE_SUCCESS_STATE] = "Trade created."
+            else:
+                st.session_state[TRADE_SUCCESS_STATE] = "Trade saved."
         except Exception as exc:  # pragma: no cover - UI feedback
-            st.error(f"Failed to persist the trade: {exc}")
-
-    _dialog()
-
-
-def render_trade_remover(
-    *,
-    trade_id: Optional[int],
-    on_deleted: Optional[Callable[[], None]] = None,
-    on_cancel: Optional[Callable[[], None]] = None,
-) -> None:
-    """Показывает модалку удаления выбранной сделки."""
-
-    @st.dialog("Удаление сделки")
-    def _dialog() -> None:
-        if not trade_id:
-            st.info("Сделка не выбрана.")
+            message_col.error(f"Failed to save the trade: {exc}")
             return
-        st.warning(
-            "Сделка будет удалена безвозвратно. Подтвердите действие.",
-            icon="⚠️",
-        )
-        col_ok, col_cancel = st.columns(2)
-        confirm = col_ok.button(
-            "Удалить",
-            type="primary",
-            use_container_width=True,
-        )
-        cancel = col_cancel.button(
-            "Отмена",
-            use_container_width=True,
-        )
-        if confirm:
-            try:
-                delete_trade(trade_id)
-                st.success("Сделка удалена.")
-                if on_deleted:
-                    on_deleted()
-                st.rerun()
-            except Exception as exc:  # pragma: no cover
-                st.error(f"Не удалось удалить сделку: {exc}")
-        if cancel and on_cancel:
-            on_cancel()
+        st.rerun()
 
-    _dialog()
+    if dialog_is_active(TRADE_DIALOG_NAME):
+        _dialog()
+
+
+def _get_dialog_title(data: Dict[str, Any], is_new_trade: bool) -> str:
+    if is_new_trade:
+        return "New trade"
+    if not data:
+        return "-"
+    asset = (data.get("asset") or "Trade").strip()
+    date = parse_date(data.get("date_local")).strftime("%d.%m.%Y")
+    time = parse_time(data.get("time_local")).strftime("%H:%M")
+    return f"{asset} · {date} - {time}"
+
+
+def _handle_dialog_dismiss() -> None:
+    current_trade_id = st.session_state.get(TRADE_ID_STATE)
+    close_dialog()
+    st.session_state.pop(TRADE_ID_STATE, None)
+    st.session_state.pop("tm_default_analysis_id", None)
+    clear_note_selector_state(
+        f"{TM_KEY_PREFIX}{current_trade_id or 'new'}_note_selector"
+    )
+
+
+def _calculate_rewards(
+    *,
+    net_pnl: Optional[float],
+    risk_pct: Optional[float],
+    account_balance: Optional[Any],
+) -> tuple[Optional[float], Optional[float]]:
+    """Высчитывает R:R и Reward % исходя из Net PnL, размера счёта и процента риска."""
+    try:
+        balance = float(
+            account_balance) if account_balance is not None else None
+    except (TypeError, ValueError):
+        balance = None
+
+    if net_pnl is None or balance in (None, 0):
+        return None, None
+
+    risk_amount = None
+    if risk_pct is not None:
+        try:
+            risk_amount = balance * float(risk_pct) / 100
+        except (TypeError, ValueError):
+            risk_amount = None
+
+    reward_percent = (float(net_pnl) / balance) * 100 if balance else None
+    risk_reward = (float(net_pnl) / risk_amount) if risk_amount else None
+    return risk_reward, reward_percent

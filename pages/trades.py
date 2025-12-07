@@ -1,267 +1,241 @@
 from datetime import date, timedelta
-from typing import Dict, Optional, Tuple
-
+from typing import Any, Dict, List, Optional, Tuple
 import streamlit as st
-
-from components.database_toolbar import (
-    render_action_buttons,
-    render_database_toolbar,
+from components.entity_table import render_entity_table
+from components.trade_manager import render_trade_manager
+from db import delete_trade, list_accounts, list_trades
+from helpers import (
+    parse_date,
+    to_option_format,
+    apply_page_config_from_file,
+    custom_selectbox,
 )
-from components.entity_filters import (
-    TAB_DEFINITIONS,
-    ensure_custom_range,
-    tab_date_range,
+from utils.session_state import (
+    open_dialog,
 )
-from config import ASSETS, TRADE_RESULT_VALUES, TRADE_SESSION_VALUES, TRADE_STATE_VALUES
-from components.trades_table import render_trades_table
-from components.trade_manager import (
-    render_trade_creator,
-    render_trade_editor,
-    render_trade_remover,
-
+from config import (
+    ASSETS_VALUES,
+    TRADE_OUTCOME_VALUES,
+    TRADE_RESULT_VALUES,
+    TRADE_SESSION_VALUES,
+    TRADE_STATE_VALUES,
+    TRADE_ID_STATE,
+    TRADE_DIALOG_NAME
 )
-from db import list_trades, list_accounts
-from helpers import apply_page_config_from_file
 
-# --- Базовая настройка страницы под Streamlit ---
+# === БАЗОВАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ ===
+# Настраиваем страницу и готовим исходные значения для фильтров и диапазонов.
 apply_page_config_from_file(__file__)
 
-# --- Первичные значения фильтров и диапазона дат ---
-today = date.today()
-st.session_state.setdefault("trades_active_filters", {})
-st.session_state.setdefault(
-    "trades_custom_range",
-    (
-        today - timedelta(days=7),
-        today,
-    ),
-)
+TAB_DEFINITIONS: Dict[str, str] = {
+    "today": "Today",
+    "week": "Current week",
+    "month": "Current month",
+    "quarter": "Current quarter",
+    "year": "Current year",
+    "custom": "Custom",
+}
 
-# --- Инициализируем рабочие флаги и выбранную сделку ---
-st.session_state.setdefault("selected_trade_id", None)
-st.session_state.setdefault("show_create_trade", False)
-st.session_state.setdefault("show_edit_trade", False)
-st.session_state.setdefault("show_delete_trade", False)
-
-
-def account_options() -> Dict[str, Optional[int]]:
-    """Формирует удобный для отображения список счетов с их ID."""
-    options: Dict[str, Optional[int]] = {"Все счета": None}
-    for account in list_accounts():
-        options[f"{account['name']} (#{account['id']})"] = account["id"]
-    return options
+ESTIMATION_VARS = {
+    1: "Like",
+    0: "Dislike",
+}
 
 
 # --- Загружаем список счетов и настраиваем state для форм ---
-account_map = account_options()
+accounts = to_option_format(
+    list_accounts(),
+    formatter=lambda acc: f"{acc['name']}",
+)
 
-
-def _render_trades_custom_filters(
-    account_map: Dict[str, Optional[int]],
-    initial_filters: Optional[Dict[str, Optional[str]]],
-    initial_range: Optional[Tuple[Optional[date], Optional[date]]],
-) -> Tuple[Dict[str, Optional[str]], Tuple[Optional[date], Optional[date]]]:
-    """Отрисовывает контролы для таба Custom на странице сделок."""
-    initial_filters = initial_filters or {}
-    default_from, default_to = ensure_custom_range(initial_range)
-
-    account_labels = list(account_map.keys())
-    account_default_label = next(
-        (label for label, val in account_map.items()
-         if val == initial_filters.get("account_id")),
-        account_labels[0],
+# === ВЕРХНЯЯ ПАНЕЛЬ С ФИЛЬТРАМИ ПЕРИОДОВ ===
+period_col, _, actions_col = st.columns(
+    [0.5, 0.3, 0.2], vertical_alignment="bottom"
+)
+with period_col:
+    period_key = "trade_current_period_label"
+    if not st.session_state.get(period_key, None):
+        st.session_state[period_key] = 'Today'
+    selected_label = st.segmented_control(
+        "Период",
+        options=TAB_DEFINITIONS.values(),
+        default=list(TAB_DEFINITIONS.values())[0],
+        key=period_key,
+        width="stretch",
     )
 
-    asset_options = ["Все"] + ASSETS
-    asset_default = initial_filters.get("asset", "Все")
-    state_options = ["Все"] + TRADE_STATE_VALUES
-    state_default = initial_filters.get("state", "Все")
-    result_options = ["Все"] + TRADE_RESULT_VALUES
-    result_default = initial_filters.get("result", "Все")
-    session_options = ["Все"] + TRADE_SESSION_VALUES
-    session_default = initial_filters.get("session", "Все")
+with actions_col:
+    if st.button(
+        "Create",
+        type="primary",
+        width="stretch",
+    ):
+        open_dialog(TRADE_DIALOG_NAME)
 
+# === ПРИМЕНЕНИЕ ПЕРИОДОВ И КАСТОМНЫХ ФИЛЬТРОВ ===
+filter: Dict[str, Any] = {}
+date_from: Optional[date] = None
+date_to: Optional[date] = None
+account_id: Optional[int] = None
+
+label_to_key = {label: key for key, label in TAB_DEFINITIONS.items()}
+selected_key = label_to_key.get(selected_label, "today")
+
+if selected_key == "custom":
     with st.container():
-        fc1, fc2, fc3, fc4, fc5, fc6 = st.columns(6)
+        fc1, fc2, fc3, fc4, fc5, fc6, fc7, fc8 = st.columns(8)
         date_from, date_to = fc1.date_input(
             "Диапазон дат",
-            value=(default_from, default_to),
+            value=(
+                date.today() - timedelta(days=7),
+                date.today()
+            ),
             format="DD.MM.YYYY",
         )
-        account_choice = fc2.selectbox(
-            "Счёт",
-            account_labels,
-            index=account_labels.index(account_default_label),
+        session = fc2.selectbox(
+            "Session",
+            TRADE_SESSION_VALUES,
+            placeholder="All",
+            index=None,
         )
-        asset_choice = fc3.selectbox(
-            "Инструмент",
-            asset_options,
-            index=asset_options.index(asset_default)
-            if asset_default in asset_options else 0,
+        with fc3:
+            account_id = custom_selectbox(
+                "Account",
+                accounts,
+                placeholder="All",
+            )
+        asset = fc4.selectbox(
+            "Asset",
+            ASSETS_VALUES,
+            placeholder="All",
+            index=None,
         )
-        state_choice = fc4.selectbox(
-            "Состояние",
-            state_options,
-            index=state_options.index(state_default)
-            if state_default in state_options else 0,
+        state = fc5.selectbox(
+            "Status",
+            TRADE_STATE_VALUES,
+            placeholder="All",
+            index=None,
         )
-        result_choice = fc5.selectbox(
-            "Результат",
-            result_options,
-            index=result_options.index(result_default)
-            if result_default in result_options else 0,
+        outcome = fc6.selectbox(
+            "Outcome",
+            TRADE_OUTCOME_VALUES,
+            placeholder="All",
+            index=None,
+            format_func=lambda value: value.title(),
         )
-        session_choice = fc6.selectbox(
-            "Сессия",
-            session_options,
-            index=session_options.index(session_default)
-            if session_default in session_options else 0,
+        result = fc7.selectbox(
+            "Result",
+            TRADE_RESULT_VALUES,
+            placeholder="All",
+            index=None,
+        )
+        estimation = fc8.selectbox(
+            "Estimation",
+            list(ESTIMATION_VARS.values()),
+            placeholder="All",
+            index=None,
         )
 
-    filters: Dict[str, Optional[str]] = {}
-    account_id = account_map.get(account_choice)
     if account_id:
-        filters["account_id"] = account_id
-    if state_choice != "Все":
-        filters["state"] = state_choice
-    if result_choice != "Все":
-        filters["result"] = result_choice
-    if asset_choice != "Все":
-        filters["asset"] = asset_choice
-    if session_choice != "Все":
-        filters["session"] = session_choice
+        filter["account_id"] = account_id
+    if state:
+        filter["state"] = state
+    if outcome:
+        filter["outcome"] = outcome
+    if result:
+        filter["result"] = result
+    if asset:
+        filter["asset"] = asset
+    if session:
+        filter["session"] = session
+    if estimation:
+        estimation_key = {val: key for key, val in ESTIMATION_VARS.items()}
+        selected_estimation = estimation_key.get(estimation, None)
+        filter["estimation"] = selected_estimation
 
-    date_range = (
-        date_from if isinstance(date_from, date) else default_from,
-        date_to if isinstance(date_to, date) else default_to,
-    )
-    return filters, date_range
-
-
-def set_dialog_flag(flag: str, value: bool) -> None:
-    st.session_state[flag] = value
-
-
-# --- Верхняя панель: слева фильтр периода, справа кнопки действий ---
-selected_label, selected_tab_key, tab_changed, actions_placeholder = render_database_toolbar(
-    tab_definitions=TAB_DEFINITIONS,
-    session_prefix="trades",
-)
-
-# --- Фиксируем выбранный период и обнуляем выбор при переключении ---
-if tab_changed:
-    st.session_state["selected_trade_id"] = None
-    set_dialog_flag("show_create_trade", False)
-    set_dialog_flag("show_edit_trade", False)
-    set_dialog_flag("show_delete_trade", False)
-    table_state_key = f"trades_table_{selected_tab_key}"
-    st.session_state.pop(table_state_key, None)
-    st.session_state.pop(f"{table_state_key}_selection", None)
-st.session_state["trades_visible_tab"] = selected_tab_key
-st.session_state["trades_active_period"] = selected_label
-
-# --- Собираем итоговый фильтр для таблицы ---
-if selected_tab_key == "custom":
-    filters, custom_range = _render_trades_custom_filters(
-        account_map,
-        st.session_state.get("trades_active_filters"),
-        st.session_state.get("trades_custom_range"),
-    )
-    st.session_state["trades_active_filters"] = filters
-    st.session_state["trades_custom_range"] = custom_range
-    tab_filters = filters.copy()
-    date_from, date_to = custom_range
 else:
-    tab_filters = st.session_state.get("trades_active_filters", {}).copy()
-    date_from, date_to = tab_date_range(selected_tab_key)
+    today = date.today()
+    if selected_key == "today":
+        date_from, date_to = today, today
+    elif selected_key == "week":
+        date_from = today - timedelta(days=today.weekday())
+        date_to = today
+    elif selected_key == "month":
+        date_from = today.replace(day=1)
+        date_to = today
+    elif selected_key == "quarter":
+        quarter = (today.month - 1) // 3
+        quarter_start_month = quarter * 3 + 1
+        date_from = today.replace(month=quarter_start_month, day=1)
+        date_to = today
+    elif selected_key == "year":
+        date_from = today.replace(month=1, day=1)
+        date_to = today
+
 if date_from:
-    tab_filters["date_from"] = date_from.isoformat()
+    filter["date_from"] = date_from.isoformat()
 if date_to:
-    tab_filters["date_to"] = date_to.isoformat()
+    filter["date_to"] = date_to.isoformat()
 
-# --- Загружаем сделки и отслеживаем, изменилась ли выделенная строка ---
-rows = list_trades(tab_filters)
-selection_changed, selected_from_tab = render_trades_table(
-    rows,
-    selected_tab_key,
+# === ЗАГРУЗКА ДАННЫХ И ОПРЕДЕЛЕНИЕ КОЛОНОК ===
+rows = list_trades(filter)
+
+
+# --- Настройка отображаемых колонок таблицы ---
+trade_table_columns: List[Dict[str, Any]] = [
+    {
+        "field": "date_local",
+        "label": "Date",
+        "compute": lambda row: row.get("date_local"),
+        "format": parse_date,
+        "id": "date_local",
+    },
+    {"field": "session", "label": "Session", "id": "session"},
+    {"field": "asset", "label": "Asset", "id": "asset"},
+    {"field": "state", "label": "Status", "id": "state"},
+    {
+        "field": "outcome",
+        "label": "Outcome",
+        "id": "outcome",
+        "format": lambda value: str(value).title(),
+    },
+    {"field": "result", "label": "Result", "id": "result"},
+    {"field": "net_pnl", "label": "PnL", "id": "net_pnl"},
+    {"field": "risk_reward", "label": "R:R", "id": "risk_reward"},
+]
+
+
+# === ДЕЙСТВИЯ ПРИ ВЗАИМОДЕЙСТВИИ С ТАБЛИЦЕЙ ===
+def _handle_open_trade(row: Dict[str, Any]) -> None:
+    trade_id = row.get("id")
+    if not trade_id:
+        return
+    st.session_state[TRADE_ID_STATE] = trade_id
+    open_dialog(TRADE_DIALOG_NAME)
+
+
+def _handle_delete_trades(ids: List[Any]) -> None:
+    if not ids:
+        return
+    for id in ids:
+        try:
+            delete_trade(id)
+        except Exception as exc:
+            st.toast(f"Failed to delete trade with ID {id}: {exc}", icon="❌")
+    st.rerun()
+
+
+# --- Создаём таблицу с обработкой выделений и действий ---
+table_key = f"trades_table_{selected_key}"
+render_entity_table(
+    entity_name="trade",
+    key=table_key,
+    rows=rows,
+    columns=trade_table_columns,
+    empty_message="Нет сделок для выбранного периода.",
+    page_size=100,
+    on_open=_handle_open_trade,
+    on_delete=_handle_delete_trades,
 )
-if selection_changed:
-    if selected_from_tab is None:
-        if not st.session_state.get("show_edit_trade"):
-            st.session_state["selected_trade_id"] = None
-            set_dialog_flag("show_create_trade", False)
-            set_dialog_flag("show_edit_trade", False)
-            set_dialog_flag("show_delete_trade", False)
-    else:
-        st.session_state["selected_trade_id"] = selected_from_tab
-        set_dialog_flag("show_create_trade", False)
-        set_dialog_flag("show_edit_trade", False)
-        set_dialog_flag("show_delete_trade", False)
 
-# --- Правый блок кнопок (создание / открытие / удаление) ---
-open_disabled = st.session_state.get("selected_trade_id") is None
-create_clicked, open_clicked, delete_clicked = render_action_buttons(
-    actions_container=actions_placeholder,
-    session_prefix="trades",
-    open_disabled=open_disabled,
-)
-
-if create_clicked:
-    set_dialog_flag("show_create_trade", True)
-    set_dialog_flag("show_edit_trade", False)
-    set_dialog_flag("show_delete_trade", False)
-if open_clicked:
-    set_dialog_flag("show_edit_trade", True)
-    set_dialog_flag("show_create_trade", False)
-    set_dialog_flag("show_delete_trade", False)
-if delete_clicked:
-    set_dialog_flag("show_delete_trade", True)
-    set_dialog_flag("show_create_trade", False)
-    set_dialog_flag("show_edit_trade", False)
-
-
-def _close_create_dialog() -> None:
-    set_dialog_flag("show_create_trade", False)
-    st.rerun()
-
-
-def _handle_trade_created(new_trade_id: int) -> None:
-    st.session_state["selected_trade_id"] = new_trade_id
-    set_dialog_flag("show_create_trade", False)
-    set_dialog_flag("show_edit_trade", True)
-    st.rerun()
-
-
-def _close_edit_dialog() -> None:
-    set_dialog_flag("show_edit_trade", False)
-    st.rerun()
-
-
-def _close_delete_dialog() -> None:
-    set_dialog_flag("show_delete_trade", False)
-    st.rerun()
-
-
-def _handle_trade_deleted() -> None:
-    st.session_state["selected_trade_id"] = None
-    set_dialog_flag("show_delete_trade", False)
-    st.rerun()
-
-
-# --- В зависимости от флагов показываем нужные модалки ---
-if st.session_state.get("show_create_trade"):
-    render_trade_creator(
-        on_created=_handle_trade_created,
-        on_cancel=_close_create_dialog,
-    )
-if st.session_state.get("show_edit_trade"):
-    render_trade_editor(
-        trade_id=st.session_state.get("selected_trade_id"),
-        on_close=_close_edit_dialog,
-    )
-if st.session_state.get("show_delete_trade"):
-    render_trade_remover(
-        trade_id=st.session_state.get("selected_trade_id"),
-        on_deleted=_handle_trade_deleted,
-        on_cancel=_close_delete_dialog,
-    )
+render_trade_manager()

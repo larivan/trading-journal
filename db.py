@@ -2,26 +2,12 @@
 import json
 import os
 import sqlite3
-from datetime import date, datetime, time, timedelta
+from contextlib import contextmanager
+from datetime import date, datetime, time
 from typing import Any, Dict, List, Optional
 
 # Справочники вынесены в config.py
-from config import (
-    ANALYSIS_STATE_VALUES,
-    EMOTIONAL_PROBLEMS,
-    TRADE_RESULT_VALUES,
-    TRADE_SESSION_VALUES,
-    TRADE_STATE_VALUES,
-)
-
-# =====================================================================
-# ENUMS / CONSTANTS
-# =====================================================================
-
-
-def _enum_sql(values: List[str]) -> str:
-    """Return SQL string for CHECK IN clause:  'a','b','c' """
-    return ",".join(f"'{v}'" for v in values)
+from config import ANALYSIS_STATE_VALUES
 
 # =====================================================================
 # Paths & helpers
@@ -37,6 +23,7 @@ TRADE_ORDER_COLUMNS = {
     "analysis_id",
     "asset",
     "state",
+    "outcome",
     "result",
     "session",
     "net_pnl",
@@ -101,6 +88,29 @@ ANALYSIS_STAGE_ORDER_COLUMNS = {
     "type": "s.type",
 }
 
+NOTE_ORDER_COLUMNS = {
+    "id": "id",
+    "date_local": "date_local",
+    "time_local": "time_local",
+    "title": "title",
+}
+
+NOTE_WRITABLE_FIELDS = [
+    "title",
+    "body",
+    "date_local",
+    "time_local",
+]
+
+NOTE_SELECT_COLUMNS = [
+    "id",
+    "title",
+    "body",
+    "body AS body_plain",
+    "date_local",
+    "time_local",
+]
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "journal.db")
@@ -116,6 +126,31 @@ def get_conn() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
+
+
+def _managed_conn(
+    conn: Optional[sqlite3.Connection],
+) -> tuple[sqlite3.Connection, bool]:
+    """Возвращает соединение и флаг владения (нужно ли закрывать/коммитить)."""
+    if conn is None:
+        return get_conn(), True
+    return conn, False
+
+
+@contextmanager
+def transaction(conn: Optional[sqlite3.Connection] = None):
+    """Контекст для атомарных операций: BEGIN/COMMIT/ROLLBACK + управление conn."""
+    connection, own = _managed_conn(conn)
+    try:
+        connection.execute("BEGIN")
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        if own:
+            connection.close()
 
 
 def _now_iso_utc() -> str:
@@ -178,62 +213,34 @@ def _normalize_analysis_stage_payload(data: Dict[str, Any]) -> Dict[str, Any]:
     return payload
 
 
-def _serialize_emotional_problems(value: Optional[Any]) -> Optional[str]:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        value = value.strip()
-        if not value:
-            return None
-        try:
-            parsed = json.loads(value)
-            if isinstance(parsed, list):
-                selection = [item for item in parsed
-                             if item in EMOTIONAL_PROBLEMS]
-                return json.dumps(selection) if selection else None
-        except json.JSONDecodeError:
-            pass
-        selection = [
-            item.strip() for item in value.split(",")
-            if item.strip() in EMOTIONAL_PROBLEMS
-        ]
-        return json.dumps(selection) if selection else None
-    if isinstance(value, (list, tuple, set)):
-        selection = [item for item in value if item in EMOTIONAL_PROBLEMS]
-        return json.dumps(selection) if selection else None
-    return None
-
-
-def parse_emotional_problems(raw: Optional[str]) -> List[str]:
-    if not raw:
-        return []
-    if isinstance(raw, str):
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, list):
-                return [item for item in parsed if item in EMOTIONAL_PROBLEMS]
-        except json.JSONDecodeError:
-            pass
-        return [
-            item.strip() for item in raw.split(",")
-            if item.strip() in EMOTIONAL_PROBLEMS
-        ]
-    if isinstance(raw, (list, tuple)):
-        return [item for item in raw if item in EMOTIONAL_PROBLEMS]
-    return []
-
-
-def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
-    cur = conn.execute(f"PRAGMA table_info({table})")
-    return any(row[1] == column for row in cur.fetchall())
-
-
-def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
-    cur = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-        (table,),
-    )
-    return cur.fetchone() is not None
+def _normalize_note_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    for key in NOTE_WRITABLE_FIELDS:
+        if key not in data:
+            continue
+        value = data[key]
+        if value is None:
+            payload[key] = None
+            continue
+        if key == "title":
+            payload[key] = str(value).strip() or None
+            continue
+        if key == "body":
+            payload[key] = str(value).strip()
+            continue
+        if key == "date_local" and isinstance(value, date):
+            payload[key] = value.isoformat()
+            continue
+        if key == "time_local":
+            if isinstance(value, time):
+                payload[key] = value.strftime("%H:%M:%S")
+            elif isinstance(value, datetime):
+                payload[key] = value.strftime("%H:%M:%S")
+            else:
+                payload[key] = str(value)
+            continue
+        payload[key] = value
+    return payload
 
 # =====================================================================
 # Schema (built from constants)
@@ -254,45 +261,40 @@ CREATE TABLE IF NOT EXISTS analysis (
     daily_bias  TEXT,
     fact_bias   TEXT,
     day_result  TEXT,
-    state       TEXT CHECK (state IN ({_enum_sql(ANALYSIS_STATE_VALUES)}))
+    state       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS analysis_stages (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     analysis_id  INTEGER NOT NULL,
     time_local   TEXT,
-    type         TEXT CHECK (type IN ({_enum_sql(ANALYSIS_STATE_VALUES)})),
+    type         TEXT,
     summary      TEXT,
     FOREIGN KEY (analysis_id) REFERENCES analysis(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS trades (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    local_tz           TEXT,
-    date_local         TEXT,
-    time_local         TEXT,
-
+    local_tz           TEXT NOT NULL,
+    date_local         TEXT NOT NULL,
+    time_local         TEXT NOT NULL,
     account_id         INTEGER,
     setup_id           INTEGER,
     analysis_id        INTEGER,
-    asset              TEXT,
-
-    session            TEXT CHECK (session IN ({_enum_sql(TRADE_SESSION_VALUES)})),
-
-    state              TEXT CHECK (state IN ({_enum_sql(TRADE_STATE_VALUES)})),
-    result             TEXT CHECK (result IN ({_enum_sql(TRADE_RESULT_VALUES)})),
-
+    asset              TEXT NOT NULL,
+    session            TEXT NOT NULL,
+    state              TEXT NOT NULL,
+    outcome            TEXT NOT NULL DEFAULT 'open',
+    result             TEXT,
     net_pnl            REAL,
     risk_pct           REAL,
     risk_reward        REAL,
     reward_percent     REAL,
     estimation         INTEGER,
-
     emotional_problems TEXT,
     hot_thoughts       TEXT,
     cold_thoughts      TEXT,
-
+    
     FOREIGN KEY (account_id)  REFERENCES accounts(id)  ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (setup_id)    REFERENCES setups(id)    ON DELETE SET NULL   ON UPDATE CASCADE,
     FOREIGN KEY (analysis_id) REFERENCES analysis(id)  ON DELETE SET NULL   ON UPDATE CASCADE
@@ -302,8 +304,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     name              TEXT NOT NULL,
     broker            TEXT,
-    currency          TEXT DEFAULT 'USD',
-    starting_balance  REAL,
+    currency          TEXT,
+    starting_balance  REAL NOT NULL,
     is_prop           INTEGER DEFAULT 0,
     created_at        TEXT,
     archived          INTEGER DEFAULT 0
@@ -319,7 +321,9 @@ CREATE TABLE IF NOT EXISTS setups (
 CREATE TABLE IF NOT EXISTS notes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     title       TEXT,
-    body        TEXT
+    body        TEXT NOT NULL,
+    date_local  TEXT NOT NULL,
+    time_local  TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS charts (
@@ -329,15 +333,18 @@ CREATE TABLE IF NOT EXISTS charts (
     trade_id          INTEGER,
     analysis_stage_id INTEGER,
     setup_id          INTEGER,
+    note_id           INTEGER,
     CHECK (
         (CASE WHEN trade_id IS NOT NULL THEN 1 ELSE 0 END) +
         (CASE WHEN analysis_stage_id IS NOT NULL THEN 1 ELSE 0 END) +
-        (CASE WHEN setup_id IS NOT NULL THEN 1 ELSE 0 END)
+        (CASE WHEN setup_id IS NOT NULL THEN 1 ELSE 0 END) +
+        (CASE WHEN note_id IS NOT NULL THEN 1 ELSE 0 END)
         <= 1
     ),
     FOREIGN KEY (trade_id)          REFERENCES trades(id)           ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (analysis_stage_id) REFERENCES analysis_stages(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (setup_id)          REFERENCES setups(id)          ON DELETE CASCADE ON UPDATE CASCADE
+    FOREIGN KEY (setup_id)          REFERENCES setups(id)          ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (note_id)           REFERENCES notes(id)           ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- =========================
@@ -367,6 +374,7 @@ CREATE TABLE IF NOT EXISTS trade_notes (
 CREATE INDEX IF NOT EXISTS idx_trades_date_local   ON trades(date_local);
 CREATE INDEX IF NOT EXISTS idx_trades_account      ON trades(account_id);
 CREATE INDEX IF NOT EXISTS idx_trades_asset        ON trades(asset);
+CREATE INDEX IF NOT EXISTS idx_trades_outcome      ON trades(outcome);
 CREATE INDEX IF NOT EXISTS idx_trades_result       ON trades(result);
 CREATE INDEX IF NOT EXISTS idx_trades_setup        ON trades(setup_id);
 
@@ -376,6 +384,7 @@ CREATE INDEX IF NOT EXISTS idx_analysis_stages_analysis_id ON analysis_stages(an
 CREATE INDEX IF NOT EXISTS idx_charts_trade_id             ON charts(trade_id);
 CREATE INDEX IF NOT EXISTS idx_charts_analysis_stage_id    ON charts(analysis_stage_id);
 CREATE INDEX IF NOT EXISTS idx_charts_setup_id             ON charts(setup_id);
+CREATE INDEX IF NOT EXISTS idx_charts_note_id              ON charts(note_id);
 """
 
 
@@ -389,38 +398,127 @@ def init_db() -> None:
     finally:
         conn.close()
 
+
 # =====================================================================
 # Accounts & Setups
 # =====================================================================
 
 
-def create_account(name: str, broker: Optional[str] = None,
-                   currency: str = "USD",
-                   starting_balance: Optional[float] = None,
-                   is_prop: int = 0) -> int:
-    conn = get_conn()
+def create_account(
+    name: str,
+    broker: Optional[str] = None,
+    currency: str = "USD",
+    starting_balance: Optional[float] = None,
+    is_prop: int = 0,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> int:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO accounts (name, broker, currency, starting_balance, is_prop, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (name, broker, currency, starting_balance, is_prop, _now_iso_utc())
+            (name, broker, currency, starting_balance, is_prop, _now_iso_utc()),
         )
-        conn.commit()
+        if own:
+            conn.commit()
         return cur.lastrowid
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def list_accounts() -> List[Dict[str, Any]]:
+def list_accounts(include_archived: bool = False) -> List[Dict[str, Any]]:
     conn = get_conn()
     try:
-        rows = conn.execute(
-            "SELECT * FROM accounts WHERE archived IS NULL OR archived=0 ORDER BY id ASC"
-        ).fetchall()
+        query = "SELECT * FROM accounts"
+        if not include_archived:
+            query += " WHERE archived IS NULL OR archived=0"
+        query += " ORDER BY id ASC"
+        rows = conn.execute(query).fetchall()
         return _rows_to_dicts(rows)
     finally:
         conn.close()
+
+
+def get_account(account_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM accounts WHERE id = ?", (account_id,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_account(
+    account_id: int,
+    data: Dict[str, Any],
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> None:
+    if not data:
+        return
+
+    assignments = ", ".join(f"{col}=?" for col in data.keys())
+    values = list(data.values())
+
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE accounts SET {assignments} WHERE id=?",
+            values + [account_id],
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f"Account #{account_id} not found.")
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def set_account_archived(
+    account_id: int,
+    archived: bool = True,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> None:
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE accounts SET archived=? WHERE id=?",
+            (1 if archived else 0, account_id),
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f"Account #{account_id} not found.")
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def delete_account(
+    account_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    if account_id is None:
+        return
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM accounts WHERE id=?", (account_id,))
+        if cur.rowcount == 0:
+            raise ValueError(f"Account #{account_id} not found.")
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
 
 
 def create_setup(name: str, description: Optional[str] = None) -> int:
@@ -429,7 +527,7 @@ def create_setup(name: str, description: Optional[str] = None) -> int:
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO setups (name, description, created_at) VALUES (?, ?, ?)",
-            (name, description, _now_iso_utc())
+            (name, description, _now_iso_utc()),
         )
         conn.commit()
         return cur.lastrowid
@@ -446,12 +544,274 @@ def list_setups() -> List[Dict[str, Any]]:
     finally:
         conn.close()
 
+
+# =====================================================================
+# Notes
+# =====================================================================
+
+
+def create_note(
+    data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> int:
+    payload = _normalize_note_payload(data or {})
+    body_value = (payload.get("body") or "").strip()
+    if not body_value:
+        raise ValueError("body обязательно для заметки.")
+
+    payload["body"] = body_value
+    payload["title"] = (payload.get("title") or "") or None
+    payload.setdefault("date_local", date.today().isoformat())
+    payload.setdefault("time_local", datetime.now().strftime("%H:%M:%S"))
+
+    columns = ", ".join(payload.keys())
+    placeholders = ", ".join(["?"] * len(payload))
+    values = list(payload.values())
+
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT INTO notes ({columns}) VALUES ({placeholders})",
+            values,
+        )
+        if own:
+            conn.commit()
+        return cur.lastrowid
+    finally:
+        if own:
+            conn.close()
+
+
+def list_notes(
+    filters: Optional[Dict[str, Any]] = None,
+    order_by: Optional[str] = None,
+    ascending: bool = False,
+) -> List[Dict[str, Any]]:
+    filters = filters or {}
+    select_clause = ", ".join(NOTE_SELECT_COLUMNS)
+    q = f"SELECT {select_clause} FROM notes WHERE 1=1"
+    params: List[Any] = []
+
+    mapping = {
+        "date_from": "date_local >= ?",
+        "date_to": "date_local <= ?",
+    }
+    for key, value in filters.items():
+        if value in (None, ""):
+            continue
+        if key in ("date_from", "date_to"):
+            q += f" AND {mapping[key]}"
+            params.append(value)
+        elif key == "query":
+            pattern = f"%{value}%"
+            q += " AND (title LIKE ? OR body LIKE ?)"
+            params.extend([pattern, pattern])
+
+    if order_by:
+        if order_by not in NOTE_ORDER_COLUMNS:
+            raise ValueError(
+                f"order_by must be one of: {sorted(NOTE_ORDER_COLUMNS)}")
+        q += (
+            f" ORDER BY {NOTE_ORDER_COLUMNS[order_by]} "
+            f"{'ASC' if ascending else 'DESC'}"
+        )
+    else:
+        q += " ORDER BY date_local DESC, time_local DESC, id DESC"
+
+    conn = get_conn()
+    try:
+        rows = conn.execute(q, params).fetchall()
+        return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
+def get_note(note_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            f"SELECT {', '.join(NOTE_SELECT_COLUMNS)} FROM notes WHERE id=?",
+            (note_id,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_note(
+    note_id: int, data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    payload = _normalize_note_payload(data or {})
+    if "body" in payload:
+        body_value = (payload["body"] or "").strip()
+        if not body_value:
+            raise ValueError("body обязательно для заметки.")
+        payload["body"] = body_value
+    if "title" in payload:
+        payload["title"] = (payload["title"] or "").strip() or None
+    if not payload:
+        return
+
+    assignments = ", ".join(f"{col}=?" for col in payload.keys())
+    values = list(payload.values())
+
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE notes SET {assignments} WHERE id=?",
+            values + [note_id],
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f"Заметка #{note_id} не найдена.")
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def delete_note(note_id: int, *, conn: Optional[sqlite3.Connection] = None) -> None:
+    if note_id is None:
+        return
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM charts WHERE note_id=?", (note_id,))
+        cur.execute("DELETE FROM notes WHERE id=?", (note_id,))
+        if cur.rowcount == 0:
+            raise ValueError(f"Заметка #{note_id} не найдена.")
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def attach_note_to_trade(
+    trade_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    if trade_id is None or note_id is None:
+        return
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT OR IGNORE INTO trade_notes (trade_id, note_id) VALUES (?, ?)",
+            (trade_id, note_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def detach_note_from_trade(
+    trade_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    if trade_id is None or note_id is None:
+        return
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM trade_notes WHERE trade_id=? AND note_id=?",
+            (trade_id, note_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def list_trade_notes(trade_id: int) -> List[Dict[str, Any]]:
+    if trade_id is None:
+        return []
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT {', '.join(NOTE_SELECT_COLUMNS)}
+            FROM notes n
+            JOIN trade_notes tn ON tn.note_id = n.id
+            WHERE tn.trade_id=?
+            ORDER BY n.date_local DESC, n.time_local DESC, n.id DESC
+            """,
+            (trade_id,),
+        ).fetchall()
+        return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
+def attach_note_to_analysis_stage(
+    stage_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    if stage_id is None or note_id is None:
+        return
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT OR IGNORE INTO analysis_notes (analysis_stage_id, note_id) VALUES (?, ?)",
+            (stage_id, note_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def detach_note_from_analysis_stage(
+    stage_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    if stage_id is None or note_id is None:
+        return
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM analysis_notes WHERE analysis_stage_id=? AND note_id=?",
+            (stage_id, note_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def list_analysis_stage_notes(stage_id: int) -> List[Dict[str, Any]]:
+    if stage_id is None:
+        return []
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT {', '.join(NOTE_SELECT_COLUMNS)}
+            FROM notes n
+            JOIN analysis_notes an ON an.note_id = n.id
+            WHERE an.analysis_stage_id=?
+            ORDER BY n.date_local DESC, n.time_local DESC, n.id DESC
+            """,
+            (stage_id,),
+        ).fetchall()
+        return _rows_to_dicts(rows)
+    finally:
+        conn.close()
+
+
 # =====================================================================
 # Analysis (daily overview)
 # =====================================================================
 
 
-def add_analysis(data: Dict[str, Any]) -> int:
+def add_analysis(
+    data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> int:
     payload = _normalize_analysis_payload(data)
     if "date_local" not in payload:
         raise ValueError("date_local обязательно для анализа.")
@@ -460,22 +820,26 @@ def add_analysis(data: Dict[str, Any]) -> int:
     placeholders = ", ".join(["?"] * len(payload))
     values = list(payload.values())
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
             f"INSERT INTO analysis ({columns}) VALUES ({placeholders})",
             values,
         )
-        conn.commit()
+        if own:
+            conn.commit()
         return cur.lastrowid
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def list_analysis(filters: Optional[Dict[str, Any]] = None,
-                  order_by: Optional[str] = None,
-                  ascending: bool = False) -> List[Dict[str, Any]]:
+def list_analysis(
+    filters: Optional[Dict[str, Any]] = None,
+    order_by: Optional[str] = None,
+    ascending: bool = False,
+) -> List[Dict[str, Any]]:
     filters = filters or {}
     select_clause = ", ".join(ANALYSIS_COLUMNS)
     q = f"SELECT {select_clause} FROM analysis WHERE 1=1"
@@ -503,7 +867,8 @@ def list_analysis(filters: Optional[Dict[str, Any]] = None,
     if order_by:
         if order_by not in ANALYSIS_ORDER_COLUMNS:
             raise ValueError(
-                f"order_by must be one of: {sorted(ANALYSIS_ORDER_COLUMNS)}")
+                f"order_by must be one of: {sorted(ANALYSIS_ORDER_COLUMNS)}"
+            )
         q += (
             f" ORDER BY {ANALYSIS_ORDER_COLUMNS[order_by]} "
             f"{'ASC' if ascending else 'DESC'}"
@@ -531,7 +896,9 @@ def get_analysis(analysis_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def update_analysis(analysis_id: int, data: Dict[str, Any]) -> None:
+def update_analysis(
+    analysis_id: int, data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> None:
     payload = _normalize_analysis_payload(data)
     if not payload:
         return
@@ -539,7 +906,7 @@ def update_analysis(analysis_id: int, data: Dict[str, Any]) -> None:
     assignments = ", ".join(f"{col}=?" for col in payload.keys())
     values = list(payload.values())
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
@@ -548,213 +915,56 @@ def update_analysis(analysis_id: int, data: Dict[str, Any]) -> None:
         )
         if cur.rowcount == 0:
             raise ValueError(f"Анализ #{analysis_id} не найден.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def delete_analysis(analysis_id: int) -> None:
-    conn = get_conn()
+def delete_analysis(
+    analysis_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute("DELETE FROM analysis WHERE id=?", (analysis_id,))
         if cur.rowcount == 0:
             raise ValueError(f"Анализ #{analysis_id} не найден.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
-# =====================================================================
-# Notes
-# =====================================================================
-
-
-def add_note(title: Optional[str], body: str,
-             tags: Optional[str] = None,
-             category: Optional[str] = None) -> int:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO notes (title, body) VALUES (?, ?)",
-            (title, body)
-        )
-        conn.commit()
-        return cur.lastrowid
-    finally:
-        conn.close()
-
-
-def update_note(note_id: int, title: Optional[str], body: str,
-                tags: Optional[str] = None) -> None:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            UPDATE notes
-            SET title=?, body=?
-            WHERE id=?
-            """,
-            (title, body, note_id)
-        )
-        if cur.rowcount == 0:
-            raise ValueError(f"Заметка #{note_id} не найдена.")
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def delete_note(note_id: int) -> None:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("DELETE FROM notes WHERE id=?", (note_id,))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def get_note(note_id: int) -> Optional[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        row = conn.execute("SELECT * FROM notes WHERE id=?",
-                           (note_id,)).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
-
-
-def list_notes() -> List[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            "SELECT * FROM notes ORDER BY title IS NULL, title ASC, id ASC"
-        ).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def list_trade_notes(trade_id: int) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            """
-            SELECT n.*
-            FROM trade_notes tn
-            JOIN notes n ON n.id = tn.note_id
-            WHERE tn.trade_id=?
-            ORDER BY n.title IS NULL, n.title ASC, n.id ASC
-            """,
-            (trade_id,),
-        ).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def attach_note_to_trade(trade_id: int, note_id: int) -> None:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        note_exists = cur.execute(
-            "SELECT 1 FROM notes WHERE id=?", (note_id,)
-        ).fetchone()
-        if not note_exists:
-            raise ValueError(f"Заметка #{note_id} не найдена.")
-        cur.execute(
-            "INSERT OR IGNORE INTO trade_notes (trade_id, note_id) VALUES (?, ?)",
-            (trade_id, note_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def list_analysis_stage_notes(stage_id: int) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            """
-            SELECT n.*
-            FROM analysis_notes an
-            JOIN notes n ON n.id = an.note_id
-            WHERE an.analysis_stage_id=?
-            ORDER BY n.title IS NULL, n.title ASC, n.id ASC
-            """,
-            (stage_id,),
-        ).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def attach_note_to_analysis_stage(stage_id: int, note_id: int) -> None:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        note_exists = cur.execute(
-            "SELECT 1 FROM notes WHERE id=?",
-            (note_id,)
-        ).fetchone()
-        if not note_exists:
-            raise ValueError(f"Заметка #{note_id} не найдена.")
-        cur.execute(
-            "INSERT OR IGNORE INTO analysis_notes (analysis_stage_id, note_id) VALUES (?, ?)",
-            (stage_id, note_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def detach_note_from_analysis_stage(stage_id: int, note_id: int) -> None:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "DELETE FROM analysis_notes WHERE analysis_stage_id=? AND note_id=?",
-            (stage_id, note_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def detach_note_from_trade(trade_id: int, note_id: int) -> None:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "DELETE FROM trade_notes WHERE trade_id=? AND note_id=?",
-            (trade_id, note_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
 
 # =====================================================================
 # Charts
 # =====================================================================
 
 
-def add_chart(chart_url: str, caption: Optional[str] = None) -> int:
+def add_chart(
+    chart_url: str,
+    caption: Optional[str] = None,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> int:
     if not chart_url:
         raise ValueError("chart_url is required.")
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO charts (chart_url, caption) "
-            "VALUES (?, ?)",
-            (chart_url, caption)
+            "INSERT INTO charts (chart_url, caption) " "VALUES (?, ?)",
+            (chart_url, caption),
         )
-        conn.commit()
+        if own:
+            conn.commit()
         return cur.lastrowid
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
 def get_chart(chart_id: int) -> Optional[Dict[str, Any]]:
@@ -767,12 +977,17 @@ def get_chart(chart_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def update_chart(chart_id: int, chart_url: str,
-                 caption: Optional[str] = None) -> None:
+def update_chart(
+    chart_id: int,
+    chart_url: str,
+    caption: Optional[str] = None,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> None:
     if not chart_url:
         raise ValueError("chart_url is required.")
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
@@ -785,134 +1000,209 @@ def update_chart(chart_id: int, chart_url: str,
         )
         if cur.rowcount == 0:
             raise ValueError(f"Чарт #{chart_id} не найден.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def delete_chart(chart_id: int) -> None:
-    conn = get_conn()
+def delete_chart(chart_id: int, *, conn: Optional[sqlite3.Connection] = None) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute("DELETE FROM charts WHERE id=?", (chart_id,))
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def list_charts() -> List[Dict[str, Any]]:
+def list_charts(
+    *,
+    trade_id: Optional[int] = None,
+    analysis_stage_id: Optional[int] = None,
+    setup_id: Optional[int] = None,
+    note_id: Optional[int] = None,
+    unattached: bool = False,
+) -> List[Dict[str, Any]]:
+    conditions: List[str] = []
+    params: List[Any] = []
+
+    if trade_id is not None:
+        conditions.append("trade_id=?")
+        params.append(trade_id)
+    if analysis_stage_id is not None:
+        conditions.append("analysis_stage_id=?")
+        params.append(analysis_stage_id)
+    if setup_id is not None:
+        conditions.append("setup_id=?")
+        params.append(setup_id)
+    if note_id is not None:
+        conditions.append("note_id=?")
+        params.append(note_id)
+    if unattached:
+        conditions.append("trade_id IS NULL")
+        conditions.append("analysis_stage_id IS NULL")
+        conditions.append("setup_id IS NULL")
+        conditions.append("note_id IS NULL")
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    query = f"SELECT * FROM charts {where_clause} ORDER BY id ASC"
+
     conn = get_conn()
     try:
-        rows = conn.execute(
-            "SELECT * FROM charts ORDER BY id DESC"
-        ).fetchall()
+        rows = conn.execute(query, params).fetchall()
         return _rows_to_dicts(rows)
     finally:
         conn.close()
 
 
-def list_trade_charts(trade_id: int) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            "SELECT * FROM charts WHERE trade_id=? ORDER BY id DESC",
-            (trade_id,),
-        ).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def attach_chart_to_trade(trade_id: int, chart_id: int) -> None:
-    conn = get_conn()
+def attach_chart_to_trade(
+    trade_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         chart_row = cur.execute(
-            "SELECT id, trade_id, analysis_stage_id, setup_id FROM charts WHERE id=?",
+            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM charts WHERE id=?",
             (chart_id,),
         ).fetchone()
         if not chart_row:
             raise ValueError(f"Чарт #{chart_id} не найден.")
-        if chart_row["analysis_stage_id"] or chart_row["setup_id"]:
+        if chart_row["analysis_stage_id"] or chart_row["setup_id"] or chart_row["note_id"]:
             raise ValueError("Чарт уже привязан к другой сущности.")
         if chart_row["trade_id"] not in (None, trade_id):
             raise ValueError("Чарт уже привязан к другой сделке.")
         cur.execute(
-            "UPDATE charts SET trade_id=?, analysis_stage_id=NULL, setup_id=NULL WHERE id=?",
+            "UPDATE charts SET trade_id=?, analysis_stage_id=NULL, setup_id=NULL, note_id=NULL WHERE id=?",
             (trade_id, chart_id),
         )
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def detach_chart_from_trade(trade_id: int, chart_id: int) -> None:
-    conn = get_conn()
+def detach_chart_from_trade(
+    trade_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
             "UPDATE charts SET trade_id=NULL WHERE trade_id=? AND id=?",
             (trade_id, chart_id),
         )
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def list_analysis_stage_charts(stage_id: int) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            "SELECT * FROM charts WHERE analysis_stage_id=? ORDER BY id DESC",
-            (stage_id,),
-        ).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def attach_chart_to_analysis_stage(stage_id: int, chart_id: int) -> None:
-    conn = get_conn()
+def attach_chart_to_analysis_stage(
+    stage_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         chart_row = cur.execute(
-            "SELECT id, trade_id, analysis_stage_id, setup_id FROM charts WHERE id=?",
+            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM charts WHERE id=?",
             (chart_id,),
         ).fetchone()
         if not chart_row:
             raise ValueError(f"Чарт #{chart_id} не найден.")
-        if chart_row["trade_id"] or chart_row["setup_id"]:
+        if chart_row["trade_id"] or chart_row["setup_id"] or chart_row["note_id"]:
             raise ValueError("Чарт уже привязан к другой сущности.")
         if chart_row["analysis_stage_id"] not in (None, stage_id):
             raise ValueError("Чарт уже привязан к другому этапу анализа.")
         cur.execute(
-            "UPDATE charts SET analysis_stage_id=?, trade_id=NULL, setup_id=NULL WHERE id=?",
+            "UPDATE charts SET analysis_stage_id=?, trade_id=NULL, setup_id=NULL, note_id=NULL WHERE id=?",
             (stage_id, chart_id),
         )
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def detach_chart_from_analysis_stage(stage_id: int, chart_id: int) -> None:
-    conn = get_conn()
+def detach_chart_from_analysis_stage(
+    stage_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
             "UPDATE charts SET analysis_stage_id=NULL WHERE analysis_stage_id=? AND id=?",
             (stage_id, chart_id),
         )
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
+
+
+def attach_chart_to_note(
+    note_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        chart_row = cur.execute(
+            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM charts WHERE id=?",
+            (chart_id,),
+        ).fetchone()
+        if not chart_row:
+            raise ValueError(f"Чарт #{chart_id} не найден.")
+        if chart_row["trade_id"] or chart_row["analysis_stage_id"] or chart_row["setup_id"]:
+            raise ValueError("Чарт уже привязан к другой сущности.")
+        if chart_row["note_id"] not in (None, note_id):
+            raise ValueError("Чарт уже привязан к другой заметке.")
+        cur.execute(
+            "UPDATE charts SET note_id=?, trade_id=NULL, analysis_stage_id=NULL, setup_id=NULL WHERE id=?",
+            (note_id, chart_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def detach_chart_from_note(
+    note_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE charts SET note_id=NULL WHERE note_id=? AND id=?",
+            (note_id, chart_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
 
 # =====================================================================
 # Analysis stages
 # =====================================================================
 
 
-def add_analysis_stage(data: Dict[str, Any]) -> int:
-    payload = _normalize_analysis_stage_payload(data)
+def add_analysis_stage(
+    data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> int:
+    payload_data = dict(data or {})
+    if not payload_data.get("time_local"):
+        payload_data["time_local"] = datetime.now()
+    payload = _normalize_analysis_stage_payload(payload_data)
     if not payload:
         raise ValueError("Нет данных для создания этапа анализа.")
 
@@ -920,17 +1210,19 @@ def add_analysis_stage(data: Dict[str, Any]) -> int:
     placeholders = ", ".join(["?"] * len(payload))
     values = list(payload.values())
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
             f"INSERT INTO analysis_stages ({columns}) VALUES ({placeholders})",
             values,
         )
-        conn.commit()
+        if own:
+            conn.commit()
         return cur.lastrowid
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
 def get_analysis_stage(stage_id: int) -> Optional[Dict[str, Any]]:
@@ -948,9 +1240,11 @@ def get_analysis_stage(stage_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def list_analysis_stages(filters: Optional[Dict[str, Any]] = None,
-                         order_by: Optional[str] = None,
-                         ascending: bool = False) -> List[Dict[str, Any]]:
+def list_analysis_stages(
+    filters: Optional[Dict[str, Any]] = None,
+    order_by: Optional[str] = None,
+    ascending: bool = False,
+) -> List[Dict[str, Any]]:
     filters = filters or {}
     select_clause = ", ".join(ANALYSIS_STAGE_COLUMNS)
     q = (
@@ -985,7 +1279,8 @@ def list_analysis_stages(filters: Optional[Dict[str, Any]] = None,
     if order_by:
         if order_by not in ANALYSIS_STAGE_ORDER_COLUMNS:
             raise ValueError(
-                f"order_by must be one of: {sorted(ANALYSIS_STAGE_ORDER_COLUMNS)}")
+                f"order_by must be one of: {sorted(ANALYSIS_STAGE_ORDER_COLUMNS)}"
+            )
         q += (
             f" ORDER BY {ANALYSIS_STAGE_ORDER_COLUMNS[order_by]} "
             f"{'ASC' if ascending else 'DESC'}"
@@ -1001,7 +1296,9 @@ def list_analysis_stages(filters: Optional[Dict[str, Any]] = None,
         conn.close()
 
 
-def update_analysis_stage(stage_id: int, data: Dict[str, Any]) -> None:
+def update_analysis_stage(
+    stage_id: int, data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> None:
     payload = _normalize_analysis_stage_payload(data)
     if not payload:
         return
@@ -1009,7 +1306,7 @@ def update_analysis_stage(stage_id: int, data: Dict[str, Any]) -> None:
     assignments = ", ".join(f"{col}=?" for col in payload.keys())
     values = list(payload.values())
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
@@ -1018,26 +1315,33 @@ def update_analysis_stage(stage_id: int, data: Dict[str, Any]) -> None:
         )
         if cur.rowcount == 0:
             raise ValueError(f"Этап анализа #{stage_id} не найден.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def delete_analysis_stage(stage_id: int) -> None:
-    conn = get_conn()
+def delete_analysis_stage(
+    stage_id: int, *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute("DELETE FROM analysis_stages WHERE id=?", (stage_id,))
         if cur.rowcount == 0:
             raise ValueError(f"Этап анализа #{stage_id} не найден.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
 # =====================================================================
 # Trade queries
 # =====================================================================
+
 
 def get_trade_by_id(trade_id: int) -> Optional[Dict[str, Any]]:
     conn = get_conn()
@@ -1060,6 +1364,7 @@ WRITABLE_TRADE_FIELDS = [
     "risk_pct",
     "session",
     "state",
+    "outcome",
     "result",
     "net_pnl",
     "risk_reward",
@@ -1071,54 +1376,41 @@ WRITABLE_TRADE_FIELDS = [
 ]
 
 
-def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {}
-    for key in WRITABLE_TRADE_FIELDS:
-        if key not in data:
-            continue
-        value = data[key]
-        if key == "estimation" and value is not None:
-            try:
-                value = int(value)
-            except (TypeError, ValueError):
-                raise ValueError("estimation должно быть целым числом.")
-        if key == "emotional_problems":
-            value = _serialize_emotional_problems(value)
-        payload[key] = value
-    return payload
-
-
-def create_trade(data: Dict[str, Any]) -> int:
-    payload = _normalize_trade_payload(data)
-    if not payload:
+def create_trade(
+    data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> int:
+    if not data:
         raise ValueError("Нет данных для создания сделки.")
 
-    columns = ", ".join(payload.keys())
-    placeholders = ", ".join(["?"] * len(payload))
-    values = list(payload.values())
+    columns = ", ".join(data.keys())
+    placeholders = ", ".join(["?"] * len(data))
+    values = list(data.values())
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
             f"INSERT INTO trades ({columns}) VALUES ({placeholders})",
             values,
         )
-        conn.commit()
+        if own:
+            conn.commit()
         return cur.lastrowid
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def update_trade(trade_id: int, data: Dict[str, Any]) -> None:
-    payload = _normalize_trade_payload(data)
-    if not payload:
+def update_trade(
+    trade_id: int, data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    if not data:
         return
 
-    assignments = ", ".join(f"{col}=?" for col in payload.keys())
-    values = list(payload.values())
+    assignments = ", ".join(f"{col}=?" for col in data.keys())
+    values = list(data.values())
 
-    conn = get_conn()
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
@@ -1127,21 +1419,27 @@ def update_trade(trade_id: int, data: Dict[str, Any]) -> None:
         )
         if cur.rowcount == 0:
             raise ValueError(f"Сделка #{trade_id} не найдена.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
-def delete_trade(trade_id: int) -> None:
-    conn = get_conn()
+def delete_trade(trade_id: int, *, conn: Optional[sqlite3.Connection] = None) -> None:
+    if trade_id is None:
+        return
+    conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute("DELETE FROM trades WHERE id=?", (trade_id,))
         if cur.rowcount == 0:
             raise ValueError(f"Сделка #{trade_id} не найдена.")
-        conn.commit()
+        if own:
+            conn.commit()
     finally:
-        conn.close()
+        if own:
+            conn.close()
 
 
 TRADE_COLUMNS = [
@@ -1156,6 +1454,7 @@ TRADE_COLUMNS = [
     "risk_pct",
     "session",
     "state",
+    "outcome",
     "result",
     "net_pnl",
     "risk_reward",
@@ -1175,9 +1474,11 @@ TRADE_COMPAT_COLUMNS = [
 ]
 
 
-def list_trades(filters: Optional[Dict[str, Any]] = None,
-                order_by: Optional[str] = None,
-                ascending: bool = True) -> List[Dict[str, Any]]:
+def list_trades(
+    filters: Optional[Dict[str, Any]] = None,
+    order_by: Optional[str] = None,
+    ascending: bool = True,
+) -> List[Dict[str, Any]]:
     filters = filters or {}
     select_clause = ", ".join(TRADE_COLUMNS + TRADE_COMPAT_COLUMNS)
     q = f"SELECT {select_clause} FROM trades WHERE 1=1"
@@ -1189,8 +1490,10 @@ def list_trades(filters: Optional[Dict[str, Any]] = None,
         "setup_id": "setup_id",
         "analysis_id": "analysis_id",
         "state": "state",
+        "outcome": "outcome",
         "result": "result",
         "session": "session",
+        "estimation": "estimation",
         "date_from": "date_local >= ?",
         "date_to": "date_local <= ?",
     }
@@ -1210,7 +1513,7 @@ def list_trades(filters: Optional[Dict[str, Any]] = None,
                 f"order_by must be one of: {sorted(TRADE_ORDER_COLUMNS)}")
         q += f" ORDER BY {order_by} {'ASC' if ascending else 'DESC'}"
     else:
-        q += " ORDER BY date_local ASC, id ASC"
+        q += " ORDER BY date_local DESC, id DESC"
 
     conn = get_conn()
     try:

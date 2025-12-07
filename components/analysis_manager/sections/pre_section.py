@@ -1,73 +1,83 @@
 """Секция редактирования этапа Pre-market."""
-
 from __future__ import annotations
-
-from typing import Any, Dict, Optional
-
 import streamlit as st
-
+from typing import Any, Dict, Optional
+from helpers import parse_date, safe_choice_index
+from config import DAILY_BIAS_VALUES, ASSETS_VALUES
 from components.chart_editor import (
     chart_table_rows,
     render_chart_editor,
-)
-from config import DAILY_BIAS
-from db import (
-    list_analysis_stage_charts,
 )
 
 
 def render_pre_stage(
     *,
     stage_data: Optional[Dict[str, Any]],
-    analysis: Dict[str, Any],
+    analysis_defaults: Dict[str, Any],
     visible: bool,
     expanded: bool,
+    state_key: str
 ) -> Optional[Dict[str, Any]]:
     """Редактирование этапа pre-market."""
 
-    if not visible or not stage_data:
-        return None
-    stage_id = stage_data["id"]
-    with st.expander("Pre-market", expanded=expanded):
-        col1, col2 = st.columns([1, 2])
+    if not visible:
+        return None, None
+
+    analysis_result = {}
+    stage_result = {
+        "stage_id": stage_data.get("stage_id"),
+        "stage_type": "pre-market",
+    }
+
+    chart_rows = chart_table_rows(stage_data.get("charts"))
+    with st.expander("Overview & Pre-market", expanded=expanded):
+        col1, col2 = st.columns([1, 3], gap="medium")
         with col1:
-            daily_bias_value = st.selectbox(
-                "Daily bias",
-                options=DAILY_BIAS,
-                index=DAILY_BIAS.index(analysis.get("daily_bias"))
-                if analysis.get("daily_bias") in DAILY_BIAS
-                else 0,
-                key=f"stage_daily_bias_{stage_id}",
+            analysis_result['date_local'] = st.date_input(
+                "Date",
+                value=parse_date(analysis_defaults.get(
+                    "date_local")) or "today",
+                format="DD.MM.YYYY",
+                key=f"{state_key}_date"
             )
-            summary_value = st.text_area(
+            analysis_result['asset'] = st.selectbox(
+                "Asset",
+                options=ASSETS_VALUES,
+                placeholder="- Not set -",
+                key=f"{state_key}_asset",
+                index=safe_choice_index(
+                    ASSETS_VALUES, analysis_defaults.get("asset"))
+            )
+            st.divider()
+            analysis_result['daily_bias'] = st.selectbox(
+                "Daily bias",
+                options=DAILY_BIAS_VALUES,
+                key=f"{state_key}_daily_bias",
+                index=safe_choice_index(
+                    DAILY_BIAS_VALUES, analysis_defaults.get("daily_bias")),
+            )
+            stage_result["summary"] = st.text_area(
                 "Note",
                 value=stage_data.get("summary") or "",
-                height=160,
-                key=f"stage_summary_{stage_id}",
+                key=f"{state_key}_summary",
+                height=100,
             )
 
         with col2:
             st.markdown("#### Charts")
-            charts = list_analysis_stage_charts(stage_id)
-            chart_rows_source = chart_table_rows(charts)
             chart_editor_value = render_chart_editor(
-                key=f"chart_editor_stage_{stage_id}",
-                base_rows=chart_rows_source,
-                title="",
-                caption=None,
+                key=f"{state_key}_chart_editor",
+                base_rows=chart_rows,
+                layout_columns=2,
             )
 
-    return {
-        "stage_id": stage_id,
-        "stage_type": "pre-market",
-        "analysis_updates": {"daily_bias": daily_bias_value},
-        "summary": summary_value,
-        "charts": {
-            "attached": charts,
-            "rows_source": chart_rows_source,
+        stage_result["charts"] = {
+            "attached": stage_data.get("charts") or [],
+            "rows_source": chart_rows,
             "editor_value": chart_editor_value,
-        },
-    }
+        }
+
+    return analysis_result, stage_result
 
 
 __all__ = ["render_pre_stage"]

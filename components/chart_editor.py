@@ -1,6 +1,8 @@
 """Переиспользуемые UI-хелперы для работы с чартами и их привязками."""
 
-from typing import Any, Callable, Dict, List, Optional
+from __future__ import annotations
+
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 import streamlit as st
 
@@ -9,48 +11,657 @@ from db import add_chart, delete_chart, update_chart
 ChartRow = Dict[str, Any]
 
 
+def chart_editor_value_state_key(widget_key: str) -> str:
+    """Возвращает ключ session_state для хранения данных редактора."""
+    return f"{widget_key}__value"
+
+
+def _layout_from_columns(columns: int) -> str:
+    if columns >= 3:
+        return "grid3"
+    if columns == 2:
+        return "grid2"
+    return "column"
+
+
+def _sanitize_chart_rows(
+    rows: Sequence[ChartRow],
+    *,
+    keep_empty: bool = False,
+) -> List[ChartRow]:
+    sanitized: List[ChartRow] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        chart_url = str(row.get("chart_url") or "").strip()
+        cleaned = {
+            "id": row.get("id"),
+            "chart_url": chart_url,
+            "caption": (row.get("caption") or "").strip(),
+        }
+        if chart_url or keep_empty:
+            sanitized.append(cleaned)
+    return sanitized
+
+
+_COMPONENT_HTML = """
+<div class="st-chart-editor" data-root>
+  <div class="st-chart-editor__body">
+    <div class="st-chart-editor__empty" data-empty>Добавьте первый чарт, чтобы увидеть превью.</div>
+    <div class="st-chart-editor__cards" data-cards></div>
+  </div>
+  <div class="st-chart-editor__form">
+    <div class="st-chart-editor__inputs">
+      <input class="st-chart-editor__field" type="url" data-input-url placeholder="Image link" />
+      <input class="st-chart-editor__field" type="text" data-input-caption placeholder="Caption" />
+      <button type="button" class="st-chart-editor__add" data-add>Add</button>
+    </div>
+    <div class="st-chart-editor__error" data-error></div>
+  </div>
+</div>
+""".strip()
+
+_COMPONENT_CSS = """
+:host, * {
+  box-sizing: border-box;
+}
+:host {
+  width: 100%;
+}
+.st-chart-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.85rem;
+  border: 1px solid rgba(31, 42, 58, 0.2);
+  border-radius: 0.75rem;
+  box-sizing: border-box;
+}
+.st-chart-editor__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.st-chart-editor__inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.st-chart-editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 220px;
+  width: 100%;
+  height: 40px;
+  appearance: none;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  padding: 0.5rem 0.5rem;
+  font-size: 0.95rem;
+  color: var(--st-color-text-light, rgba(49, 51, 63, 0.6));
+  background: rgb(246, 247, 251);
+  transition: border-color 120ms ease, background 120ms ease;
+  box-sizing: border-box;
+}
+.st-chart-editor__field:focus {
+  border-color: var(--st-primary-color);
+  outline: none;
+}
+.st-chart-editor__add {
+  display: inline-flex;
+  -webkit-box-align: center;
+  align-items: center;
+  -webkit-box-pack: center;
+  justify-content: center;
+  font-weight: 400;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.5rem;
+  min-height: 2.5rem;
+  min-width: 120px;
+  margin: 0px;
+  line-height: 1.6;
+  text-transform: none;
+  font-size: inherit;
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+  user-select: none;
+  background-color: rgb(255, 255, 255);
+  border: 1px solid rgba(31, 42, 58, 0.2);
+} 
+
+.st-chart-editor__add:hover {
+  background-color: rgba(150, 150, 202, 0.15);
+}
+.st-chart-editor__error {
+  font-size: 0.85rem;
+  color: #e03131;
+  display: none;
+}
+.st-chart-editor__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.st-chart-editor__empty {
+  justify-content: center;
+  padding: 0.75rem;
+  border: 2px dashed rgba(31, 42, 58, 0.18);
+  border-radius: 0.55rem;
+  color: rgba(31, 42, 58, 0.7);
+  font-size: 0.9rem;
+  text-align: center;
+}
+.st-chart-editor__cards {
+  display: grid;
+  gap: 1.4rem;
+  width: 100%;
+}
+.st-chart-editor__cards[data-layout="column"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.st-chart-editor__cards[data-layout="grid2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.st-chart-editor__cards[data-layout="grid3"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 900px) {
+  .st-chart-editor__cards[data-layout="grid3"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .st-chart-editor__cards[data-layout="grid2"],
+  .st-chart-editor__cards[data-layout="grid3"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.st-chart-card {
+  position: relative;
+  border-radius: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.st-chart-card__remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 1;
+}
+.st-chart-card__image {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(49, 51, 63, 0.08);
+  background: #fff;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(49, 51, 63, 0.08);
+}
+.st-chart-card__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.st-chart-card__caption {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--st-color-text, #1c1c1c);
+  cursor: text;
+  transition: color 120ms ease;
+  min-height: 1.5rem;
+}
+.st-chart-card__caption.is-placeholder {
+  color: var(--st-color-text-light, rgba(49, 51, 63, 0.6));
+  font-style: italic;
+  font-weight: 500;
+}
+.st-chart-card__caption-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--st-primary-color);
+  background: transparent;
+  font-size: 0.9rem;
+  padding: 0.2rem 0.25rem;
+  text-align: center;
+  color: var(--st-color-text, #1c1c1c);
+}
+.st-chart-card__caption-input:focus {
+  outline: none;
+}
+.st-vtabs__remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  appearance: none;
+  border: none;
+  background: #ff7a66;
+  color: var(--st-color-text, #fff);
+  font-size: 1.1rem;
+  border-radius: 999px;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.st-vtabs__remove:hover {
+  background: #cccccc;
+  color: #000;
+}
+""".strip()
+
+_COMPONENT_JS = """
+const template = document.createElement("template");
+template.innerHTML = `
+<div class="st-chart-editor" data-root>
+  <div class="st-chart-editor__body">
+    <div class="st-chart-editor__empty" data-empty>Добавьте первый чарт, чтобы увидеть превью.</div>
+    <div class="st-chart-editor__cards" data-cards></div>
+  </div>
+  <div class="st-chart-editor__form">
+    <div class="st-chart-editor__inputs">
+      <input class="st-chart-editor__field" type="url" data-input-url placeholder="Image link" />
+      <input class="st-chart-editor__field" type="text" data-input-caption placeholder="Caption" />
+      <button type="button" class="st-chart-editor__add" data-add>Add</button>
+    </div>
+    <div class="st-chart-editor__error" data-error></div>
+  </div>
+</div>
+`;
+
+const FS_LIGHTBOX_SRC = "https://cdn.jsdelivr.net/npm/fslightbox/index.js";
+let fsLightboxPromise = null;
+
+const loadFsLightbox = () => {
+  if (typeof window !== "undefined" && typeof window.refreshFsLightbox === "function") {
+    return Promise.resolve();
+  }
+  if (fsLightboxPromise) {
+    return fsLightboxPromise;
+  }
+  fsLightboxPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${FS_LIGHTBOX_SRC}"]`);
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("FsLightbox failed to load")), {
+        once: true,
+      });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = FS_LIGHTBOX_SRC;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("FsLightbox failed to load"));
+    document.head.appendChild(script);
+  }).catch((error) => {
+    console.error(error);
+  });
+  return fsLightboxPromise;
+};
+
+const ensureFsLightboxReady = () =>
+  loadFsLightbox().then(() => {
+    if (typeof window !== "undefined" && typeof window.refreshFsLightbox === "function") {
+      window.refreshFsLightbox();
+    }
+  });
+
+const openLightboxLink = (link) =>
+  ensureFsLightboxReady().then(() => {
+    if (!link) {
+      return;
+    }
+    const event = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+    });
+    link.dispatchEvent(event);
+  });
+
+const ensureGalleryId = (element) => {
+  if (!element.dataset.galleryId) {
+    element.dataset.galleryId = `chart-gallery-${Math.random().toString(36).slice(2)}`;
+  }
+  return element.dataset.galleryId;
+};
+
+const ensureLightboxPortal = () => {
+  const attr = "data-chart-editor-lightbox-portal";
+  let portal = document.querySelector(`[${attr}]`);
+  if (!portal) {
+    portal = document.createElement("div");
+    portal.setAttribute(attr, "true");
+    portal.style.position = "fixed";
+    portal.style.top = "-9999px";
+    portal.style.left = "-9999px";
+    portal.style.width = "0";
+    portal.style.height = "0";
+    portal.style.overflow = "hidden";
+    document.body.appendChild(portal);
+  }
+  return portal;
+};
+
+const syncLightboxLinks = (galleryId, charts) => {
+  const portal = ensureLightboxPortal();
+  const selector = `[data-chart-editor-gallery="${galleryId}"]`;
+  portal.querySelectorAll(selector).forEach((node) => node.remove());
+  return charts.map((chart) => {
+    const link = document.createElement("a");
+    link.href = chart.chart_url;
+    link.dataset.fslightbox = galleryId;
+    link.dataset.chartEditorGallery = galleryId;
+    link.dataset.type = "image";
+    link.dataset.caption = (chart.caption || "").trim();
+    link.setAttribute("aria-hidden", "true");
+    link.tabIndex = -1;
+    portal.appendChild(link);
+    return link;
+  });
+};
+
+const ensureRoot = (parentElement) => {
+  if (!parentElement) {
+    return null;
+  }
+  let root = parentElement.querySelector("[data-root]");
+  if (!root) {
+    parentElement.innerHTML = "";
+    parentElement.appendChild(template.content.cloneNode(true));
+    root = parentElement.querySelector("[data-root]");
+  }
+  return root;
+};
+
+const normalizeCharts = (charts) => {
+  if (!Array.isArray(charts)) {
+    return [];
+  }
+  return charts
+    .map((chart) => ({
+      id: chart?.id ?? null,
+      chart_url: typeof chart?.chart_url === "string" ? chart.chart_url : "",
+      caption: typeof chart?.caption === "string" ? chart.caption : "",
+    }))
+    .filter((chart) => String(chart.chart_url || "").trim() !== "");
+};
+
+const CAPTION_PLACEHOLDER = "Дважды кликните, чтобы добавить подпись";
+
+const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
+  const galleryId = ensureGalleryId(cardsEl);
+  const portalLinks = syncLightboxLinks(galleryId, charts);
+  cardsEl.innerHTML = "";
+  if (!charts.length) {
+    cardsEl.style.display = "none";
+    return;
+  }
+  cardsEl.style.display = "grid";
+  charts.forEach((chart, index) => {
+    const card = document.createElement("div");
+    card.className = "st-chart-card";
+
+    const remove = document.createElement("button");
+    remove.className = "st-vtabs__remove st-chart-card__remove";
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.onclick = (event) => {
+      event.preventDefault();
+      onRemove(index);
+    };
+
+    const portalLink = portalLinks[index];
+
+    const imageWrapper = document.createElement("div");
+    imageWrapper.className = "st-chart-card__image";
+    const image = document.createElement("img");
+    image.alt = chart.caption || "Chart";
+    image.src = chart.chart_url;
+    imageWrapper.appendChild(image);
+    imageWrapper.ondblclick = (event) => {
+      event.preventDefault();
+      openLightboxLink(portalLink);
+    };
+
+    const caption = document.createElement("div");
+    caption.className = "st-chart-card__caption";
+
+    const applyCaptionValue = (value) => {
+      const nextValue = (value || "").trim();
+      if (nextValue) {
+        caption.textContent = nextValue;
+        caption.classList.remove("is-placeholder");
+      } else {
+        caption.textContent = CAPTION_PLACEHOLDER;
+        caption.classList.add("is-placeholder");
+      }
+    };
+
+    const activateCaptionEdit = () => {
+      if (caption.dataset.editing === "true") {
+        return;
+      }
+      caption.dataset.editing = "true";
+      caption.classList.remove("is-placeholder");
+      caption.innerHTML = "";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = chart.caption || "";
+      input.placeholder = "Подпись";
+      input.className = "st-chart-card__caption-input";
+      caption.appendChild(input);
+      input.focus();
+      input.select();
+
+      const finish = (commit) => {
+        if (caption.dataset.editing !== "true") {
+          return;
+        }
+        caption.dataset.editing = "false";
+        const nextValue = commit ? input.value : chart.caption || "";
+        caption.innerHTML = "";
+        applyCaptionValue(nextValue);
+        if (commit) {
+          onChange(index, { caption: nextValue });
+        }
+      };
+
+      input.onblur = () => finish(true);
+      input.onkeydown = (event) => {
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        if (event.key === "Enter") {
+          event.preventDefault();
+          finish(true);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          finish(false);
+        }
+      };
+    };
+
+    caption.ondblclick = (event) => {
+      event.preventDefault();
+      activateCaptionEdit();
+    };
+
+    applyCaptionValue(chart.caption || "");
+
+    card.appendChild(remove);
+    card.appendChild(imageWrapper);
+    card.appendChild(caption);
+    cardsEl.appendChild(card);
+  });
+  ensureFsLightboxReady();
+};
+
+export default function(component) {
+  const { parentElement, data = {}, setStateValue } = component;
+  const root = ensureRoot(parentElement);
+  if (!root) {
+    return;
+  }
+
+  const urlInput = root.querySelector("[data-input-url]");
+  const captionInput = root.querySelector("[data-input-caption]");
+  const addButton = root.querySelector("[data-add]");
+  const cardsEl = root.querySelector("[data-cards]");
+  const emptyEl = root.querySelector("[data-empty]");
+  const errorEl = root.querySelector("[data-error]");
+  let currentCharts = normalizeCharts(data.charts);
+  const currentLayout = ["grid2", "grid3"].includes(data.layout) ? data.layout : "column";
+  cardsEl.dataset.layout = currentLayout;
+
+  const showError = (message) => {
+    const text = message || "";
+    errorEl.textContent = text;
+    errorEl.style.display = text ? "block" : "none";
+  };
+
+  const refreshCards = () => {
+    renderCards(cardsEl, currentCharts, {
+      onChange: updateChart,
+      onRemove: removeChart,
+    });
+    emptyEl.style.display = currentCharts.length ? "none" : "flex";
+  };
+
+  const commitCharts = (nextCharts, emit = true) => {
+    currentCharts = nextCharts;
+    refreshCards();
+    if (emit) {
+      setStateValue("charts", currentCharts);
+    }
+  };
+
+  const updateChart = (index, payload) => {
+    const next = currentCharts.map((chart, idx) =>
+      idx === index ? { ...chart, ...payload } : chart
+    );
+    commitCharts(next);
+  };
+
+  const removeChart = (index) => {
+    const next = currentCharts.filter((_, idx) => idx !== index);
+    commitCharts(next);
+  };
+
+  const sanitizeUrl = () => {
+    const value = urlInput.value.trim();
+    if (value && !/^https?:\\/\\//i.test(value)) {
+      urlInput.value = "";
+    }
+  };
+
+  urlInput.oninput = sanitizeUrl;
+
+  const addChart = () => {
+    sanitizeUrl();
+    const url = urlInput.value.trim();
+    const caption = captionInput.value.trim();
+    if (!url) {
+      return;
+    }
+    const next = [
+      ...currentCharts,
+      {
+        id: null,
+        chart_url: url,
+        caption,
+      },
+    ];
+    urlInput.value = "";
+    captionInput.value = "";
+    commitCharts(next);
+  };
+
+  addButton.onclick = (event) => {
+    event.preventDefault();
+    addChart();
+  };
+
+  urlInput.onkeydown = (event) => {
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addChart();
+    }
+  };
+  captionInput.onkeydown = (event) => {
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    if (event.key === "Enter" && urlInput.value.trim()) {
+      event.preventDefault();
+      addChart();
+    }
+  };
+
+  refreshCards();
+}
+""".strip()
+
+_chart_editor_component = st.components.v2.component(
+    "chart_editor",
+    html=_COMPONENT_HTML,
+    css=_COMPONENT_CSS,
+    js=_COMPONENT_JS,
+)
+
+
 def render_chart_editor(
     *,
     key: str,
-    base_rows: List[ChartRow],
-    title: str = "Charts",
-    caption: Optional[str] = "Paste links to your TradingView snapshots so they stay linked to this record.",
-) -> Any:
+    base_rows: Sequence[ChartRow],
+    layout_columns: int = 1,
+) -> List[ChartRow]:
     """Отрисовывает универсальный редактор чартов и возвращает его значение."""
-    if title:
-        st.subheader(title)
-    if caption:
-        st.caption(caption)
-    return st.data_editor(
-        base_rows,
+    sanitized_rows = _sanitize_chart_rows(base_rows)
+    layout_mode = _layout_from_columns(layout_columns)
+    value_state_key = chart_editor_value_state_key(key)
+
+    callbacks = {
+        "on_charts_change": lambda: None,
+    }
+
+    result = _chart_editor_component(
         key=key,
-        num_rows="dynamic",
-        hide_index=True,
-        column_order=["chart_url", "caption"],
-        column_config={
-            "chart_url": st.column_config.LinkColumn(
-                "Chart URL",
-                required=True,
-                help="Paste a direct image link.",
-                validate=r"^https?:\/\/(?:www\.)?tradingview\.com\/.+\/?$",
-            ),
-            "caption": st.column_config.TextColumn(
-                "Caption",
-                required=False,
-            ),
-            "id": st.column_config.Column(
-                "ID",
-                disabled=True,
-                required=False,
-                width="small",
-            ),
+        data={
+            "charts": sanitized_rows,
+            "layout": layout_mode,
         },
+        default={"charts": sanitized_rows},
+        **callbacks,
     )
+
+    charts_value = result.get("charts") if isinstance(result, dict) else None
+    if isinstance(charts_value, list):
+        sanitized_value = _sanitize_chart_rows(charts_value, keep_empty=True)
+        st.session_state[value_state_key] = sanitized_value
+        return sanitized_value
+
+    cached_value = st.session_state.get(value_state_key)
+    if isinstance(cached_value, list):
+        sanitized_cached = _sanitize_chart_rows(cached_value, keep_empty=True)
+        st.session_state[value_state_key] = sanitized_cached
+        return sanitized_cached
+
+    st.session_state[value_state_key] = sanitized_rows
+    return sanitized_rows
 
 
 def chart_table_rows(charts: List[ChartRow]) -> List[ChartRow]:
-    """Готовит строки чарта для data_editor, даже если данных нет."""
-    rows = [
+    """Готовит строки чарта для редактора."""
+    return [
         {
             "id": chart.get("id"),
             "chart_url": chart.get("chart_url") or "",
@@ -58,13 +669,6 @@ def chart_table_rows(charts: List[ChartRow]) -> List[ChartRow]:
         }
         for chart in charts
     ]
-    if rows:
-        return rows
-    return [{
-        "id": None,
-        "chart_url": "",
-        "caption": "",
-    }]
 
 
 def normalize_editor_rows(editor_value: Any) -> List[ChartRow]:
@@ -92,6 +696,7 @@ def persist_chart_editor(
     attached_charts: List[ChartRow],
     editor_rows: List[ChartRow],
     attach_chart: Callable[[int], None],
+    conn: Optional[Any] = None,
 ) -> None:
     """Синхронизирует таблицу чартов с данными из редактора."""
     desired_rows: List[ChartRow] = []
@@ -110,7 +715,7 @@ def persist_chart_editor(
 
     for chart_id in set(current_by_id.keys()) - desired_ids:
         if chart_id is not None:
-            delete_chart(chart_id)
+            delete_chart(chart_id, conn=conn)
 
     for row in desired_rows:
         chart_id = row.get("id")
@@ -120,13 +725,14 @@ def persist_chart_editor(
         existing_url = (existing.get("chart_url") or "").strip()
         existing_caption = (existing.get("caption") or None)
         if row["chart_url"] != existing_url or row["caption"] != existing_caption:
-            update_chart(chart_id, row["chart_url"], row["caption"])
+            update_chart(chart_id, row["chart_url"], row["caption"], conn=conn)
 
     for row in desired_rows:
         if row.get("id") is not None:
             continue
-        chart_id = add_chart(row["chart_url"], row["caption"])
-        attach_chart(chart_id)  # Внешняя функция решает, к какой сущности привязать чарт.
+        chart_id = add_chart(row["chart_url"], row["caption"], conn=conn)
+        # Внешняя функция решает, к какой сущности привязать чарт.
+        attach_chart(chart_id)
 
 
 def _clean_chart_id(value: Any) -> Optional[int]:
