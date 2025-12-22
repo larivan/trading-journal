@@ -70,7 +70,6 @@ with period_col:
     selected_label = st.segmented_control(
         "Период",
         options=TAB_DEFINITIONS.values(),
-        default=list(TAB_DEFINITIONS.values())[0],
         key=period_key,
         width="stretch",
     )

@@ -53,12 +53,11 @@ period_col, _, actions_col = st.columns(
 )
 with period_col:
     period_key = "trade_current_period_label"
-    if not st.session_state.get(period_key, None):
-        st.session_state[period_key] = 'Today'
+    if not st.session_state.get(period_key):
+        st.session_state[period_key] = list(TAB_DEFINITIONS.values())[0]
     selected_label = st.segmented_control(
         "Период",
         options=TAB_DEFINITIONS.values(),
-        default=list(TAB_DEFINITIONS.values())[0],
         key=period_key,
         width="stretch",
     )
