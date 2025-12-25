@@ -197,12 +197,14 @@ def render_trade_manager() -> None:
             if not outcome_values:
                 message_col.error("Fill in the “Outcome” block.")
                 return
-            result_value = outcome_values["result"]
-            if not result_value:
+            if not outcome_values["result"]:
                 message_col.error("Select the trade result.")
                 return
-            if result_value != "Miss" and outcome_values["net_pnl"] is None:
+            if outcome_values["result"] != "Miss" and outcome_values["net_pnl"] is None:
                 message_col.error("Provide Net PnL.")
+                return
+            if outcome_values["estimation"] is None:
+                message_col.error("Provide trade estimation.")
                 return
 
         local_tz = trade.get("local_tz") or LOCAL_TZ
@@ -232,12 +234,12 @@ def render_trade_manager() -> None:
                 "risk_reward": outcome_values["risk_reward"],
                 "reward_percent": outcome_values["reward_percent"],
                 "hot_thoughts": outcome_values["hot_thoughts"].strip() or None,
+                "estimation": outcome_values["estimation"],
             })
 
         if review_values:
             payload.update({
                 "cold_thoughts": review_values["cold_thoughts"].strip() or None,
-                "estimation": review_values["estimation"],
             })
 
         base_note_ids = {

@@ -23,9 +23,4 @@ def render_review_stage(
             value=data["cold_thoughts"],
             key=f"{state_key}_cold_thoughts"
         )
-        data["estimation"] = st.feedback(
-            "thumbs",
-            default=data.get("estimation"),
-            key=f"{state_key}_estimation"
-        )
         return data

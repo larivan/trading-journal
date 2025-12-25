@@ -59,11 +59,19 @@ def render_outcome_stage(
             format="%.2f",
             disabled=True,
         )
-
         data["hot_thoughts"] = st.text_area(
             "Hot thoughts",
             height=100,
             value=data["hot_thoughts"],
             key=f"{state_key}_hot_thoughts",
+        )
+        st.markdown(
+            """<p style=\"font-size:0.875rem;margin: 0;\">Trade estimation</p>
+            <p style=\"color: #1f2a3ab3;font-size:0.875rem;margin-bottom: 0.25rem;\">Does this trade fit your trading system?</p>""",
+            unsafe_allow_html=True)
+        data["estimation"] = st.feedback(
+            "thumbs",
+            default=data.get("estimation"),
+            key=f"{state_key}_estimation"
         )
     return data

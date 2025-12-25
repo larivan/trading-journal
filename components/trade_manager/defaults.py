@@ -28,10 +28,10 @@ def get_trade_defaults(
             "risk_reward": float(trade.get("risk_reward") or 0.0),
             "reward_percent": float(trade.get("reward_percent") or 0.0),
             "hot_thoughts": trade.get("hot_thoughts") or "",
+            "estimation": trade.get("estimation"),
         },
         "review": {
             "cold_thoughts": trade.get("cold_thoughts") or "",
-            "estimation": trade.get("estimation"),
         },
     }
 
