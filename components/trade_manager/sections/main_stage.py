@@ -1,6 +1,6 @@
 """Блок открытия сделки."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 import streamlit as st
 from config import ASSETS_VALUES
 from helpers import custom_selectbox, safe_choice_index
@@ -14,37 +14,30 @@ def render_main_stage(
     account_options: List[OptionItem],
     analysis_options: List[OptionItem],
     setup_options: List[OptionItem],
-    state_key: str
+    state_key: str,
+    on_risk_change: Optional[Callable[[], None]] = None,
 ) -> Dict[str, Any]:
     """Отрисовывает блок открытия сделки (дата, счёт, сетап и риск)."""
     data = defaults.copy()
-
-    account_default = data.get("account")
-    if account_default is None and account_options:
-        account_default = account_options[0].get("value")
-
-    asset_index = safe_choice_index(ASSETS_VALUES, data.get("asset"))
-    if asset_index is None and ASSETS_VALUES:
-        asset_index = 0
 
     with st.expander("Open", expanded=expanded):
         oc1, oc2 = st.columns(2)
         data["date"] = oc1.date_input(
             "Date",
-            value=data["date"] or "today",
+            value=data.get("date") or "today",
             format="DD.MM.YYYY",
             key=f"{state_key}_date"
         )
         data["time"] = oc2.time_input(
             "Time",
-            value=data["time"] or "now",
+            value=data.get("time") or "now",
             key=f"{state_key}_time"
         )
         data["account"] = custom_selectbox(
             "Account",
             account_options,
             placeholder="- Not set -",
-            value=account_default,
+            value=data.get("account"),
             key=f"{state_key}_account"
         )
         data["asset"] = st.selectbox(
@@ -52,7 +45,7 @@ def render_main_stage(
             ASSETS_VALUES,
             placeholder="- Not set -",
             key=f"{state_key}_asset",
-            index=asset_index,
+            index=safe_choice_index(ASSETS_VALUES, data.get("asset")),
         )
         data["analysis"] = custom_selectbox(
             "Analysis",
@@ -75,5 +68,6 @@ def render_main_stage(
             value=float(data["risk_pct"]),
             key=f"{state_key}_risk_pct",
             step=0.1,
+            on_change=on_risk_change,
         )
     return data

@@ -82,9 +82,6 @@ def render_trade_manager() -> None:
     def _dialog() -> None:
         # Подготовка данных
         account_rows = list_accounts(include_archived=True)
-        account_lookup = {
-            acc["id"]: acc for acc in account_rows if acc.get("id") is not None
-        }
         accounts = to_option_format(
             account_rows,
             formatter=lambda acc: f"{acc['name']}",
@@ -97,7 +94,7 @@ def render_trade_manager() -> None:
             list_analysis(),
             formatter=lambda analysis: f"{analysis.get('date_local')} · {analysis.get('asset')}",
         )
-        defaults = get_trade_defaults(trade)
+        defaults = get_trade_defaults(trade, accounts)
         charts = list_charts(trade_id=trade_id) if trade_id else []
         base_trade_notes = list_trade_notes(trade_id) if trade_id else []
 
@@ -149,7 +146,8 @@ def render_trade_manager() -> None:
                 account_options=accounts,
                 analysis_options=analyses,
                 setup_options=setups,
-                state_key=f"{state_key}_main"
+                state_key=f"{state_key}_main",
+                on_risk_change=_calculate_rewards,
             )
 
             outcome_values = render_outcome_stage(
@@ -157,10 +155,7 @@ def render_trade_manager() -> None:
                 expanded=(selected_state == "Outcome"),
                 defaults=defaults['outcome'],
                 state_key=f"{state_key}_outcome",
-                risk_pct=float(main_values["risk_pct"]),
-                account_balance=account_lookup.get(main_values["account"], {}).get(
-                    "starting_balance"
-                ),
+                on_change=_calculate_rewards,
             )
 
             review_values = render_review_stage(
@@ -230,28 +225,12 @@ def render_trade_manager() -> None:
             "is_reviewed": 1 if selected_state == "Reviewed" else 0,
         }
 
-        risk_reward_value = None
-        reward_percent_value = None
-        if outcome_values:
-            result_value = outcome_values.get("result")
-            net_pnl_value = float(outcome_values.get("net_pnl") or 0.0)
-            risk_reward_value = outcome_values.get("risk_reward")
-            reward_percent_value = outcome_values.get("reward_percent")
-            if result_value != "Miss" and (risk_reward_value is None or reward_percent_value is None):
-                risk_reward_value, reward_percent_value = _calculate_rewards(
-                    net_pnl=net_pnl_value,
-                    risk_pct=float(main_values["risk_pct"]),
-                    account_balance=account_lookup.get(main_values["account"], {}).get(
-                        "starting_balance"
-                    ),
-                )
-
         if outcome_values:
             payload.update({
-                "result": None if not outcome_values["result"] else outcome_values["result"],
-                "net_pnl": net_pnl_value,
-                "risk_reward": risk_reward_value,
-                "reward_percent": reward_percent_value,
+                "result": outcome_values["result"],
+                "net_pnl": outcome_values["net_pnl"],
+                "risk_reward": outcome_values["risk_reward"],
+                "reward_percent": outcome_values["reward_percent"],
                 "hot_thoughts": outcome_values["hot_thoughts"].strip() or None,
             })
 
@@ -327,29 +306,64 @@ def _handle_dialog_dismiss() -> None:
     )
 
 
-def _calculate_rewards(
-    *,
-    net_pnl: Optional[float],
-    risk_pct: Optional[float],
-    account_balance: Optional[Any],
-) -> tuple[Optional[float], Optional[float]]:
+def _get_account_id_by_label(label: str) -> Optional[int]:
+    """Возвращает ID счёта по его названию."""
+    account_rows = list_accounts(include_archived=True)
+    for acc in account_rows:
+        if acc.get("name") == label:
+            return acc.get("id")
+    return None
+
+
+def _calculate_rewards() -> None:
     """Высчитывает R:R и Reward % исходя из Net PnL, размера счёта и процента риска."""
-    try:
-        balance = float(
-            account_balance) if account_balance is not None else None
-    except (TypeError, ValueError):
-        balance = None
+    trade_id = None
+    if TRADE_ID_STATE in st.session_state:
+        trade_id = st.session_state[TRADE_ID_STATE]
+    state_key = f"{TM_KEY_PREFIX}{trade_id or 'new'}"
 
-    if net_pnl is None or balance in (None, 0):
-        return None, None
+    widget_keys = {
+        "risk_pct": f"{state_key}_main_risk_pct",
+        "result": f"{state_key}_outcome_result",
+        "net_pnl": f"{state_key}_outcome_net_pnl",
+        "risk_reward": f"{state_key}_outcome_risk_reward",
+        "reward_percent": f"{state_key}_outcome_reward_percent",
+    }
 
-    risk_amount = None
-    if risk_pct is not None:
-        try:
-            risk_amount = balance * float(risk_pct) / 100
-        except (TypeError, ValueError):
-            risk_amount = None
+    risk_pct = st.session_state.get(widget_keys["risk_pct"])
+    result = st.session_state.get(widget_keys["result"])
+    net_pnl = st.session_state.get(widget_keys["net_pnl"])
+    risk_reward = st.session_state.get(widget_keys["risk_reward"])
+    account = st.session_state.get(f"{state_key}_main_account")
+    account_id = _get_account_id_by_label(account["label"])
+    account_balance = _get_account_balance(account_id)
+    if not account_balance or not risk_pct:
+        return
+    if result == "Miss":
+        if risk_reward is None or risk_reward <= 0:
+            return
+        st.session_state[widget_keys["net_pnl"]] = float(0)
+        st.session_state[widget_keys["reward_percent"]
+                         ] = risk_pct * risk_reward
+    else:
+        if net_pnl is None:
+            return
+        st.session_state[widget_keys["risk_reward"]
+                         ] = net_pnl / (account_balance * (risk_pct / 100))
+        st.session_state[widget_keys["reward_percent"]] = (
+            net_pnl / account_balance) * 100
 
-    reward_percent = (float(net_pnl) / balance) * 100 if balance else None
-    risk_reward = (float(net_pnl) / risk_amount) if risk_amount else None
-    return risk_reward, reward_percent
+
+def _get_account_balance(account_id: Optional[int]) -> Optional[float]:
+    """Возвращает стартовый баланс счёта по его ID."""
+    accounts = list_accounts(include_archived=True)
+    if account_id is None:
+        return None
+    for acc in accounts:
+        if acc.get("id") == account_id:
+            starting_balance = acc.get("starting_balance")
+            try:
+                return float(starting_balance) if starting_balance is not None else None
+            except (TypeError, ValueError):
+                return None
+    return None
