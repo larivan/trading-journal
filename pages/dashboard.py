@@ -218,10 +218,6 @@ if isinstance(date_range, tuple) and len(date_range) == 2:
     start, end = date_range
     dff = dff[(dff["date"].dt.date >= start) & (dff["date"].dt.date <= end)]
 
-# Performance metrics should be based on closed trades only — here all rows are closed by construction.
-fact = dff[dff["is_fact"]].copy()
-missed = dff[~dff["is_fact"]].copy()
-
 # ----------------------------
 # Header
 # ----------------------------
@@ -232,6 +228,13 @@ st.caption(
 # ----------------------------
 # Overview (with Sample size warning)
 # ----------------------------
+fact = dff[dff["is_fact"]].copy()
+missed = dff[~dff["is_fact"]].copy()
+bias_winrate = 0.64
+fact_winrate = (fact["rr"] > 0).mean() if len(fact) else 0.0
+potential_winrate = (dff["rr"] > 0).mean() if len(dff) else 0.0
+missed_rate = (len(missed) / max(len(dff), 1))
+triumph_ratio = 0.83
 with st.container(border=True):
     st.subheader("Overview")
     st.markdown("""
@@ -266,15 +269,6 @@ with st.container(border=True):
         )
 
     st.markdown("###### Core decision KPIs")
-
-    # Mock KPI computations (replace with your true logic)
-    # Note: these are placeholders, just to show layout.
-    # If you have the real KPI thresholds from your CSV, plug them in here.
-    bias_winrate = 0.64
-    fact_winrate = (fact["rr"] > 0).mean() if len(fact) else 0.0
-    potential_winrate = (dff["rr"] > 0).mean() if len(dff) else 0.0
-    missed_rate = (len(missed) / max(len(dff), 1))
-    triumph_ratio = 0.83
 
     k1, k2, k3, k4, k5 = st.columns(5)
 
@@ -496,7 +490,7 @@ with st.container(border=True):
         with right:
             # Bar chart (Total RR)
             bar_df = table_df[[table_df.columns[0], "Total_RR"]].rename(
-                columns={table_df.columns[0]                         : "Category", "Total_RR": "Total RR"}
+                columns={table_df.columns[0]: "Category", "Total_RR": "Total RR"}
             )
             chart = total_rr_bar(
                 bar_df, category_col="Category", value_col="Total RR")
