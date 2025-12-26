@@ -224,7 +224,6 @@ def render_trade_manager() -> None:
             "risk_pct": float(main_values["risk_pct"]),
             "session": session_value,
             "state": selected_state,
-            "is_reviewed": 1 if selected_state == "Reviewed" else 0,
         }
 
         if outcome_values:

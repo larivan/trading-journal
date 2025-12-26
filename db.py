@@ -28,7 +28,6 @@ TRADE_ORDER_COLUMNS = {
     "net_pnl",
     "risk_reward",
     "reward_percent",
-    "is_reviewed",
 }
 
 ANALYSIS_COLUMNS = [
@@ -293,7 +292,6 @@ CREATE TABLE IF NOT EXISTS trades (
     emotional_problems TEXT,
     hot_thoughts       TEXT,
     cold_thoughts      TEXT,
-    is_reviewed        INTEGER NOT NULL DEFAULT 0,
     
     FOREIGN KEY (account_id)  REFERENCES accounts(id)  ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (setup_id)    REFERENCES setups(id)    ON DELETE SET NULL   ON UPDATE CASCADE,
@@ -1371,7 +1369,6 @@ WRITABLE_TRADE_FIELDS = [
     "emotional_problems",
     "hot_thoughts",
     "cold_thoughts",
-    "is_reviewed",
 ]
 
 
@@ -1461,7 +1458,6 @@ TRADE_COLUMNS = [
     "emotional_problems",
     "hot_thoughts",
     "cold_thoughts",
-    "is_reviewed",
 ]
 
 TRADE_COMPAT_COLUMNS = [
@@ -1492,7 +1488,6 @@ def list_trades(
         "result": "result",
         "session": "session",
         "estimation": "estimation",
-        "is_reviewed": "is_reviewed",
         "date_from": "date_local >= ?",
         "date_to": "date_local <= ?",
     }
