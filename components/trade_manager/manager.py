@@ -346,14 +346,14 @@ def _calculate_rewards() -> None:
             return
         st.session_state[widget_keys["net_pnl"]] = float(0)
         st.session_state[widget_keys["reward_percent"]
-                         ] = risk_pct * risk_reward
+                         ] = round(risk_pct * risk_reward, 2)
     else:
         if net_pnl is None:
             return
         st.session_state[widget_keys["risk_reward"]
-                         ] = net_pnl / (account_balance * (risk_pct / 100))
-        st.session_state[widget_keys["reward_percent"]] = (
-            net_pnl / account_balance) * 100
+                         ] = round(net_pnl / (account_balance * (risk_pct / 100)), 2)
+        st.session_state[widget_keys["reward_percent"]] = round((
+            net_pnl / account_balance) * 100, 2)
 
 
 def _get_account_balance(account_id: Optional[int]) -> Optional[float]:
