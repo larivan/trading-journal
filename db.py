@@ -277,9 +277,9 @@ CREATE TABLE IF NOT EXISTS trades (
     local_tz           TEXT NOT NULL,
     date_local         TEXT NOT NULL,
     time_local         TEXT NOT NULL,
-    account_id         INTEGER,
-    setup_id           INTEGER,
-    analysis_id        INTEGER,
+    account_id         INTEGER NOT NULL,
+    setup_id           INTEGER NOT NULL,
+    analysis_id        INTEGER NOT NULL,
     asset              TEXT NOT NULL,
     session            TEXT NOT NULL,
     state              TEXT NOT NULL,
@@ -1460,14 +1460,6 @@ TRADE_COLUMNS = [
     "cold_thoughts",
 ]
 
-TRADE_COMPAT_COLUMNS = [
-    "result AS trade_result",
-    "risk_reward AS rr",
-    "net_pnl AS pnl",
-    "date_local AS trade_date",
-    "time_local AS open_time",
-]
-
 
 def list_trades(
     filters: Optional[Dict[str, Any]] = None,
@@ -1475,7 +1467,7 @@ def list_trades(
     ascending: bool = True,
 ) -> List[Dict[str, Any]]:
     filters = filters or {}
-    select_clause = ", ".join(TRADE_COLUMNS + TRADE_COMPAT_COLUMNS)
+    select_clause = ", ".join(TRADE_COLUMNS)
     q = f"SELECT {select_clause} FROM trades WHERE 1=1"
     p: List[Any] = []
 

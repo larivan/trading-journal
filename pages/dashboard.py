@@ -1,161 +1,171 @@
-# app_dashboard_skeleton.py
-# Streamlit skeleton for Trading Journal Dashboard (v12+)
-# Requirements:
-#   streamlit >= 1.25 (for container(border=True) - if not available, remove border=True)
-#   pandas, numpy, altair
-#
-# Run:
-#   streamlit run app_dashboard_skeleton.py
-
 import numpy as np
 import pandas as pd
 import altair as alt
 import streamlit as st
-
-# ----------------------------
-# Page config
-# ----------------------------
-st.set_page_config(
-    page_title="Dashboard",
-    page_icon=":material/bar_chart:",
-    layout="wide",
+from typing import Dict, Any, Optional
+from datetime import date, timedelta
+from helpers import (
+    to_option_format,
+    custom_selectbox
 )
-
-# Optional: keep charts readable in wide layout
-alt.data_transformers.disable_max_rows()
+from db import (
+    list_trades,
+    list_analysis,
+    list_accounts,
+    list_notes,
+)
 
 # ----------------------------
 # Mock data (replace with DB later)
 # ----------------------------
 
+PERIOD_TABS: Dict[str, str] = {
+    "today": "Today",
+    "week": "Current week",
+    "month": "Current month",
+    "quarter": "Current quarter",
+    "year": "Current year",
+    "custom": "Custom",
+}
 
-@st.cache_data
-def make_mock_trades(seed: int = 42, n_trades: int = 180) -> pd.DataFrame:
-    rng = np.random.default_rng(seed)
+OVERVIEW_KPIS = {
+    "bias_winrate": (0.6, 0.75),
+    "fact_winrate": (0.55, 0.7),
+    "potential_winrate": (0.7, 0.85),
+    "missed_rate": (0.0, 0.1),
+    "quality_ratio": (0.7, 0.9),
+}
 
-    # Dates spanning ~60 days
-    dates = pd.date_range("2025-11-01", periods=60, freq="D")
-    trade_dates = rng.choice(dates, size=n_trades, replace=True)
-
-    assets = np.array(["EURUSD", "GBPUSD", "XAUUSD", "XAGUSD", "US100"])
-    sessions = np.array(["LoKZ", "NYKZ", "Out of OTT"])
-    setups = np.array(
-        ["POI → confirmation", "Lq → confirmation", "POI → trend continuation"])
-
-    risk_allowed = np.array([0.5, 1.0, 2.0])
-    # introduce some non-standard risk values
-    risk = rng.choice(
-        np.concatenate([risk_allowed, np.array([0.6, 0.8, 1.2, 1.8])]),
-        size=n_trades,
-        replace=True,
-        p=[0.23, 0.48, 0.14, 0.04, 0.04, 0.03, 0.04],
-    )
-
-    # Base "edge" by setup (just for demo)
-    setup_edge = {
-        "POI → confirmation": 0.15,
-        "Lq → confirmation": 0.20,
-        "POI → trend continuation": 0.08,
-    }
-    edge = np.array([setup_edge[s]
-                    for s in rng.choice(setups, size=n_trades, replace=True)])
-
-    # Simulate RR distribution: mixture around -1 and +2..+4
-    # win probability slightly boosted by setup
-    win = rng.random(n_trades) < (0.48 + edge)
-    rr = np.where(
-        win,
-        rng.normal(loc=2.2, scale=1.0, size=n_trades),
-        rng.normal(loc=-1.05, scale=0.35, size=n_trades),
-    )
-    rr = np.clip(rr, -4.0, 7.0)
-
-    # PnL: assume account balance ~10k and risk% as percent of balance per trade
-    # PnL($) ≈ rr * (risk%/100) * balance
-    balance = 10_000
-    pnl = rr * (risk / 100.0) * balance
-
-    df = pd.DataFrame(
-        {
-            "date": pd.to_datetime(trade_dates),
-            "asset": rng.choice(assets, size=n_trades, replace=True),
-            "session": rng.choice(sessions, size=n_trades, replace=True),
-            "setup": rng.choice(setups, size=n_trades, replace=True),
-            "direction": rng.choice(["Long", "Short"], size=n_trades, replace=True),
-            "trade_type": rng.choice(["Intraday", "Swing"], size=n_trades, replace=True, p=[0.78, 0.22]),
-            "risk_pct": risk,
-            "rr": rr,
-            "pnl_usd": pnl,
-            "is_fact": rng.random(n_trades) < 0.78,  # executed trades
-        }
-    )
-
-    # Missed opportunities table is usually separate; here we model as non-fact rows
-    return df
+RISK_EXPECTANCY_KPIS = {
+    "avg_rr": (1.9, 2.1),
+    "expected_value": (0.0, None),
+    "profit_factor": (1.0, None),
+}
 
 
-@st.cache_data
-def make_mock_psychology(seed: int = 123) -> pd.DataFrame:
-    rng = np.random.default_rng(seed)
-    dates = pd.date_range("2025-11-01", periods=60, freq="D")
+def prepare_trades_df() -> pd.DataFrame:
+    trades = list_trades()
+    analyses = list_analysis()
 
-    # Mock daily psychology metrics
-    per = np.clip(rng.normal(loc=10, scale=4, size=len(dates)),
-                  0, 30)      # Premature Exit Rate
-    emr = np.clip(rng.normal(loc=86, scale=6, size=len(dates)),
-                  55, 100)    # Emotional Management Rate
-    fei = np.clip(rng.normal(loc=12, scale=8, size=len(
-        dates)), -20, 40)    # Fear Efficiency Index
+    if not trades:
+        return pd.DataFrame()
 
-    return pd.DataFrame({"date": dates, "PER": per, "EMR": emr, "FEI": fei})
+    a_df = pd.DataFrame(analyses)
+    t_df = pd.DataFrame(trades)
 
+    if not a_df.empty:
+        t_df = t_df.merge(
+            a_df[["id", "daily_bias", "fact_bias"]],
+            left_on="analysis_id",
+            right_on="id",
+            how="left"
+        )
 
-@st.cache_data
-def make_mock_observations(seed: int = 321) -> pd.DataFrame:
-    rng = np.random.default_rng(seed)
-    obs = [
-        "NYKZ continuation after macro news",
-        "London fakeouts around daily open",
-        "Asian range before NY expansion",
-        "Trend day: first pullback continuation",
-        "Liquidity sweep + quick reversal",
-        "Range day: mean reversion works best",
-    ]
-    occurrences = rng.integers(3, 14, size=len(obs))
-    linked_trades = np.clip(
-        occurrences - rng.integers(0, 4, size=len(obs)), 0, None)
+    t_df = t_df[t_df["state"] == "Reviewed"]
+    t_df["date"] = pd.to_datetime(t_df["date_local"])
+    t_df["rr"] = t_df["risk_reward"].astype(float)
+    t_df["pnl_usd"] = t_df["net_pnl"].astype(int)
+    t_df["setup"] = t_df["setup_id"].fillna("No setup")
 
-    # OOR: relative frequency (mock) — for now normalize by total occurrences
-    oor = occurrences / occurrences.sum() * 100.0
-
-    status = [
-        "Candidate to formalize into rules.",
-        "Keep observing; not stable yet.",
-        "Needs more samples.",
-        "Strong pattern; define filters.",
-        "Rare but impactful; isolate conditions.",
-        "Moderate; depends on volatility.",
-    ]
-    df = pd.DataFrame(
-        {
-            "Observation": obs,
-            "Occurrences (#)": occurrences,
-            "Linked trades (#)": linked_trades,
-            "OOR (%)": oor.round(1),
-            "Comment": status,
-        }
-    ).sort_values("OOR (%)", ascending=False)
-
-    return df
+    return t_df
 
 
-df = make_mock_trades()
-psy = make_mock_psychology()
-obs_df = make_mock_observations()
+def prepare_observations_df() -> pd.DataFrame:
+    obs = list_notes()
+
+    if not obs:
+        return pd.DataFrame()
+
+    return pd.DataFrame(obs)
 
 # ----------------------------
 # Helpers
 # ----------------------------
+
+
+def kpi_badge(
+    options: Dict[str, Any],
+    key: str,
+    value: float,
+    positive_direction: str,
+    below_text: str = "Below KPI",
+    within_text: str = "Within KPI",
+    above_text: str = "Above KPI",
+    color=None,
+    arrow=None
+):
+    """
+    Produces a delta string.
+    """
+    lo, hi = options.get(key, (None, None))
+
+    # Если обе переменные None
+    if lo is None and hi is None:
+        delta = "Invalid Range"
+        delta_color = "off"
+        delta_arrow = "off"
+    else:
+        if lo is not None and hi is not None:  # Обе переменные заданы
+            if lo <= value <= hi:
+                delta = within_text
+                delta_color = "normal"
+                delta_arrow = "off"
+            elif value < lo:
+                delta = below_text
+                if positive_direction == "higher":
+                    delta_color = "inverse"
+                    delta_arrow = "down"
+                else:
+                    delta_color = "normal"
+                    delta_arrow = "up"
+            else:  # value > hi
+                delta = above_text
+                if positive_direction == "higher":
+                    delta_color = "normal"
+                    delta_arrow = "up"
+                else:
+                    delta_color = "inverse"
+                    delta_arrow = "down"
+        elif lo is not None:  # Задана только переменная lo
+            if value < lo:
+                delta = below_text
+                if positive_direction == "higher":
+                    delta_color = "inverse"
+                    delta_arrow = "down"
+                else:
+                    delta_color = "normal"
+                    delta_arrow = "up"
+            else:  # value >= lo
+                delta = above_text
+                if positive_direction == "higher":
+                    delta_color = "normal"
+                    delta_arrow = "up"
+                else:
+                    delta_color = "inverse"
+                    delta_arrow = "down"
+        elif hi is not None:  # Задана только переменная hi
+            if value > hi:
+                delta = above_text
+                if positive_direction == "higher":
+                    delta_color = "normal"
+                    delta_arrow = "up"
+                else:
+                    delta_color = "inverse"
+                    delta_arrow = "down"
+            else:  # value <= hi
+                delta = below_text
+                if positive_direction == "higher":
+                    delta_color = "inverse"
+                    delta_arrow = "down"
+                else:
+                    delta_color = "normal"
+                    delta_arrow = "up"
+
+    # Используем переданные значения для цвета и стрелки, если они есть
+    delta_color = color or delta_color
+    delta_arrow = arrow or delta_arrow
+
+    return {"delta": delta, "delta_color": delta_color, "delta_arrow": delta_arrow}
 
 
 def total_rr_bar(df_grouped: pd.DataFrame, category_col: str, value_col: str = "Total RR") -> alt.Chart:
@@ -179,84 +189,154 @@ def total_rr_bar(df_grouped: pd.DataFrame, category_col: str, value_col: str = "
     return chart
 
 
-def kpi_badge_text(value: float, lo: float = None, hi: float = None, gt: float = None) -> str:
-    """
-    Produces a Streamlit-friendly delta string like "within KPI" / "below KPI" / "above KPI".
-    """
-    if gt is not None:
-        return "within KPI" if value > gt else "below KPI"
-    if lo is not None and hi is not None:
-        if lo <= value <= hi:
-            return "within KPI"
-        return "below KPI" if value < lo else "above KPI"
-    return ""
-
-
 # ----------------------------
-# Sidebar filters (skeleton)
+# Page config
 # ----------------------------
+st.set_page_config(
+    page_title="Dashboard",
+    page_icon=":material/bar_chart:",
+    layout="wide",
+)
 
-with st.sidebar:
-    st.header("Filters")
-
-    # Date range filter
-    min_d = df["date"].min().date()
-    max_d = df["date"].max().date()
-    date_range = st.date_input("Date range", value=(
-        min_d, max_d), min_value=min_d, max_value=max_d)
-
-    account = st.selectbox("Account", [
-                           "FP Evaluation #1 (USD)", "FP Funded #1 (USD)", "Demo swing (EUR)"], index=0)
-    apply_filters = st.button(
-        "Apply filters", type="primary", width="stretch")
-
-# Apply filters immediately (button is just visual parity with your HTML)
-dff = df.copy()
-
-# Date filter
-if isinstance(date_range, tuple) and len(date_range) == 2:
-    start, end = date_range
-    dff = dff[(dff["date"].dt.date >= start) & (dff["date"].dt.date <= end)]
+# ---------------------------
+# Load data
+# ----------------------------
+data_df = prepare_trades_df()
+# psy = prepare_psychology_df()
+obs_df = prepare_observations_df()
 
 # ----------------------------
 # Header
 # ----------------------------
 st.title("Dashboard")
 st.caption(
-    "Analytics based on trades, psychology and observations (Streamlit skeleton).")
+    "Analytics based on trades, psychology and observations.")
+
+
+# Optional: keep charts readable in wide layout
+alt.data_transformers.disable_max_rows()
+
+# ----------------------------
+# Filters
+# ----------------------------
+
+# --- Загружаем список счетов и настраиваем state для форм ---
+accounts = to_option_format(
+    list_accounts(include_archived=True),
+    formatter=lambda acc: f"{acc['name']}",
+)
+
+if not accounts:
+    st.warning("No accounts found. Please add an account first.")
+    st.stop()
+
+period_col, date_col, account_col = st.columns(
+    [0.5, 0.25, 0.25], vertical_alignment="bottom"
+)
+with period_col:
+    period_key = "dashboard_period_label"
+    if not st.session_state.get(period_key):
+        st.session_state[period_key] = "Current quarter"
+    selected_label = st.segmented_control(
+        "Период",
+        options=PERIOD_TABS.values(),
+        key=period_key,
+        width="stretch",
+    )
+
+with account_col:
+    account = custom_selectbox(
+        "Account",
+        accounts,
+        value=accounts[0].get("value"),
+        key="dashboard_account_filter",
+    )
+
+
+# === ПРИМЕНЕНИЕ ПЕРИОДОВ И КАСТОМНЫХ ФИЛЬТРОВ ===
+date_range: Optional[date] = None
+label_to_key = {label: key for key, label in PERIOD_TABS.items()}
+selected_key = label_to_key.get(selected_label, "quarter")
+
+if selected_key == "custom":
+    date_range = date_col.date_input(
+        "Date range",
+        value=(
+            date.today() - timedelta(days=7),
+            date.today()
+        ),
+        format="DD.MM.YYYY",
+    )
+else:
+    today = date.today()
+    if selected_key == "today":
+        date_range = (today, today)
+    elif selected_key == "week":
+        date_range = (today - timedelta(days=today.weekday()), today)
+    elif selected_key == "month":
+        date_range = (today.replace(day=1), today)
+    elif selected_key == "quarter":
+        quarter = (today.month - 1) // 3
+        quarter_start_month = quarter * 3 + 1
+        date_range = (today.replace(month=quarter_start_month, day=1), today)
+    elif selected_key == "year":
+        date_range = (today.replace(month=1, day=1), today)
+
+# Apply filters
+if date_range:
+    if len(date_range) < 2:
+        date_range = (date_range[0], date.today())
+    data_df = data_df[(data_df["date"].dt.date >= date_range[0]) & (
+        data_df["date"].dt.date <= date_range[1])]
+if account:
+    data_df = data_df[data_df["account_id"] == account]
+
+if data_df.empty:
+    st.warning("No trades found for the selected filters.")
+    st.stop()
 
 # ----------------------------
 # Overview (with Sample size warning)
 # ----------------------------
-fact = dff[dff["is_fact"]].copy()
-missed = dff[~dff["is_fact"]].copy()
-bias_winrate = 0.64
-fact_winrate = (fact["rr"] > 0).mean() if len(fact) else 0.0
-potential_winrate = (dff["rr"] > 0).mean() if len(dff) else 0.0
-missed_rate = (len(missed) / max(len(dff), 1))
-triumph_ratio = 0.83
+fact = data_df[data_df["result"].isin(["Win", "Loss", "BE"])].copy()
+missed = data_df[data_df["result"] == "Miss"].copy()
+bias_winrate = (data_df["fact_bias"] ==
+                data_df["daily_bias"]).mean() if len(data_df) else 0.0
+# Fact winrate calculation
+fact_wins = fact[fact["result"] == "Win"]
+fact_winrate = (len(fact_wins) / max(len(fact), 1)) if len(fact) else 0.0
+# Potential winrate calculation
+miss_trades = data_df[data_df["result"] == "Miss"]
+miss_win_trades = miss_trades[miss_trades["reward_percent"] > 0]
+potential_winrate = (len(fact_wins) + len(miss_win_trades)) / \
+    max(len(data_df), 1) if len(data_df) else 0.0
+
+missed_rate = (len(missed) / max(len(data_df), 1)) if len(data_df) else 0.0
+quality_ratio = (len(data_df[data_df["estimation"] == 1]) /
+                 max(len(data_df), 1)) if len(data_df) else 0.0
+
 with st.container(border=True):
     st.subheader("Overview")
-    st.markdown("""
+    st.markdown(f"""
         <style>
-            .trade-summary {
+            .trade-summary {{
                 margin-bottom: 16px;
-            }
-            .trade-summary-item {
+            }}
+            .trade-summary-item {{
                 color: #4b5563;
                 display: inline-block;
                 padding: 0 20px;
                 border: 1px solid #e5e7eb;
                 border-radius: 999px;
-            }
-            .trade-summary-item b {
+            }}
+            .trade-summary-item b {{
                 color: #111827;
-            }
+            }}
         </style>
         <div class="trade-summary">
-            <span class="trade-summary-item"><b>32</b> fact trades</span>
-            <span class="trade-summary-item"><b>12</b> missed trades</span>
-            <span class="trade-summary-item"><b>44</b> total trades</span>
+            <span class="trade-summary-item"><b>{len(fact)}</b> fact trades</span>
+            <span class="trade-summary-item"><b>{len(missed)}</b> missed trades</span>
+            <span class="trade-summary-item"><b>{len(data_df)}</b> total trades</span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -265,23 +345,43 @@ with st.container(border=True):
     if len(fact) < SAMPLE_WARN_N:
         st.warning(
             f"Low sample size: only {len(fact)} executed trades in the current filter. "
-            "Winrate / PF / EV may be noisy."
+            "Metrics may be noisy."
         )
 
     st.markdown("###### Core decision KPIs")
 
     k1, k2, k3, k4, k5 = st.columns(5)
 
-    k1.metric("Bias winrate (%)",
-              f"{bias_winrate*100:.0f}%", delta="within KPI", border=True)
-    k2.metric("Fact winrate (%)",
-              f"{fact_winrate*100:.0f}%", delta="slightly above KPI", border=True)
-    k3.metric("Potential winrate (%)",
-              f"{potential_winrate*100:.0f}%", delta="room to realize", border=True)
-    k4.metric("Missed trades (%)",
-              f"{missed_rate*100:.0f}%", delta="needs work", border=True)
-    k5.metric("Triumph ratio (%)",
-              f"{triumph_ratio*100:.0f}%", delta="solid", border=True)
+    k1.metric(
+        "Bias winrate",
+        f"{bias_winrate*100:.0f}%",
+        border=True,
+        **kpi_badge(OVERVIEW_KPIS, "bias_winrate", bias_winrate, positive_direction="higher"),
+    )
+    k2.metric(
+        "Fact winrate",
+        f"{fact_winrate*100:.0f}%",
+        **kpi_badge(OVERVIEW_KPIS, "fact_winrate", fact_winrate, positive_direction="higher"),
+        border=True
+    )
+    k3.metric(
+        "Potential winrate",
+        f"{potential_winrate*100:.0f}%",
+        **kpi_badge(OVERVIEW_KPIS, "potential_winrate", potential_winrate, positive_direction="higher"),
+        border=True
+    )
+    k4.metric(
+        "Missed trades",
+        f"{missed_rate*100:.0f}%",
+        **kpi_badge(OVERVIEW_KPIS, "missed_rate", missed_rate, positive_direction="lower"),
+        border=True
+    )
+    k5.metric(
+        "Execution Quality Ratio",
+        f"{quality_ratio*100:.0f}%",
+        **kpi_badge(OVERVIEW_KPIS, "quality_ratio", quality_ratio, positive_direction="higher"),
+        border=True
+    )
 
 # ----------------------------
 # Risk, expectancy & PnL (Metrics left 2 cols, Charts right 3 cols)
@@ -292,68 +392,96 @@ with st.container(border=True):
 with st.container(border=True):
     st.subheader("Risk, expectancy & PnL")
 
-    # 5-column region (2 for metrics, 3 for charts)
     c1, c2 = st.columns([1, 4])
-
-    # ---- LEFT: 8 metrics split into 4+4 (delta vs no-delta) ----
-    # Compute performance metrics from executed trades only (fact)
+    # Avg RR calculation
     fact_rr = fact["rr"]
-    fact_pnl = fact["pnl_usd"]
-
     avg_rr = float(fact_rr.mean()) if len(fact_rr) else 0.0
-    winrate = float((fact_rr > 0).mean()) if len(fact_rr) else 0.0
+    # Expected value (EV) calculation
     avg_win = float(fact_rr[fact_rr > 0].mean()) if (
         fact_rr > 0).any() else 0.0
-    avg_loss = float(fact_rr[fact_rr <= 0].mean()) if (
-        fact_rr <= 0).any() else 0.0
-    # simplified placeholder: EV in R/trade often equals mean(R); your logic may differ.
-    ev = avg_rr
+    avg_loss = float(fact_rr[fact_rr < 0].mean()) if (
+        fact_rr < 0).any() else 0.0
+    expected_value = fact_winrate * avg_win + (1 - fact_winrate) * avg_loss
+    # Profit factor calculation
+    fact_pnl = fact["pnl_usd"]
     gross_profit = float(fact_pnl[fact_pnl > 0].sum()) if (
         fact_pnl > 0).any() else 0.0
-    gross_loss = float(-fact_pnl[fact_pnl < 0].sum()
-                       ) if (fact_pnl < 0).any() else 0.0
+    gross_loss = abs(float(fact_pnl[fact_pnl < 0].sum())) if (
+        fact_pnl < 0).any() else 0.0
     profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else np.inf
+    # Net PnL calculation
     net_pnl = float(fact_pnl.sum()) if len(fact_pnl) else 0.0
-
-    # Potential metrics (placeholder)
-    potential_rr = float(dff["rr"].mean()) if len(dff) else 0.0
-    potential_take_rate = 0.68  # placeholder
-    fact_pct = (net_pnl / 10_000) * 100.0  # assuming 10k
-    potential_pct_of_profit = potential_take_rate * 100.0
-
-    # KPI thresholds (placeholders)
-    KPI_AVG_RR_LO, KPI_AVG_RR_HI = 1.9, 2.1
-    KPI_EV_GT = 0.0
-    KPI_PF_GT = 1.0
-    KPI_PNL_GT = 0.0
+    # Total RR calculation
+    total_rr = float(fact_rr.sum()) if len(fact_rr) else 0.0
+    # Potential RR calculation
+    potential_rr = float(data_df["rr"].mean()) if len(data_df) else 0.0
+    # Total reward calculation
+    total_reward = float(fact["reward_percent"].sum()) if len(fact) else 0.0
+    # Potential reward calculation
+    potential_reward = float(
+        data_df["reward_percent"].sum()) if len(data_df) else 0.0
 
     # Metrics container spanning first 2 columns
     with c1:
-        st.metric("Average RR (R)", f"{avg_rr:.2f}", delta=kpi_badge_text(
-            avg_rr, lo=KPI_AVG_RR_LO, hi=KPI_AVG_RR_HI), border=True)
-        st.metric("Expected value (EV, R)",
-                  f"{ev:+.2f}", delta=("within KPI" if ev > KPI_EV_GT else "below KPI"), border=True)
-        st.metric("Profit factor (#)", f"{profit_factor:.2f}" if np.isfinite(
-            profit_factor) else "∞", delta=("within KPI" if profit_factor > KPI_PF_GT else "below KPI"), border=True)
-        st.metric("Net PnL ($)", f"{net_pnl:,.0f}", delta=(
-            "within KPI" if net_pnl > KPI_PNL_GT else "below KPI"), border=True)
+        st.metric(
+            "Average RR",
+            f"{avg_rr:.2f}R",
+            **kpi_badge(
+                RISK_EXPECTANCY_KPIS,
+                "avg_rr",
+                avg_rr,
+                positive_direction="higher"
+            ),
+            border=True
+        )
+        st.metric(
+            "Expected value",
+            f"{expected_value:+.2f}R",
+            **kpi_badge(
+                RISK_EXPECTANCY_KPIS,
+                "expected_value",
+                expected_value,
+                positive_direction="higher"
+            ),
+            border=True
+        )
+        st.metric(
+            "Profit factor",
+            f"{profit_factor:.2f}" if np.isfinite(profit_factor) else "∞",
+            **kpi_badge(
+                RISK_EXPECTANCY_KPIS,
+                "profit_factor",
+                profit_factor,
+                positive_direction="higher"
+            ),
+            border=True
+        )
+        st.metric(
+            "Net PnL",
+            f"{net_pnl:,.0f}$",
+            border=True
+        )
 
     with c2:
         with st.container(border=True, height="stretch"):
+            st.markdown(f"**Equity curve**")
+
             # Equity curve axis switch
-            y_axis = st.radio(
+            y_key = "dashboard_y_axis_label"
+            if not st.session_state.get(y_key):
+                st.session_state[y_key] = "Cumulative %"
+            y_axis = st.segmented_control(
                 "Equity curve Y-axis",
-                ["Cum RR", "Cum PnL", "Cum %"],
-                horizontal=True,
-                index=0,
-                help="Switch what the equity curve represents.",
+                key=y_key,
+                options=["Cumulative %", "Cumulative RR", "Cumulative $"],
+                label_visibility="collapsed",
             )
 
             # Build daily series from fact trades
             if len(fact):
                 daily = (
                     fact.groupby(fact["date"].dt.date)
-                    .agg(rr_sum=("rr", "sum"), pnl_sum=("pnl_usd", "sum"))
+                    .agg(rr_sum=("rr", "sum"), pnl_sum=("pnl_usd", "sum"), reward_sum=("reward_percent", "sum"))
                     .reset_index()
                     .rename(columns={"date": "day"})
                 )
@@ -362,25 +490,16 @@ with st.container(border=True):
 
                 daily["cum_rr"] = daily["rr_sum"].cumsum()
                 daily["cum_pnl"] = daily["pnl_sum"].cumsum()
-                daily["cum_pct"] = (daily["cum_pnl"] / 10_000.0) * 100.0
+                daily["cum_pct"] = daily["reward_sum"].cumsum()
 
-                if y_axis == "Cum RR":
+                if y_axis == "Cumulative RR":
                     series = daily.set_index("day")["cum_rr"]
-                    title = "Equity curve (cumulative RR by day)"
-                    y_label = "Cumulative RR (R)"
-                elif y_axis == "Cum PnL":
+                elif y_axis == "Cumulative $":
                     series = daily.set_index("day")["cum_pnl"]
-                    title = "Equity curve (cumulative PnL by day)"
-                    y_label = "Cumulative PnL ($)"
                 else:
                     series = daily.set_index("day")["cum_pct"]
-                    title = "Equity curve (cumulative return % by day)"
-                    y_label = "Cumulative return (%)"
             else:
                 series = pd.Series(dtype=float)
-                title, y_label = "Equity curve", ""
-
-            st.markdown(f"**{title}**")
 
             if len(series):
                 st.line_chart(series, height="stretch")
@@ -390,35 +509,32 @@ with st.container(border=True):
 
     c3, c4 = st.columns([1, 4])
     with c3:
-        st.metric("Fact RR (R)", f"{avg_rr:.2f}", border=True)
-        st.metric("Potential RR (R)", f"{potential_rr:.2f}", border=True)
-        st.metric("Fact % gained (%)", f"{fact_pct:+.2f}%", border=True)
-        st.metric("Potential % of profit gained (%)",
-                  f"{potential_pct_of_profit:.0f}%", border=True)
+        st.metric("Total fact RR", f"{total_rr:.2f}R", border=True)
+        st.metric("Total potential RR", f"{potential_rr:.2f}R", border=True)
+        st.metric("Total fact reward", f"{total_reward:+.2f}%", border=True)
+        st.metric("Total potential reward",
+                  f"{potential_reward:.0f}%", border=True)
 
     with c4:
         with st.container(border=True, height="stretch"):
-            # Distribution switch + better name
-            dist_mode = st.radio(
+            st.markdown(f"**Outcome distribution per trade**")
+            # Distribution switch
+            dist_mode_key = "dashboard_dist_mode_label"
+            if not st.session_state.get(dist_mode_key):
+                st.session_state[dist_mode_key] = "RR (R)"
+            dist_mode = st.segmented_control(
                 "Distribution view",
-                ["RR (R)", "PnL ($)"],
-                horizontal=True,
-                index=0,
-                help="Switch distribution between RR and money outcome.",
+                key=dist_mode_key,
+                options=["RR (R)", "PnL ($)"],
+                label_visibility="collapsed",
             )
 
             if dist_mode == "RR (R)":
-                dist_title = "Outcome distribution per trade (RR)"
                 values = fact_rr.dropna() if len(fact_rr) else pd.Series(dtype=float)
                 x_title = "RR (R)"
             else:
-                dist_title = "Outcome distribution per trade (PnL $)"
                 values = fact_pnl.dropna() if len(fact_pnl) else pd.Series(dtype=float)
                 x_title = "PnL ($)"
-
-            st.markdown(f"**{dist_title}**")
-            st.caption(
-                "X-axis: outcome bins. Y-axis: number of trades in each bin.")
 
             if len(values):
                 dist_df = pd.DataFrame({x_title: values})
@@ -490,7 +606,7 @@ with st.container(border=True):
         with right:
             # Bar chart (Total RR)
             bar_df = table_df[[table_df.columns[0], "Total_RR"]].rename(
-                columns={table_df.columns[0]: "Category", "Total_RR": "Total RR"}
+                columns={table_df.columns[0]                         : "Category", "Total_RR": "Total RR"}
             )
             chart = total_rr_bar(
                 bar_df, category_col="Category", value_col="Total RR")
@@ -507,30 +623,29 @@ with st.container(border=True):
 # 4) PSYCHOLOGY & BEHAVIOR
 # PER / EMR / FEI + Behavior flags table
 # ============================
-with st.container(border=True):
-    st.subheader("Psychology & behavior")
-    st.caption(
-        "Skeleton: 3 headline metrics + behavior flags table (default components).")
+# with st.container(border=True):
+#     st.subheader("Psychology & behavior")
+#     st.caption(
+#         "Skeleton: 3 headline metrics + behavior flags table (default components).")
 
-    # Filter psychology by date range for parity
-    psyf = psy.copy()
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        start, end = date_range
-        psyf = psyf[(psyf["date"].dt.date >= start)
-                    & (psyf["date"].dt.date <= end)]
+#     # Filter psychology by date range for parity
+#     psyf = psy.copy()
+#     if isinstance(date_range, tuple) and len(date_range) == 2:
+#         start, end = date_range
+#         psyf = psyf[(psyf["date"].dt.date >= start)
+#                     & (psyf["date"].dt.date <= end)]
 
-    # headline values (use averages for the period)
-    per_val = float(psyf["PER"].mean()) if len(psyf) else 0.0
-    emr_val = float(psyf["EMR"].mean()) if len(psyf) else 0.0
-    fei_val = float(psyf["FEI"].mean()) if len(psyf) else 0.0
+#     # headline values (use averages for the period)
+#     per_val = float(psyf["PER"].mean()) if len(psyf) else 0.0
+#     emr_val = float(psyf["EMR"].mean()) if len(psyf) else 0.0
+#     fei_val = float(psyf["FEI"].mean()) if len(psyf) else 0.0
 
-    p1, p2, p3 = st.columns(3)
-    p1.metric("PER – Premature Exit Rate (%)", f"{per_val:.0f}", delta=kpi_badge_text(
-        avg_rr, lo=KPI_AVG_RR_LO, hi=KPI_AVG_RR_HI), border=True)
-    p2.metric("EMR – Emotional Management Rate (%)", f"{emr_val:.0f}", delta=kpi_badge_text(
-        avg_rr, lo=KPI_AVG_RR_LO, hi=KPI_AVG_RR_HI), border=True)
-    p3.metric("FEI – Fear Efficiency Index (%)", f"{fei_val:+.0f}", delta=kpi_badge_text(
-        avg_rr, lo=KPI_AVG_RR_LO, hi=KPI_AVG_RR_HI), border=True)
+#     p1, p2, p3 = st.columns(3)
+#     p1.metric("PER – Premature Exit Rate (%)", f"{per_val:.0f}", border=True)
+#     p2.metric("EMR – Emotional Management Rate (%)",
+#               f"{emr_val:.0f}", border=True)
+#     p3.metric("FEI – Fear Efficiency Index (%)",
+#               f"{fei_val:+.0f}", border=True)
 
 # ============================
 # 5) NOTES & OBSERVATIONS (OOR table)
@@ -542,7 +657,17 @@ with st.container(border=True):
 
     # In real app you’d compute OOR based on filtered date range + scope
     # Here we just show a realistic table layout.
-    st.dataframe(obs_df, hide_index=True)
+    st.dataframe(
+        obs_df[["title", "body"]],
+        column_config={
+            "title": "Title",
+            "body": "Observation",
+            # "OOR": st.column_config.NumberColumn("OOR", format="%0.1f"),
+            # "Linked trades": st.column_config.NumberColumn("Linked trades", format="%0.1f"),
+
+        },
+        hide_index=True
+    )
 
 # ============================
 # 6) RECENT TRADES
@@ -555,8 +680,8 @@ with st.container(border=True):
     if len(fact):
         recent = fact.sort_values("date", ascending=False).head(25).copy()
         recent["date"] = recent["date"].dt.strftime("%Y-%m-%d")
-        cols = ["date", "asset", "session", "setup", "trade_type",
-                "direction", "risk_pct", "rr", "pnl_usd"]
+        cols = ["date", "asset", "session",
+                "setup", "risk_pct", "rr", "pnl_usd"]
         recent = recent[cols]
         recent = recent.rename(
             columns={
@@ -564,7 +689,6 @@ with st.container(border=True):
                 "rr": "RR",
                 "pnl_usd": "PnL ($)",
                 "trade_quality": "Trade quality",
-                "trade_type": "Trade type",
             }
         )
         st.dataframe(
@@ -576,13 +700,11 @@ with st.container(border=True):
                 "asset": "Asset",
                 "session": "Session",
                 "setup": "Setup",
-                "trade_type": "Trade type",
-                "direction": "Direction",
                 "Risk (%)": st.column_config.NumberColumn(
-                    "Risk (%)", format="%0.2f"),
-                "RR": st.column_config.NumberColumn("RR", format="%0.2f"),
+                    "Risk (%)", format="%0.1f"),
+                "RR": st.column_config.NumberColumn("RR", format="%0.1f"),
                 "PnL ($)": st.column_config.NumberColumn(
-                    "PnL ($)", format="$0,0.00"),
+                    "PnL ($)", format="%0.01f"),
             }
         )
     else:
