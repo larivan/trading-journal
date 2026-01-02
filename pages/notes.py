@@ -28,9 +28,9 @@ with search_col:
     ).strip()
 
 with period_col:
-    raw_range = st.date_input(
-        "Period",
-        value=None,
+    date_range = st.date_input(
+        "Date",
+        value=[],
         key="notes_period",
         format="DD.MM.YYYY",
     )
@@ -43,17 +43,11 @@ with actions_col:
 # === Фильтры ===
 filters: Dict[str, Any] = {}
 
-if isinstance(raw_range, (list, tuple)):
-    values = list(raw_range)
-    if len(values) >= 2:
-        start, end = values[:2]
-        if isinstance(start, date):
-            filters["date_from"] = start.isoformat()
-        if isinstance(end, date):
-            filters["date_to"] = end.isoformat()
-elif isinstance(raw_range, date):
-    filters["date_from"] = raw_range.isoformat()
-    filters["date_to"] = raw_range.isoformat()
+if date_range:
+    if len(date_range) < 2:
+        date_range = (date_range[0], date.today())
+    filters["date_from"] = date_range[0].isoformat()
+    filters["date_to"] = date_range[1].isoformat()
 
 if query:
     filters["query"] = query

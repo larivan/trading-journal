@@ -38,27 +38,6 @@ def _open_new_analysis() -> None:
     open_dialog(ANALYSIS_DIALOG_NAME)
 
 
-def _tab_date_range(tab_key: str) -> Tuple[Optional[date], Optional[date]]:
-    today = date.today()
-    if tab_key == "today":
-        return today, today
-    if tab_key == "week":
-        start = today - timedelta(days=today.weekday())
-        return start, today
-    if tab_key == "month":
-        start = today.replace(day=1)
-        return start, today
-    if tab_key == "quarter":
-        quarter = (today.month - 1) // 3
-        month_start = quarter * 3 + 1
-        start = today.replace(month=month_start, day=1)
-        return start, today
-    if tab_key == "year":
-        start = today.replace(month=1, day=1)
-        return start, today
-    return None, None
-
-
 # === ВЕРХНЯЯ ПАНЕЛЬ С ВЫБОРОМ ПЕРИОДА ===
 period_col, _, actions_col = st.columns(
     [0.5, 0.3, 0.2], vertical_alignment="bottom"
@@ -84,41 +63,41 @@ with actions_col:
 
 # === ФИЛЬТРЫ ПЕРИОДОВ И ДОПОЛНИТЕЛЬНЫЕ НАСТРОЙКИ ===
 filters: Dict[str, Any] = {}
-date_from: Optional[date] = None
-date_to: Optional[date] = None
+date_range: Optional[Tuple[date, date]] = None
 
 label_to_key = {label: key for key, label in TAB_DEFINITIONS.items()}
 selected_key = label_to_key.get(selected_label, "today")
 
 if selected_key == "custom":
     with st.container():
-        default_from = date.today() - timedelta(days=7)
-        default_to = date.today()
         fc1, fc2, fc3, fc4, fc5, fc6 = st.columns(6)
-        raw_date_range = fc1.date_input(
+        date_range = fc1.date_input(
             "Диапазон дат",
-            value=(default_from, default_to),
+            value=(
+                date.today() - timedelta(days=7),
+                date.today()
+            ),
             format="DD.MM.YYYY",
         )
-        if isinstance(raw_date_range, (list, tuple)):
-            range_values = list(raw_date_range)
-            while len(range_values) < 2:
-                range_values.append(default_to)
-            raw_from, raw_to = range_values[:2]
-        else:
-            raw_from, raw_to = raw_date_range, default_to
-        date_from = raw_from if isinstance(raw_from, date) else default_from
-        date_to = raw_to if isinstance(raw_to, date) else default_to
-        asset_choice = fc2.selectbox("Инструмент", ["Все"] + ASSETS_VALUES)
+        asset_choice = fc2.selectbox(
+            "Инструмент",
+            ["Все"] + ASSETS_VALUES
+        )
         daily_bias_choice = fc3.selectbox(
-            "Daily bias", ["Все"] + DAILY_BIAS_VALUES)
+            "Daily bias",
+            ["Все"] + DAILY_BIAS_VALUES
+        )
         fact_bias_choice = fc4.selectbox(
-            "Fact bias", ["Все"] + DAILY_BIAS_VALUES)
+            "Fact bias",
+            ["Все"] + DAILY_BIAS_VALUES
+        )
         day_result_choice = fc5.selectbox(
-            "Результат", ["Все"] + DAY_RESULT_VALUES
+            "Результат",
+            ["Все"] + DAY_RESULT_VALUES
         )
         state_choice = fc6.selectbox(
-            "Тип анализа", ["Все"] + ANALYSIS_STATE_VALUES
+            "Тип анализа",
+            ["Все"] + ANALYSIS_STATE_VALUES
         )
 
     if asset_choice != "Все":
@@ -132,12 +111,25 @@ if selected_key == "custom":
     if state_choice != "Все":
         filters["state"] = state_choice
 else:
-    date_from, date_to = _tab_date_range(selected_key)
+    today = date.today()
+    if selected_key == "today":
+        date_range = (today, today)
+    elif selected_key == "week":
+        date_range = (today - timedelta(days=today.weekday()), today)
+    elif selected_key == "month":
+        date_range = (today.replace(day=1), today)
+    elif selected_key == "quarter":
+        quarter = (today.month - 1) // 3
+        quarter_start_month = quarter * 3 + 1
+        date_range = (today.replace(month=quarter_start_month, day=1), today)
+    elif selected_key == "year":
+        date_range = (today.replace(month=1, day=1), today)
 
-if date_from:
-    filters["date_from"] = date_from.isoformat()
-if date_to:
-    filters["date_to"] = date_to.isoformat()
+if date_range:
+    if len(date_range) < 2:
+        date_range = (date_range[0], date.today())
+    filters["date_from"] = date_range[0].isoformat()
+    filters["date_to"] = date_range[1].isoformat()
 
 # === ЗАГРУЗКА ДАННЫХ ДЛЯ ОТОБРАЖЕНИЯ ===
 rows = list_analysis(filters)

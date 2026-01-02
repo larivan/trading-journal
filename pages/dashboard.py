@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import altair as alt
 import streamlit as st
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 from datetime import date, timedelta
 from helpers import (
     to_option_format,
@@ -254,7 +254,7 @@ with account_col:
 
 
 # === ПРИМЕНЕНИЕ ПЕРИОДОВ И КАСТОМНЫХ ФИЛЬТРОВ ===
-date_range: Optional[date] = None
+date_range: Optional[Tuple[date, date]] = None
 label_to_key = {label: key for key, label in PERIOD_TABS.items()}
 selected_key = label_to_key.get(selected_label, "quarter")
 
