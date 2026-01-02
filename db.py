@@ -23,7 +23,7 @@ TRADE_ORDER_COLUMNS = {
     "analysis_id",
     "asset",
     "state",
-    "result",
+    "is_missed",
     "session",
     "net_pnl",
     "risk_reward",
@@ -283,7 +283,7 @@ CREATE TABLE IF NOT EXISTS trades (
     asset              TEXT NOT NULL,
     session            TEXT NOT NULL,
     state              TEXT NOT NULL,
-    result             TEXT,
+    is_missed          INTEGER DEFAULT 0,
     net_pnl            REAL,
     risk_pct           REAL,
     risk_reward        REAL,
@@ -372,7 +372,6 @@ CREATE TABLE IF NOT EXISTS trade_notes (
 CREATE INDEX IF NOT EXISTS idx_trades_date_local   ON trades(date_local);
 CREATE INDEX IF NOT EXISTS idx_trades_account      ON trades(account_id);
 CREATE INDEX IF NOT EXISTS idx_trades_asset        ON trades(asset);
-CREATE INDEX IF NOT EXISTS idx_trades_result       ON trades(result);
 CREATE INDEX IF NOT EXISTS idx_trades_setup        ON trades(setup_id);
 
 CREATE INDEX IF NOT EXISTS idx_analysis_date_local         ON analysis(date_local);
@@ -1361,7 +1360,7 @@ WRITABLE_TRADE_FIELDS = [
     "risk_pct",
     "session",
     "state",
-    "result",
+    "is_missed",
     "net_pnl",
     "risk_reward",
     "reward_percent",
@@ -1450,7 +1449,7 @@ TRADE_COLUMNS = [
     "risk_pct",
     "session",
     "state",
-    "result",
+    "is_missed",
     "net_pnl",
     "risk_reward",
     "reward_percent",
@@ -1477,7 +1476,7 @@ def list_trades(
         "setup_id": "setup_id",
         "analysis_id": "analysis_id",
         "state": "state",
-        "result": "result",
+        "is_missed": "is_missed",
         "session": "session",
         "estimation": "estimation",
         "date_from": "date_local >= ?",

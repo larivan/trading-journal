@@ -14,6 +14,7 @@ def get_trade_defaults(
     return {
         "state": trade.get("state") or "Open",
         "open": {
+            "is_missed": trade.get("is_missed", 0),
             "date": parse_date(trade.get("date_local")),
             "time": parse_time(trade.get("time_local")),
             "account": trade.get("account_id") or accounts[0]["value"] if accounts else None,
@@ -28,10 +29,10 @@ def get_trade_defaults(
             "risk_reward": float(trade.get("risk_reward") or 0.0),
             "reward_percent": float(trade.get("reward_percent") or 0.0),
             "hot_thoughts": trade.get("hot_thoughts") or "",
-            "estimation": trade.get("estimation"),
         },
         "review": {
             "cold_thoughts": trade.get("cold_thoughts") or "",
+            "estimation": trade.get("estimation"),
         },
     }
 

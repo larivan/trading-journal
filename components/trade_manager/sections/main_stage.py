@@ -20,7 +20,12 @@ def render_main_stage(
     """Отрисовывает блок открытия сделки (дата, счёт, сетап и риск)."""
     data = defaults.copy()
 
-    with st.expander("Open", expanded=expanded):
+    with st.expander("Main", expanded=expanded):
+        data["is_missed"] = st.toggle(
+            "Is trade missed?",
+            value=data.get("is_missed", 0),
+            key=f"{state_key}_is_missed"
+        )
         oc1, oc2 = st.columns(2)
         data["date"] = oc1.date_input(
             "Date",

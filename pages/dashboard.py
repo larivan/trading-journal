@@ -298,16 +298,15 @@ if data_df.empty:
 # ----------------------------
 # Overview (with Sample size warning)
 # ----------------------------
-fact = data_df[data_df["result"].isin(["Win", "Loss", "BE"])].copy()
-missed = data_df[data_df["result"] == "Miss"].copy()
+fact = data_df[data_df["is_missed"] == 0].copy()
+missed = data_df[data_df["is_missed"] == 1].copy()
 bias_winrate = (data_df["fact_bias"] ==
                 data_df["daily_bias"]).mean() if len(data_df) else 0.0
 # Fact winrate calculation
-fact_wins = fact[fact["result"] == "Win"]
+fact_wins = fact[fact["net_pnl"] > 0]
 fact_winrate = (len(fact_wins) / max(len(fact), 1)) if len(fact) else 0.0
 # Potential winrate calculation
-miss_trades = data_df[data_df["result"] == "Miss"]
-miss_win_trades = miss_trades[miss_trades["reward_percent"] > 0]
+miss_win_trades = missed[missed["reward_percent"] > 0]
 potential_winrate = (len(fact_wins) + len(miss_win_trades)) / \
     max(len(data_df), 1) if len(data_df) else 0.0
 

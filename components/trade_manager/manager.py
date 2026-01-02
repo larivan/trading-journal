@@ -155,6 +155,7 @@ def render_trade_manager() -> None:
                 expanded=(selected_state == "Outcome"),
                 defaults=defaults['outcome'],
                 state_key=f"{state_key}_outcome",
+                is_missed=main_values["is_missed"],
                 on_change=_calculate_rewards,
             )
 
@@ -224,6 +225,7 @@ def render_trade_manager() -> None:
             "risk_pct": float(main_values["risk_pct"]),
             "session": session_value,
             "state": selected_state,
+            "is_missed": int(main_values["is_missed"]),
         }
 
         if outcome_values:
@@ -233,12 +235,12 @@ def render_trade_manager() -> None:
                 "risk_reward": outcome_values["risk_reward"],
                 "reward_percent": outcome_values["reward_percent"],
                 "hot_thoughts": outcome_values["hot_thoughts"].strip() or None,
-                "estimation": outcome_values["estimation"],
             })
 
         if review_values:
             payload.update({
                 "cold_thoughts": review_values["cold_thoughts"].strip() or None,
+                "estimation": review_values["estimation"],
             })
 
         base_note_ids = {
@@ -325,14 +327,14 @@ def _calculate_rewards() -> None:
 
     widget_keys = {
         "risk_pct": f"{state_key}_main_risk_pct",
-        "result": f"{state_key}_outcome_result",
+        "is_missed": f"{state_key}_main_is_missed",
         "net_pnl": f"{state_key}_outcome_net_pnl",
         "risk_reward": f"{state_key}_outcome_risk_reward",
         "reward_percent": f"{state_key}_outcome_reward_percent",
     }
 
     risk_pct = st.session_state.get(widget_keys["risk_pct"])
-    result = st.session_state.get(widget_keys["result"])
+    is_missed = st.session_state.get(widget_keys["is_missed"])
     net_pnl = st.session_state.get(widget_keys["net_pnl"])
     risk_reward = st.session_state.get(widget_keys["risk_reward"])
     account = st.session_state.get(f"{state_key}_main_account")
@@ -340,8 +342,8 @@ def _calculate_rewards() -> None:
     account_balance = _get_account_balance(account_id)
     if not account_balance or not risk_pct:
         return
-    if result == "Miss":
-        if risk_reward is None or risk_reward <= 0:
+    if is_missed:
+        if risk_reward is None:
             return
         st.session_state[widget_keys["net_pnl"]] = float(0)
         st.session_state[widget_keys["reward_percent"]
