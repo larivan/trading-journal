@@ -6,13 +6,15 @@ from typing import Dict, Any, Optional, Tuple
 from datetime import date, timedelta
 from helpers import (
     to_option_format,
-    custom_selectbox
+    custom_selectbox,
+    get_excerpt
 )
 from db import (
     list_trades,
     list_analysis,
     list_accounts,
     list_notes,
+    list_trade_notes,
 )
 
 # ----------------------------
@@ -72,11 +74,37 @@ def prepare_trades_df() -> pd.DataFrame:
 
 def prepare_observations_df() -> pd.DataFrame:
     obs = list_notes()
+    trades = list_trades()
 
     if not obs:
         return pd.DataFrame()
 
-    return pd.DataFrame(obs)
+    obs_df = pd.DataFrame(obs)
+    obs_df["excerpt"] = obs_df["body"].apply(
+        lambda x: get_excerpt(x, 60)
+    )
+    linked_counts = {}
+    if trades:
+        for trade in trades:
+            trade_id = trade.get("id")
+            if trade_id is None:
+                continue
+            for note in list_trade_notes(trade_id):
+                note_id = note.get("id")
+                if note_id is None:
+                    continue
+                linked_counts[note_id] = linked_counts.get(note_id, 0) + 1
+
+    obs_df["linked_trades"] = (
+        obs_df["id"].map(linked_counts).fillna(0).astype(int)
+    )
+    total_trades = len(trades) if trades else 0
+    if total_trades:
+        obs_df["oor"] = obs_df["linked_trades"] / total_trades * 100
+    else:
+        obs_df["oor"] = 0.0
+
+    return obs_df
 
 # ----------------------------
 # Helpers
@@ -605,7 +633,8 @@ with st.container(border=True):
         with right:
             # Bar chart (Total RR)
             bar_df = table_df[[table_df.columns[0], "Total_RR"]].rename(
-                columns={table_df.columns[0]                         : "Category", "Total_RR": "Total RR"}
+                columns={table_df.columns[0]
+                    : "Category", "Total_RR": "Total RR"}
             )
             chart = total_rr_bar(
                 bar_df, category_col="Category", value_col="Total RR")
@@ -657,12 +686,14 @@ with st.container(border=True):
     # In real app you’d compute OOR based on filtered date range + scope
     # Here we just show a realistic table layout.
     st.dataframe(
-        obs_df[["title", "body"]],
+        obs_df[["excerpt", "linked_trades", "oor"]],
         column_config={
-            "title": "Title",
-            "body": "Observation",
-            # "OOR": st.column_config.NumberColumn("OOR", format="%0.1f"),
-            # "Linked trades": st.column_config.NumberColumn("Linked trades", format="%0.1f"),
+            "excerpt": "Excerpt",
+            "linked_trades": st.column_config.NumberColumn(
+                "Linked trades",
+                format="%0.0f",
+            ),
+            "oor": st.column_config.NumberColumn("OOR (%)", format="%0.1f"),
 
         },
         hide_index=True

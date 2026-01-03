@@ -91,11 +91,9 @@ NOTE_ORDER_COLUMNS = {
     "id": "id",
     "date_local": "date_local",
     "time_local": "time_local",
-    "title": "title",
 }
 
 NOTE_WRITABLE_FIELDS = [
-    "title",
     "body",
     "date_local",
     "time_local",
@@ -103,9 +101,7 @@ NOTE_WRITABLE_FIELDS = [
 
 NOTE_SELECT_COLUMNS = [
     "id",
-    "title",
     "body",
-    "body AS body_plain",
     "date_local",
     "time_local",
 ]
@@ -318,7 +314,6 @@ CREATE TABLE IF NOT EXISTS setups (
 
 CREATE TABLE IF NOT EXISTS notes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    title       TEXT,
     body        TEXT NOT NULL,
     date_local  TEXT NOT NULL,
     time_local  TEXT NOT NULL
@@ -555,7 +550,6 @@ def create_note(
         raise ValueError("body обязательно для заметки.")
 
     payload["body"] = body_value
-    payload["title"] = (payload.get("title") or "") or None
     payload.setdefault("date_local", date.today().isoformat())
     payload.setdefault("time_local", datetime.now().strftime("%H:%M:%S"))
 
@@ -600,8 +594,8 @@ def list_notes(
             params.append(value)
         elif key == "query":
             pattern = f"%{value}%"
-            q += " AND (title LIKE ? OR body LIKE ?)"
-            params.extend([pattern, pattern])
+            q += " AND (body LIKE ?)"
+            params.append(pattern)
 
     if order_by:
         if order_by not in NOTE_ORDER_COLUMNS:
@@ -643,8 +637,6 @@ def update_note(
         if not body_value:
             raise ValueError("body обязательно для заметки.")
         payload["body"] = body_value
-    if "title" in payload:
-        payload["title"] = (payload["title"] or "").strip() or None
     if not payload:
         return
 

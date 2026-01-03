@@ -71,7 +71,7 @@ def render_post_stage(
                 entity_id=stage_data.get("stage_id") if stage_data else None,
                 state_key=f"{state_key}_note_selector",
                 previous_dialog_name=None,
-                excerpt_limit=45,
+                excerpt_limit=120,
                 base_notes=stage_data.get("notes") if stage_data else None,
             )
 

@@ -180,7 +180,7 @@ def render_trade_manager() -> None:
                 entity_id=trade_id,
                 state_key=f"{state_key}_note_selector",
                 previous_dialog_name=TRADE_DIALOG_NAME,
-                excerpt_limit=45,
+                excerpt_limit=120,
             )
 
         if not submitted:

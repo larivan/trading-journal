@@ -1,10 +1,15 @@
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 import streamlit as st
 from components.entity_table import render_entity_table
 from components.note_manager import render_note_manager
 from db import delete_note, list_notes
-from helpers import apply_page_config_from_file, format_local_date, format_local_time
+from helpers import (
+    apply_page_config_from_file,
+    format_local_date,
+    format_local_time,
+    get_excerpt
+)
 from utils.session_state import open_dialog
 from config import (
     NOTE_DIALOG_NAME,
@@ -59,13 +64,6 @@ rows = list_notes(
 )
 
 
-def _excerpt(value: Optional[str], limit: int = 120) -> str:
-    if not value:
-        return ""
-    text = value.strip()
-    return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
-
-
 note_columns: List[Dict[str, Any]] = [
     {
         "field": "date_local",
@@ -80,12 +78,11 @@ note_columns: List[Dict[str, Any]] = [
         "id": "time_local",
         "format": format_local_time,
     },
-    {"field": "title", "label": "Title", "id": "title"},
     {
-        "field": "body_plain",
-        "label": "Preview",
-        "compute": lambda row: _excerpt(row.get("body_plain")),
-        "id": "preview",
+        "field": "excerpt",
+        "label": "Excerpt",
+        "compute": lambda row: get_excerpt(row.get("body"), 60),
+        "id": "excerpt",
     },
 ]
 

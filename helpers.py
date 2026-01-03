@@ -158,3 +158,10 @@ def format_number(value: Any) -> str:
         return f"{float(value):.2f}"
     except (TypeError, ValueError):
         return str(value)
+
+
+def get_excerpt(value: Optional[str], limit: int) -> str:
+    if not value:
+        return ""
+    text = value.strip()
+    return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
