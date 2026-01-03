@@ -47,33 +47,45 @@ def render_account_manager() -> None:
 
     @st.dialog(
         _get_dialog_title(account, is_new),
-        width="medium",
+        width="small",
         on_dismiss=_handle_dialog_dismiss,
     )
     def _dialog() -> None:
-        name_value = st.text_input(
-            "Name",
-            value=account.get("name") or "",
-            key=f"{state_key}_name",
-            placeholder="Account name",
-        )
-        broker_value = st.text_input(
-            "Broker",
-            value=account.get("broker") or "",
-            key=f"{state_key}_broker",
-            placeholder="Optional",
-        )
-        balance_value = st.number_input(
-            "Starting balance",
-            value=float(account.get("starting_balance") or 0.0),
-            key=f"{state_key}_starting_balance",
-            step=0.1,
-        )
-        is_prop_value = st.checkbox(
-            "Prop account",
-            value=bool(account.get("is_prop")),
-            key=f"{state_key}_is_prop",
-        )
+        if is_new:
+            name_value = st.text_input(
+                "Name",
+                value=account.get("name") or "",
+                key=f"{state_key}_name",
+                placeholder="Account name",
+            )
+            broker_value = st.text_input(
+                "Broker",
+                value=account.get("broker") or "",
+                key=f"{state_key}_broker",
+                placeholder="Optional",
+            )
+            balance_value = st.number_input(
+                "Starting balance",
+                value=float(account.get("starting_balance") or 0.0),
+                key=f"{state_key}_starting_balance",
+                step=0.1,
+            )
+            is_prop_value = st.checkbox(
+                "Prop account",
+                value=bool(account.get("is_prop")),
+                key=f"{state_key}_is_prop",
+            )
+        else:
+            if account.get('is_prop'):
+                st.badge("Prop Account", color="blue")
+            st.markdown(
+                f"**Broker:** {account.get('broker') or 'N/A'}"
+            )
+            st.markdown(
+                f"**Starting balance:** ${float(account.get('starting_balance') or 0.0):,.2f}"
+            )
+            balance_value = float(account.get("starting_balance") or 0.0)
+            is_prop_value = bool(account.get("is_prop"))
         archived = bool(account.get("archived"))
 
         c1, c2, c3 = st.columns(3)
