@@ -76,18 +76,19 @@ def render_account_manager() -> None:
                 key=f"{state_key}_is_prop",
             )
         else:
-            if account.get('is_prop'):
-                st.badge("Prop Account", color="blue")
+            if bool(account.get("is_prop")) or bool(account.get("archived")):
+                st.markdown(
+                    f"""{':blue-badge[Prop Account]' if bool(account.get("is_prop")) else ''}
+                    {':gray-badge[Archived]' if bool(account.get("archived")) else ''}"""
+                )
             st.markdown(
                 f"**Broker:** {account.get('broker') or 'N/A'}"
             )
             st.markdown(
                 f"**Starting balance:** ${float(account.get('starting_balance') or 0.0):,.2f}"
             )
-            balance_value = float(account.get("starting_balance") or 0.0)
-            is_prop_value = bool(account.get("is_prop"))
-        archived = bool(account.get("archived"))
 
+        archived = bool(account.get("archived"))
         c1, c2, c3 = st.columns(3)
         save_clicked = c1.button(
             "Save",
