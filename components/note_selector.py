@@ -9,22 +9,15 @@ import streamlit as st
 from config import NOTE_DIALOG_NAME, NOTE_ID_STATE
 from db import delete_note, list_analysis_stage_notes, list_notes, list_trade_notes
 from utils.session_state import open_dialog, set_previous_dialog
+from helpers import get_excerpt
 
 EntityType = Literal["trade", "analysis_stage"]
-
-
-def _excerpt(text: Optional[str], limit: int = 45) -> str:
-    value = (text or "").strip()
-    if len(value) <= limit:
-        return value
-    return value[: limit - 1].rstrip() + "…"
 
 
 def _note_payload(note: Dict[str, Any], *, limit: int) -> Dict[str, Any]:
     return {
         "id": note.get("id"),
-        "title": (note.get("title") or "Untitled").strip(),
-        "excerpt": _excerpt(note.get("body") or note.get("body_plain"), limit),
+        "excerpt": get_excerpt(note.get("body"), limit),
         "date_local": note.get("date_local"),
         "time_local": note.get("time_local"),
     }
@@ -187,17 +180,9 @@ _COMPONENT_CSS = """
   gap: 0.15rem;
   min-width: 0;
 }
-.ns-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #1f2a3a;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .ns-excerpt {
-  font-size: 0.85rem;
-  color: rgba(31, 42, 58, 0.72);
+  font-size: 0.95rem;
+  color: #1f2a3a;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -383,7 +368,6 @@ const normalizeNotes = (items, limit) => {
   return items
     .map((note) => ({
       id: note.id,
-      title: (note.title || "Untitled").trim(),
       excerpt: (note.excerpt || "").trim(),
       date_local: note.date_local,
       time_local: note.time_local,
@@ -407,7 +391,7 @@ export default function (component) {
 
   let attached = normalizeNotes(data.attached || [], data.excerpt_limit);
   let allNotes = normalizeNotes(data.all_notes || [], data.excerpt_limit);
-  const excerptLimit = Number(data.excerpt_limit) || 45;
+  const excerptLimit = Number(data.excerpt_limit) || 120;
   let selected = new Set();
 
   const emitEvent = (payload) => {
@@ -455,13 +439,9 @@ export default function (component) {
 
       const body = document.createElement("div");
       body.className = "ns-card__body";
-      const title = document.createElement("div");
-      title.className = "ns-title";
-      title.textContent = note.title || "Untitled";
       const excerpt = document.createElement("div");
       excerpt.className = "ns-excerpt";
       excerpt.textContent = note.excerpt || "";
-      body.appendChild(title);
       body.appendChild(excerpt);
 
       const openBtn = document.createElement("button");
@@ -519,10 +499,7 @@ export default function (component) {
     allNotes
       .filter((note) => {
         if (!q) return true;
-        return (
-          (note.title || "").toLowerCase().includes(q) ||
-          (note.excerpt || "").toLowerCase().includes(q)
-        );
+        return (note.excerpt || "").toLowerCase().includes(q);
       })
       .forEach((note) => {
         const item = document.createElement("div");
@@ -534,13 +511,9 @@ export default function (component) {
 
         const body = document.createElement("div");
         body.className = "ns-browse-item__body";
-        const title = document.createElement("div");
-        title.className = "ns-browse-item__title";
-        title.textContent = note.title || "Untitled";
         const excerpt = document.createElement("div");
         excerpt.className = "ns-browse-item__excerpt";
         excerpt.textContent = note.excerpt || "";
-        body.appendChild(title);
         body.appendChild(excerpt);
 
         const meta = document.createElement("div");
@@ -625,7 +598,7 @@ def render_note_selector(
     entity_id: Optional[int] = None,
     state_key: str,
     previous_dialog_name: Optional[str] = None,
-    excerpt_limit: int = 45,
+    excerpt_limit: int = 120,
     base_notes: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> List[int]:
     """Рендерит селектор и возвращает стадированный список id заметок."""

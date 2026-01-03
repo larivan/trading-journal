@@ -53,12 +53,11 @@ period_col, _, actions_col = st.columns(
 )
 with period_col:
     period_key = "trade_current_period_label"
-    if not st.session_state.get(period_key, None):
-        st.session_state[period_key] = 'Today'
+    if not st.session_state.get(period_key):
+        st.session_state[period_key] = list(TAB_DEFINITIONS.values())[0]
     selected_label = st.segmented_control(
         "Период",
         options=TAB_DEFINITIONS.values(),
-        default=list(TAB_DEFINITIONS.values())[0],
         key=period_key,
         width="stretch",
     )
@@ -73,8 +72,7 @@ with actions_col:
 
 # === ПРИМЕНЕНИЕ ПЕРИОДОВ И КАСТОМНЫХ ФИЛЬТРОВ ===
 filter: Dict[str, Any] = {}
-date_from: Optional[date] = None
-date_to: Optional[date] = None
+date_range: Optional[Tuple[date, date]] = None
 account_id: Optional[int] = None
 
 label_to_key = {label: key for key, label in TAB_DEFINITIONS.items()}
@@ -83,7 +81,7 @@ selected_key = label_to_key.get(selected_label, "today")
 if selected_key == "custom":
     with st.container():
         fc1, fc2, fc3, fc4, fc5, fc6, fc7 = st.columns(7)
-        date_from, date_to = fc1.date_input(
+        date_range = fc1.date_input(
             "Диапазон дат",
             value=(
                 date.today() - timedelta(days=7),
@@ -146,26 +144,23 @@ if selected_key == "custom":
 else:
     today = date.today()
     if selected_key == "today":
-        date_from, date_to = today, today
+        date_range = (today, today)
     elif selected_key == "week":
-        date_from = today - timedelta(days=today.weekday())
-        date_to = today
+        date_range = (today - timedelta(days=today.weekday()), today)
     elif selected_key == "month":
-        date_from = today.replace(day=1)
-        date_to = today
+        date_range = (today.replace(day=1), today)
     elif selected_key == "quarter":
         quarter = (today.month - 1) // 3
         quarter_start_month = quarter * 3 + 1
-        date_from = today.replace(month=quarter_start_month, day=1)
-        date_to = today
+        date_range = (today.replace(month=quarter_start_month, day=1), today)
     elif selected_key == "year":
-        date_from = today.replace(month=1, day=1)
-        date_to = today
+        date_range = (today.replace(month=1, day=1), today)
 
-if date_from:
-    filter["date_from"] = date_from.isoformat()
-if date_to:
-    filter["date_to"] = date_to.isoformat()
+if date_range:
+    if len(date_range) < 2:
+        date_range = (date_range[0], date.today())
+    filter["date_from"] = date_range[0].isoformat()
+    filter["date_to"] = date_range[1].isoformat()
 
 # === ЗАГРУЗКА ДАННЫХ И ОПРЕДЕЛЕНИЕ КОЛОНОК ===
 rows = list_trades(filter)

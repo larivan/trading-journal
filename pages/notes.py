@@ -1,10 +1,15 @@
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 import streamlit as st
-from components.entity_table import render_entity_table
+from components.entity_gallery import render_entity_gallery
 from components.note_manager import render_note_manager
 from db import delete_note, list_notes
-from helpers import apply_page_config_from_file, format_local_date, format_local_time
+from helpers import (
+    apply_page_config_from_file,
+    format_local_date,
+    format_local_time,
+    get_excerpt
+)
 from utils.session_state import open_dialog
 from config import (
     NOTE_DIALOG_NAME,
@@ -28,9 +33,9 @@ with search_col:
     ).strip()
 
 with period_col:
-    raw_range = st.date_input(
-        "Period",
-        value=None,
+    date_range = st.date_input(
+        "Date",
+        value=[],
         key="notes_period",
         format="DD.MM.YYYY",
     )
@@ -43,17 +48,11 @@ with actions_col:
 # === Фильтры ===
 filters: Dict[str, Any] = {}
 
-if isinstance(raw_range, (list, tuple)):
-    values = list(raw_range)
-    if len(values) >= 2:
-        start, end = values[:2]
-        if isinstance(start, date):
-            filters["date_from"] = start.isoformat()
-        if isinstance(end, date):
-            filters["date_to"] = end.isoformat()
-elif isinstance(raw_range, date):
-    filters["date_from"] = raw_range.isoformat()
-    filters["date_to"] = raw_range.isoformat()
+if date_range:
+    if len(date_range) < 2:
+        date_range = (date_range[0], date.today())
+    filters["date_from"] = date_range[0].isoformat()
+    filters["date_to"] = date_range[1].isoformat()
 
 if query:
     filters["query"] = query
@@ -65,13 +64,6 @@ rows = list_notes(
 )
 
 
-def _excerpt(value: Optional[str], limit: int = 120) -> str:
-    if not value:
-        return ""
-    text = value.strip()
-    return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
-
-
 note_columns: List[Dict[str, Any]] = [
     {
         "field": "date_local",
@@ -79,19 +71,21 @@ note_columns: List[Dict[str, Any]] = [
         "compute": lambda row: row.get("date_local"),
         "format": format_local_date,
         "id": "date_local",
+        "role": "detail"
     },
     {
         "field": "time_local",
         "label": "Time",
         "id": "time_local",
         "format": format_local_time,
+        "role": "hidden"
     },
-    {"field": "title", "label": "Title", "id": "title"},
     {
-        "field": "body_plain",
-        "label": "Preview",
-        "compute": lambda row: _excerpt(row.get("body_plain")),
-        "id": "preview",
+        "field": "excerpt",
+        "label": "Excerpt",
+        "compute": lambda row: get_excerpt(row.get("body"), 60),
+        "id": "excerpt",
+        "role": "text"
     },
 ]
 
@@ -116,13 +110,13 @@ def _delete_notes(ids: List[Any]) -> None:
 
 
 table_key = "notes_table"
-render_entity_table(
+render_entity_gallery(
     entity_name="note",
     key=table_key,
     rows=rows,
     columns=note_columns,
     empty_message="Нет заметок.",
-    page_size=100,
+    page_size=30,
     on_open=_open_note,
     on_delete=_delete_notes,
 )
