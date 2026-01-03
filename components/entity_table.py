@@ -724,7 +724,7 @@ def render_entity_table(
 
     open_id = result.get("open")
     delete_ids = result.get("delete")
-
+    st.write(result)
     if on_open is not None and open_id is not None:
         row = id_to_row.get(open_id)
         if row is not None:

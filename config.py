@@ -25,6 +25,12 @@ PAGES = {
         'default': False,
         'layout': 'wide',
     },
+    'setups': {
+        'title': 'Setups',
+        'icon': ':material/grid_view:',
+        'default': False,
+        'layout': 'wide',
+    },
     'accounts': {
         'title': 'Accounts',
         'icon': ':material/account_balance_wallet:',
@@ -67,3 +73,9 @@ NOTE_DIALOG_NAME = "note_manager"
 NOTE_ID_STATE = "nm_note_id"
 NOTE_SUCCESS_STATE = "nm_success_message"
 NOTE_MANAGER_KEY_PREFIX = "nm_note_id_"
+
+# Setups
+SETUP_DIALOG_NAME = "setup_manager"
+SETUP_ID_STATE = "sm_setup_id"
+SETUP_SUCCESS_STATE = "sm_success_message"
+SETUP_MANAGER_KEY_PREFIX = "sm_setup_id_"

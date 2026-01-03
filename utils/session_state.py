@@ -4,13 +4,14 @@ from typing import Any, Dict, Literal, Optional, Sequence
 
 import streamlit as st
 
-EntityName = Literal["trade", "analysis", "note", "account"]
+EntityName = Literal["trade", "analysis", "note", "account", "setup"]
 
 _ENTITY_SELECTED_KEYS: Dict[EntityName, str] = {
     "trade": "selected_trade_id",
     "analysis": "selected_analysis_id",
     "note": "selected_note_id",
     "account": "selected_account_id",
+    "setup": "selected_setup_id",
 }
 
 
