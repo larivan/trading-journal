@@ -3,7 +3,7 @@ from typing import Any, Dict, List
 import streamlit as st
 
 from components.account_manager import render_account_manager
-from components.entity_table import render_entity_table
+from components.entity_gallery import render_entity_gallery
 from config import ACCOUNT_DIALOG_NAME, ACCOUNT_ID_STATE
 from db import delete_account, list_accounts
 from helpers import apply_page_config_from_file
@@ -26,26 +26,23 @@ def _bool_label(value: Any) -> str:
 
 
 account_columns: List[Dict[str, Any]] = [
-    {"field": "name", "label": "Name", "id": "name"},
-    {"field": "broker", "label": "Broker", "id": "broker"},
+    {
+        "field": "name",
+        "label": "Name",
+        "id": "name",
+        "role": "title"
+    },
+    {
+        "field": "broker",
+        "label": "Broker",
+        "id": "broker"
+    },
     {
         "field": "starting_balance",
         "label": "Starting balance",
         "id": "starting_balance",
         "format": lambda v: f"{float(v):.2f}" if v is not None else "",
-    },
-    {
-        "field": "is_prop",
-        "label": "Prop",
-        "id": "is_prop",
-        "format": _bool_label,
-    },
-    {
-        "field": "archived",
-        "label": "Archived",
-        "id": "archived",
-        "format": _bool_label,
-    },
+    }
 ]
 
 
@@ -64,18 +61,19 @@ def _delete_accounts(ids: List[Any]) -> None:
         try:
             delete_account(int(account_id))
         except Exception as exc:
-            st.toast(f"Failed to delete account #{account_id}: {exc}", icon="❌")
+            st.toast(
+                f"Failed to delete account #{account_id}: {exc}", icon="❌")
     st.rerun()
 
 
 table_key = "accounts_table"
-render_entity_table(
+render_entity_gallery(
     entity_name="account",
     key=table_key,
     rows=rows,
     columns=account_columns,
     empty_message="Нет аккаунтов.",
-    page_size=100,
+    page_size=9,
     on_open=_open_account,
     on_delete=_delete_accounts,
 )

@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any, Dict, List
 import streamlit as st
-from components.entity_table import render_entity_table
+from components.entity_gallery import render_entity_gallery
 from components.note_manager import render_note_manager
 from db import delete_note, list_notes
 from helpers import (
@@ -71,18 +71,21 @@ note_columns: List[Dict[str, Any]] = [
         "compute": lambda row: row.get("date_local"),
         "format": format_local_date,
         "id": "date_local",
+        "role": "detail"
     },
     {
         "field": "time_local",
         "label": "Time",
         "id": "time_local",
         "format": format_local_time,
+        "role": "hidden"
     },
     {
         "field": "excerpt",
         "label": "Excerpt",
         "compute": lambda row: get_excerpt(row.get("body"), 60),
         "id": "excerpt",
+        "role": "text"
     },
 ]
 
@@ -107,13 +110,13 @@ def _delete_notes(ids: List[Any]) -> None:
 
 
 table_key = "notes_table"
-render_entity_table(
+render_entity_gallery(
     entity_name="note",
     key=table_key,
     rows=rows,
     columns=note_columns,
     empty_message="Нет заметок.",
-    page_size=100,
+    page_size=30,
     on_open=_open_note,
     on_delete=_delete_notes,
 )

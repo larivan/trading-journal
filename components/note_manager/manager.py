@@ -67,12 +67,6 @@ def render_note_manager() -> None:
         on_dismiss=_handle_dialog_dismiss,
     )
     def _dialog() -> None:
-        title_value = st.text_input(
-            "Title",
-            value=note.get("title") or "",
-            key=f"{state_key}_title",
-            placeholder="Optional",
-        )
         body_value = st.text_area(
             "Content",
             value=note.get("body") or "",
@@ -132,7 +126,6 @@ def render_note_manager() -> None:
 
             now_value = datetime.now()
             payload: Dict[str, Any] = {
-                "title": (title_value or "").strip() or None,
                 "body": body_clean,
                 "date_local": now_value.date().isoformat(),
                 "time_local": now_value.strftime("%H:%M:%S"),

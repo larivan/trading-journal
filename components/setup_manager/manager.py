@@ -51,7 +51,8 @@ def render_setup_manager() -> None:
             return
 
     state_key = f"{SETUP_MANAGER_KEY_PREFIX}{setup_id or 'new'}"
-    charts: List[Dict[str, Any]] = list_charts(setup_id=setup_id) if setup_id else []
+    charts: List[Dict[str, Any]] = list_charts(
+        setup_id=setup_id) if setup_id else []
 
     @st.dialog(
         _get_dialog_title(setup, is_new),
@@ -65,19 +66,18 @@ def render_setup_manager() -> None:
             key=f"{state_key}_name",
             placeholder="Setup name",
         )
+        st.markdown("#### Charts")
+        chart_values = render_chart_editor(
+            key=f"{state_key}_charts",
+            base_rows=chart_table_rows(charts),
+            layout_columns=2,
+        )
         description_value = st.text_area(
             "Description",
             value=setup.get("description") or "",
             height=200,
             key=f"{state_key}_description",
             placeholder="Optional",
-        )
-
-        st.markdown("#### Charts")
-        chart_values = render_chart_editor(
-            key=f"{state_key}_charts",
-            base_rows=chart_table_rows(charts),
-            layout_columns=2,
         )
 
         st.divider()
