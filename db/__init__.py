@@ -1,0 +1,173 @@
+# db/ package - SQLite database layer for Trade Journal
+# Re-exports all public functions for backwards compatibility
+
+from db.connection import (
+    get_conn,
+    transaction,
+    init_db,
+    DB_PATH,
+    BASE_DIR,
+)
+
+from db.accounts import (
+    create_account,
+    list_accounts,
+    get_account,
+    update_account,
+    delete_account,
+    set_account_archived,
+)
+
+from db.setups import (
+    create_setup,
+    list_setups,
+    get_setup,
+    update_setup,
+    delete_setup,
+    SETUP_SELECT_COLUMNS,
+    SETUP_WRITABLE_FIELDS,
+    SETUP_ORDER_COLUMNS,
+)
+
+from db.notes import (
+    create_note,
+    list_notes,
+    get_note,
+    update_note,
+    delete_note,
+    attach_note_to_trade,
+    detach_note_from_trade,
+    list_trade_notes,
+    attach_note_to_analysis_stage,
+    detach_note_from_analysis_stage,
+    list_analysis_stage_notes,
+    NOTE_SELECT_COLUMNS,
+    NOTE_WRITABLE_FIELDS,
+    NOTE_ORDER_COLUMNS,
+)
+
+from db.analysis import (
+    add_analysis,
+    list_analysis,
+    get_analysis,
+    update_analysis,
+    delete_analysis,
+    add_analysis_stage,
+    get_analysis_stage,
+    list_analysis_stages,
+    update_analysis_stage,
+    delete_analysis_stage,
+    ANALYSIS_COLUMNS,
+    ANALYSIS_WRITABLE_FIELDS,
+    ANALYSIS_ORDER_COLUMNS,
+    ANALYSIS_STAGE_COLUMNS,
+    ANALYSIS_STAGE_WRITABLE_FIELDS,
+    ANALYSIS_STAGE_ORDER_COLUMNS,
+)
+
+from db.charts import (
+    add_chart,
+    get_chart,
+    update_chart,
+    delete_chart,
+    list_charts,
+    attach_chart_to_trade,
+    detach_chart_from_trade,
+    attach_chart_to_analysis_stage,
+    detach_chart_from_analysis_stage,
+    attach_chart_to_setup,
+    detach_chart_from_setup,
+    attach_chart_to_note,
+    detach_chart_from_note,
+)
+
+from db.trades import (
+    create_trade,
+    list_trades,
+    get_trade_by_id,
+    update_trade,
+    delete_trade,
+    TRADE_COLUMNS,
+    TRADE_ORDER_COLUMNS,
+    WRITABLE_TRADE_FIELDS,
+)
+
+__all__ = [
+    # Connection
+    "get_conn",
+    "transaction",
+    "init_db",
+    "DB_PATH",
+    "BASE_DIR",
+    # Accounts
+    "create_account",
+    "list_accounts",
+    "get_account",
+    "update_account",
+    "delete_account",
+    "set_account_archived",
+    # Setups
+    "create_setup",
+    "list_setups",
+    "get_setup",
+    "update_setup",
+    "delete_setup",
+    "SETUP_SELECT_COLUMNS",
+    "SETUP_WRITABLE_FIELDS",
+    "SETUP_ORDER_COLUMNS",
+    # Notes
+    "create_note",
+    "list_notes",
+    "get_note",
+    "update_note",
+    "delete_note",
+    "attach_note_to_trade",
+    "detach_note_from_trade",
+    "list_trade_notes",
+    "attach_note_to_analysis_stage",
+    "detach_note_from_analysis_stage",
+    "list_analysis_stage_notes",
+    "NOTE_SELECT_COLUMNS",
+    "NOTE_WRITABLE_FIELDS",
+    "NOTE_ORDER_COLUMNS",
+    # Analysis
+    "add_analysis",
+    "list_analysis",
+    "get_analysis",
+    "update_analysis",
+    "delete_analysis",
+    "add_analysis_stage",
+    "get_analysis_stage",
+    "list_analysis_stages",
+    "update_analysis_stage",
+    "delete_analysis_stage",
+    "ANALYSIS_COLUMNS",
+    "ANALYSIS_WRITABLE_FIELDS",
+    "ANALYSIS_ORDER_COLUMNS",
+    "ANALYSIS_STAGE_COLUMNS",
+    "ANALYSIS_STAGE_WRITABLE_FIELDS",
+    "ANALYSIS_STAGE_ORDER_COLUMNS",
+    # Charts
+    "add_chart",
+    "get_chart",
+    "update_chart",
+    "delete_chart",
+    "list_charts",
+    "attach_chart_to_trade",
+    "detach_chart_from_trade",
+    "attach_chart_to_analysis_stage",
+    "detach_chart_from_analysis_stage",
+    "attach_chart_to_setup",
+    "detach_chart_from_setup",
+    "attach_chart_to_note",
+    "detach_chart_from_note",
+    # Trades
+    "create_trade",
+    "list_trades",
+    "get_trade_by_id",
+    "update_trade",
+    "delete_trade",
+    "TRADE_COLUMNS",
+    "TRADE_ORDER_COLUMNS",
+    "WRITABLE_TRADE_FIELDS",
+]
