@@ -1,8 +1,28 @@
 # db/charts.py — Charts CRUD and attachment operations
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from db.connection import get_conn, _managed_conn, _rows_to_dicts
+
+
+# Entity types for chart attachments
+EntityType = Literal["trade", "analysis_stage", "setup", "note"]
+
+# Mapping from entity type to column name
+_ENTITY_COLUMNS: Dict[EntityType, str] = {
+    "trade": "trade_id",
+    "analysis_stage": "analysis_stage_id",
+    "setup": "setup_id",
+    "note": "note_id",
+}
+
+# Error messages for each entity type
+_ENTITY_LABELS: Dict[EntityType, str] = {
+    "trade": "сделке",
+    "analysis_stage": "этапу анализа",
+    "setup": "сетапу",
+    "note": "заметке",
+}
 
 
 def add_chart(
@@ -122,181 +142,162 @@ def list_charts(
 
 
 # =====================================================================
-# Chart attachments to entities
+# Universal chart attachment functions
+# =====================================================================
+
+
+def attach_chart(
+    entity_type: EntityType,
+    entity_id: int,
+    chart_id: int,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> None:
+    """
+    Attach a chart to an entity.
+    
+    Args:
+        entity_type: One of 'trade', 'analysis_stage', 'setup', 'note'
+        entity_id: ID of the entity to attach to
+        chart_id: ID of the chart to attach
+        conn: Optional database connection
+    
+    Raises:
+        ValueError: If chart not found or already attached to another entity
+    """
+    if entity_type not in _ENTITY_COLUMNS:
+        raise ValueError(f"Unknown entity type: {entity_type}")
+    
+    target_column = _ENTITY_COLUMNS[entity_type]
+    other_columns = [col for et, col in _ENTITY_COLUMNS.items() if et != entity_type]
+    
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        chart_row = cur.execute(
+            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM charts WHERE id=?",
+            (chart_id,),
+        ).fetchone()
+        
+        if not chart_row:
+            raise ValueError(f"Чарт #{chart_id} не найден.")
+        
+        # Check if attached to another entity type
+        for col in other_columns:
+            if chart_row[col]:
+                raise ValueError("Чарт уже привязан к другой сущности.")
+        
+        # Check if attached to different entity of same type
+        if chart_row[target_column] not in (None, entity_id):
+            label = _ENTITY_LABELS[entity_type]
+            raise ValueError(f"Чарт уже привязан к другой {label}.")
+        
+        # Build UPDATE: set target column, clear others
+        set_parts = [f"{target_column}=?"]
+        set_parts.extend(f"{col}=NULL" for col in other_columns)
+        
+        cur.execute(
+            f"UPDATE charts SET {', '.join(set_parts)} WHERE id=?",
+            (entity_id, chart_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def detach_chart(
+    entity_type: EntityType,
+    entity_id: int,
+    chart_id: int,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> None:
+    """
+    Detach a chart from an entity.
+    
+    Args:
+        entity_type: One of 'trade', 'analysis_stage', 'setup', 'note'
+        entity_id: ID of the entity to detach from
+        chart_id: ID of the chart to detach
+        conn: Optional database connection
+    """
+    if entity_type not in _ENTITY_COLUMNS:
+        raise ValueError(f"Unknown entity type: {entity_type}")
+    
+    column = _ENTITY_COLUMNS[entity_type]
+    
+    conn, own = _managed_conn(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE charts SET {column}=NULL WHERE {column}=? AND id=?",
+            (entity_id, chart_id),
+        )
+        if own:
+            conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+# =====================================================================
+# Backwards-compatible wrapper functions
 # =====================================================================
 
 
 def attach_chart_to_trade(
     trade_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    conn, own = _managed_conn(conn)
-    try:
-        cur = conn.cursor()
-        chart_row = cur.execute(
-            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM charts WHERE id=?",
-            (chart_id,),
-        ).fetchone()
-        if not chart_row:
-            raise ValueError(f"Чарт #{chart_id} не найден.")
-        if chart_row["analysis_stage_id"] or chart_row["setup_id"] or chart_row["note_id"]:
-            raise ValueError("Чарт уже привязан к другой сущности.")
-        if chart_row["trade_id"] not in (None, trade_id):
-            raise ValueError("Чарт уже привязан к другой сделке.")
-        cur.execute(
-            "UPDATE charts SET trade_id=?, analysis_stage_id=NULL, setup_id=NULL, note_id=NULL WHERE id=?",
-            (trade_id, chart_id),
-        )
-        if own:
-            conn.commit()
-    finally:
-        if own:
-            conn.close()
+    """Attach chart to trade. Wrapper for attach_chart()."""
+    attach_chart("trade", trade_id, chart_id, conn=conn)
 
 
 def detach_chart_from_trade(
     trade_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    conn, own = _managed_conn(conn)
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE charts SET trade_id=NULL WHERE trade_id=? AND id=?",
-            (trade_id, chart_id),
-        )
-        if own:
-            conn.commit()
-    finally:
-        if own:
-            conn.close()
+    """Detach chart from trade. Wrapper for detach_chart()."""
+    detach_chart("trade", trade_id, chart_id, conn=conn)
 
 
 def attach_chart_to_analysis_stage(
     stage_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    conn, own = _managed_conn(conn)
-    try:
-        cur = conn.cursor()
-        chart_row = cur.execute(
-            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM charts WHERE id=?",
-            (chart_id,),
-        ).fetchone()
-        if not chart_row:
-            raise ValueError(f"Чарт #{chart_id} не найден.")
-        if chart_row["trade_id"] or chart_row["setup_id"] or chart_row["note_id"]:
-            raise ValueError("Чарт уже привязан к другой сущности.")
-        if chart_row["analysis_stage_id"] not in (None, stage_id):
-            raise ValueError("Чарт уже привязан к другому этапу анализа.")
-        cur.execute(
-            "UPDATE charts SET analysis_stage_id=?, trade_id=NULL, setup_id=NULL, note_id=NULL WHERE id=?",
-            (stage_id, chart_id),
-        )
-        if own:
-            conn.commit()
-    finally:
-        if own:
-            conn.close()
+    """Attach chart to analysis stage. Wrapper for attach_chart()."""
+    attach_chart("analysis_stage", stage_id, chart_id, conn=conn)
 
 
 def detach_chart_from_analysis_stage(
     stage_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    conn, own = _managed_conn(conn)
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE charts SET analysis_stage_id=NULL WHERE analysis_stage_id=? AND id=?",
-            (stage_id, chart_id),
-        )
-        if own:
-            conn.commit()
-    finally:
-        if own:
-            conn.close()
+    """Detach chart from analysis stage. Wrapper for detach_chart()."""
+    detach_chart("analysis_stage", stage_id, chart_id, conn=conn)
 
 
 def attach_chart_to_setup(
     setup_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    conn, own = _managed_conn(conn)
-    try:
-        cur = conn.cursor()
-        chart_row = cur.execute(
-            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM charts WHERE id=?",
-            (chart_id,),
-        ).fetchone()
-        if not chart_row:
-            raise ValueError(f"Чарт #{chart_id} не найден.")
-        if chart_row["trade_id"] or chart_row["analysis_stage_id"] or chart_row["note_id"]:
-            raise ValueError("Чарт уже привязан к другой сущности.")
-        if chart_row["setup_id"] not in (None, setup_id):
-            raise ValueError("Чарт уже привязан к другому сетапу.")
-        cur.execute(
-            "UPDATE charts SET setup_id=?, trade_id=NULL, analysis_stage_id=NULL, note_id=NULL WHERE id=?",
-            (setup_id, chart_id),
-        )
-        if own:
-            conn.commit()
-    finally:
-        if own:
-            conn.close()
+    """Attach chart to setup. Wrapper for attach_chart()."""
+    attach_chart("setup", setup_id, chart_id, conn=conn)
 
 
 def detach_chart_from_setup(
     setup_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    conn, own = _managed_conn(conn)
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE charts SET setup_id=NULL WHERE setup_id=? AND id=?",
-            (setup_id, chart_id),
-        )
-        if own:
-            conn.commit()
-    finally:
-        if own:
-            conn.close()
+    """Detach chart from setup. Wrapper for detach_chart()."""
+    detach_chart("setup", setup_id, chart_id, conn=conn)
 
 
 def attach_chart_to_note(
     note_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    conn, own = _managed_conn(conn)
-    try:
-        cur = conn.cursor()
-        chart_row = cur.execute(
-            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM charts WHERE id=?",
-            (chart_id,),
-        ).fetchone()
-        if not chart_row:
-            raise ValueError(f"Чарт #{chart_id} не найден.")
-        if chart_row["trade_id"] or chart_row["analysis_stage_id"] or chart_row["setup_id"]:
-            raise ValueError("Чарт уже привязан к другой сущности.")
-        if chart_row["note_id"] not in (None, note_id):
-            raise ValueError("Чарт уже привязан к другой заметке.")
-        cur.execute(
-            "UPDATE charts SET note_id=?, trade_id=NULL, analysis_stage_id=NULL, setup_id=NULL WHERE id=?",
-            (note_id, chart_id),
-        )
-        if own:
-            conn.commit()
-    finally:
-        if own:
-            conn.close()
+    """Attach chart to note. Wrapper for attach_chart()."""
+    attach_chart("note", note_id, chart_id, conn=conn)
 
 
 def detach_chart_from_note(
     note_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    conn, own = _managed_conn(conn)
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE charts SET note_id=NULL WHERE note_id=? AND id=?",
-            (note_id, chart_id),
-        )
-        if own:
-            conn.commit()
-    finally:
-        if own:
-            conn.close()
+    """Detach chart from note. Wrapper for detach_chart()."""
+    detach_chart("note", note_id, chart_id, conn=conn)

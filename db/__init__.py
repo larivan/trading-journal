@@ -71,6 +71,8 @@ from db.charts import (
     update_chart,
     delete_chart,
     list_charts,
+    attach_chart,
+    detach_chart,
     attach_chart_to_trade,
     detach_chart_from_trade,
     attach_chart_to_analysis_stage,
