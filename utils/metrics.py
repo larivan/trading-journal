@@ -1,58 +1,229 @@
-# utils/metrics.py — расчёт ключевых метрик и подготовка данных
-from typing import Dict, Any
+# utils/metrics.py — расчёт ключевых метрик для dashboard и других страниц
+"""
+Unified metrics calculation module.
+All trading metrics are calculated here and reused across dashboard and other pages.
+"""
+from typing import Any, Dict, Optional
 import pandas as pd
 import numpy as np
 
 
-def compute_metrics(df: pd.DataFrame) -> Dict[str, Any]:
+def compute_overview_metrics(
+    df: pd.DataFrame,
+    *,
+    fact_df: Optional[pd.DataFrame] = None,
+    missed_df: Optional[pd.DataFrame] = None,
+) -> Dict[str, Any]:
+    """
+    Compute overview KPI metrics from trades DataFrame.
+    
+    Args:
+        df: Full trades DataFrame (must have: is_missed, net_pnl, estimation, 
+            fact_bias, daily_bias, reward_percent)
+        fact_df: Optional pre-filtered executed trades (is_missed=0)
+        missed_df: Optional pre-filtered missed trades (is_missed=1)
+    
+    Returns:
+        Dict with keys: fact_count, missed_count, total_count, bias_winrate,
+        fact_winrate, potential_winrate, missed_rate, quality_ratio
+    """
     if df.empty:
         return {
-            "count": 0,
-            "winrate": 0.0,
-            "profit_factor": 0.0,
-            "expectancy_r": 0.0,
-            "avg_r": 0.0,
-            "total_pnl": 0.0,
-            "best_trade": 0.0,
-            "worst_trade": 0.0
+            "fact_count": 0,
+            "missed_count": 0,
+            "total_count": 0,
+            "bias_winrate": 0.0,
+            "fact_winrate": 0.0,
+            "potential_winrate": 0.0,
+            "missed_rate": 0.0,
+            "quality_ratio": 0.0,
         }
-
-    # Преобразуем логическую модель в R:
-    # Profit -> R = rr
-    # Loss   -> R = -1
-    # B/e    -> R = 0
-    r = np.where(df["trade_result"] == "Profit", df["rr"],
-                 np.where(df["trade_result"] == "Loss", -1.0, 0.0))
-    df = df.copy()
-    df["R"] = r
-
-    total_pnl = float(df["pnl"].sum())
-    wins = df[df["pnl"] > 0]["pnl"].sum()
-    losses = -df[df["pnl"] < 0]["pnl"].sum()  # модуль
-    profit_factor = float(
-        wins / losses) if losses > 0 else float("inf") if wins > 0 else 0.0
-
-    winrate = float((df["trade_result"] == "Profit").mean() * 100.0)
-    avg_win_r = df[df["R"] > 0]["R"].mean() if (df["R"] > 0).any() else 0.0
-    avg_loss_r = -df[df["R"] < 0]["R"].mean() if (df["R"] < 0).any() else 0.0
-    expectancy_r = (winrate/100.0) * avg_win_r - \
-        (1 - winrate/100.0) * avg_loss_r
-
+    
+    # Prepare subsets if not provided
+    if fact_df is None:
+        fact_df = df[df["is_missed"] == 0].copy()
+    if missed_df is None:
+        missed_df = df[df["is_missed"] == 1].copy()
+    
+    total = len(df)
+    fact_count = len(fact_df)
+    missed_count = len(missed_df)
+    
+    # Bias winrate: how often daily_bias matched fact_bias
+    bias_winrate = (df["fact_bias"] == df["daily_bias"]).mean() if total else 0.0
+    
+    # Fact winrate: winning trades among executed
+    fact_wins = fact_df[fact_df["net_pnl"] > 0]
+    fact_winrate = len(fact_wins) / max(fact_count, 1) if fact_count else 0.0
+    
+    # Potential winrate: (fact wins + missed wins) / total
+    miss_wins = missed_df[missed_df["reward_percent"] > 0]
+    potential_winrate = (len(fact_wins) + len(miss_wins)) / max(total, 1) if total else 0.0
+    
+    # Missed rate
+    missed_rate = missed_count / max(total, 1) if total else 0.0
+    
+    # Quality ratio: trades with estimation=1 (liked)
+    quality_ratio = len(df[df["estimation"] == 1]) / max(total, 1) if total else 0.0
+    
     return {
-        "count": int(len(df)),
-        "winrate": round(winrate, 2),
-        "profit_factor": round(profit_factor, 2) if np.isfinite(profit_factor) else float("inf"),
-        "expectancy_r": round(expectancy_r, 3),
-        "avg_r": round(df["R"].mean(), 3),
-        "total_pnl": round(total_pnl, 2),
-        "best_trade": round(df["pnl"].max(), 2),
-        "worst_trade": round(df["pnl"].min(), 2),
+        "fact_count": fact_count,
+        "missed_count": missed_count,
+        "total_count": total,
+        "bias_winrate": bias_winrate,
+        "fact_winrate": fact_winrate,
+        "potential_winrate": potential_winrate,
+        "missed_rate": missed_rate,
+        "quality_ratio": quality_ratio,
     }
 
 
-def equity_curve(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
-    tmp = df.sort_values(["trade_date", "created_at"]).copy()
-    tmp["cum_pnl"] = tmp["pnl"].cumsum()
-    return tmp[["trade_date", "created_at", "cum_pnl"]]
+def compute_risk_metrics(
+    fact_df: pd.DataFrame,
+    all_df: Optional[pd.DataFrame] = None,
+) -> Dict[str, Any]:
+    """
+    Compute risk, expectancy and PnL metrics from executed trades.
+    
+    Args:
+        fact_df: Executed trades DataFrame (is_missed=0)
+                must have: rr (alias for risk_reward), pnl_usd (alias for net_pnl),
+                reward_percent
+        all_df: Optional full DataFrame for potential calculations
+    
+    Returns:
+        Dict with keys: avg_rr, expected_value, profit_factor, net_pnl,
+        total_rr, potential_rr, total_reward, potential_reward, winrate
+    """
+    if fact_df.empty:
+        return {
+            "avg_rr": 0.0,
+            "expected_value": 0.0,
+            "profit_factor": 0.0,
+            "net_pnl": 0.0,
+            "total_rr": 0.0,
+            "potential_rr": 0.0,
+            "total_reward": 0.0,
+            "potential_reward": 0.0,
+            "winrate": 0.0,
+        }
+    
+    # Get RR series (support both old 'rr' alias and 'risk_reward' column)
+    if "rr" in fact_df.columns:
+        fact_rr = fact_df["rr"]
+    elif "risk_reward" in fact_df.columns:
+        fact_rr = fact_df["risk_reward"]
+    else:
+        fact_rr = pd.Series(dtype=float)
+    
+    # Get PnL series (support both 'pnl_usd' alias and 'net_pnl' column)
+    if "pnl_usd" in fact_df.columns:
+        fact_pnl = fact_df["pnl_usd"]
+    elif "net_pnl" in fact_df.columns:
+        fact_pnl = fact_df["net_pnl"]
+    else:
+        fact_pnl = pd.Series(dtype=float)
+    
+    # Basic calculations
+    avg_rr = float(fact_rr.mean()) if len(fact_rr) else 0.0
+    total_rr = float(fact_rr.sum()) if len(fact_rr) else 0.0
+    net_pnl = float(fact_pnl.sum()) if len(fact_pnl) else 0.0
+    
+    # Winrate
+    fact_wins = fact_pnl[fact_pnl > 0]
+    winrate = len(fact_wins) / max(len(fact_df), 1)
+    
+    # Expected value (EV) in R
+    avg_win = float(fact_rr[fact_rr > 0].mean()) if (fact_rr > 0).any() else 0.0
+    avg_loss = float(fact_rr[fact_rr < 0].mean()) if (fact_rr < 0).any() else 0.0
+    expected_value = winrate * avg_win + (1 - winrate) * avg_loss
+    
+    # Profit factor
+    gross_profit = float(fact_pnl[fact_pnl > 0].sum()) if (fact_pnl > 0).any() else 0.0
+    gross_loss = abs(float(fact_pnl[fact_pnl < 0].sum())) if (fact_pnl < 0).any() else 0.0
+    profit_factor = gross_profit / gross_loss if gross_loss > 0 else np.inf if gross_profit > 0 else 0.0
+    
+    # Reward calculations
+    total_reward = float(fact_df["reward_percent"].sum()) if "reward_percent" in fact_df.columns and len(fact_df) else 0.0
+    
+    # Potential calculations (from all trades)
+    if all_df is not None and len(all_df):
+        if "rr" in all_df.columns:
+            potential_rr = float(all_df["rr"].mean())
+        elif "risk_reward" in all_df.columns:
+            potential_rr = float(all_df["risk_reward"].mean())
+        else:
+            potential_rr = 0.0
+        
+        if "reward_percent" in all_df.columns:
+            potential_reward = float(all_df["reward_percent"].sum())
+        else:
+            potential_reward = 0.0
+    else:
+        potential_rr = avg_rr
+        potential_reward = total_reward
+    
+    return {
+        "avg_rr": avg_rr,
+        "expected_value": expected_value,
+        "profit_factor": profit_factor if np.isfinite(profit_factor) else float("inf"),
+        "net_pnl": net_pnl,
+        "total_rr": total_rr,
+        "potential_rr": potential_rr,
+        "total_reward": total_reward,
+        "potential_reward": potential_reward,
+        "winrate": winrate,
+    }
+
+
+def compute_equity_curve(
+    fact_df: pd.DataFrame,
+    group_by: str = "date",
+) -> pd.DataFrame:
+    """
+    Compute equity curve data from executed trades.
+    
+    Args:
+        fact_df: Executed trades with date and numeric columns
+        group_by: Column to group by ('date' for daily aggregation)
+    
+    Returns:
+        DataFrame with day, rr_sum, pnl_sum, reward_sum, cum_rr, cum_pnl, cum_pct
+    """
+    if fact_df.empty:
+        return pd.DataFrame()
+    
+    # Get the date column
+    if "date" in fact_df.columns:
+        date_col = "date"
+    elif "date_local" in fact_df.columns:
+        date_col = "date_local"
+    else:
+        return pd.DataFrame()
+    
+    # Ensure we have required columns
+    rr_col = "rr" if "rr" in fact_df.columns else "risk_reward"
+    pnl_col = "pnl_usd" if "pnl_usd" in fact_df.columns else "net_pnl"
+    
+    df = fact_df.copy()
+    if date_col != "date":
+        df["date"] = pd.to_datetime(df[date_col])
+    
+    daily = (
+        df.groupby(df["date"].dt.date)
+        .agg(
+            rr_sum=(rr_col, "sum"),
+            pnl_sum=(pnl_col, "sum"),
+            reward_sum=("reward_percent", "sum") if "reward_percent" in df.columns else (rr_col, lambda x: 0),
+        )
+        .reset_index()
+        .rename(columns={"date": "day"})
+    )
+    daily["day"] = pd.to_datetime(daily["day"])
+    daily = daily.sort_values("day")
+    
+    daily["cum_rr"] = daily["rr_sum"].cumsum()
+    daily["cum_pnl"] = daily["pnl_sum"].cumsum()
+    daily["cum_pct"] = daily["reward_sum"].cumsum()
+    
+    return daily

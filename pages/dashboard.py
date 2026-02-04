@@ -16,6 +16,11 @@ from db import (
     list_notes,
     list_trade_notes,
 )
+from utils.metrics import (
+    compute_overview_metrics,
+    compute_risk_metrics,
+    compute_equity_curve,
+)
 
 # ----------------------------
 # Mock data (replace with DB later)
@@ -328,19 +333,14 @@ if data_df.empty:
 # ----------------------------
 fact = data_df[data_df["is_missed"] == 0].copy()
 missed = data_df[data_df["is_missed"] == 1].copy()
-bias_winrate = (data_df["fact_bias"] ==
-                data_df["daily_bias"]).mean() if len(data_df) else 0.0
-# Fact winrate calculation
-fact_wins = fact[fact["net_pnl"] > 0]
-fact_winrate = (len(fact_wins) / max(len(fact), 1)) if len(fact) else 0.0
-# Potential winrate calculation
-miss_win_trades = missed[missed["reward_percent"] > 0]
-potential_winrate = (len(fact_wins) + len(miss_win_trades)) / \
-    max(len(data_df), 1) if len(data_df) else 0.0
 
-missed_rate = (len(missed) / max(len(data_df), 1)) if len(data_df) else 0.0
-quality_ratio = (len(data_df[data_df["estimation"] == 1]) /
-                 max(len(data_df), 1)) if len(data_df) else 0.0
+# Use unified metrics calculation
+overview = compute_overview_metrics(data_df, fact_df=fact, missed_df=missed)
+bias_winrate = overview["bias_winrate"]
+fact_winrate = overview["fact_winrate"]
+potential_winrate = overview["potential_winrate"]
+missed_rate = overview["missed_rate"]
+quality_ratio = overview["quality_ratio"]
 
 with st.container(border=True):
     st.subheader("Overview")
@@ -420,33 +420,21 @@ with st.container(border=True):
     st.subheader("Risk, expectancy & PnL")
 
     c1, c2 = st.columns([1, 4])
-    # Avg RR calculation
+    
+    # Use unified risk metrics calculation
+    risk = compute_risk_metrics(fact, all_df=data_df)
+    avg_rr = risk["avg_rr"]
+    expected_value = risk["expected_value"]
+    profit_factor = risk["profit_factor"]
+    net_pnl = risk["net_pnl"]
+    total_rr = risk["total_rr"]
+    potential_rr = risk["potential_rr"]
+    total_reward = risk["total_reward"]
+    potential_reward = risk["potential_reward"]
+    
+    # For charts we still need raw series
     fact_rr = fact["rr"]
-    avg_rr = float(fact_rr.mean()) if len(fact_rr) else 0.0
-    # Expected value (EV) calculation
-    avg_win = float(fact_rr[fact_rr > 0].mean()) if (
-        fact_rr > 0).any() else 0.0
-    avg_loss = float(fact_rr[fact_rr < 0].mean()) if (
-        fact_rr < 0).any() else 0.0
-    expected_value = fact_winrate * avg_win + (1 - fact_winrate) * avg_loss
-    # Profit factor calculation
     fact_pnl = fact["pnl_usd"]
-    gross_profit = float(fact_pnl[fact_pnl > 0].sum()) if (
-        fact_pnl > 0).any() else 0.0
-    gross_loss = abs(float(fact_pnl[fact_pnl < 0].sum())) if (
-        fact_pnl < 0).any() else 0.0
-    profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else np.inf
-    # Net PnL calculation
-    net_pnl = float(fact_pnl.sum()) if len(fact_pnl) else 0.0
-    # Total RR calculation
-    total_rr = float(fact_rr.sum()) if len(fact_rr) else 0.0
-    # Potential RR calculation
-    potential_rr = float(data_df["rr"].mean()) if len(data_df) else 0.0
-    # Total reward calculation
-    total_reward = float(fact["reward_percent"].sum()) if len(fact) else 0.0
-    # Potential reward calculation
-    potential_reward = float(
-        data_df["reward_percent"].sum()) if len(data_df) else 0.0
 
     # Metrics container spanning first 2 columns
     with c1:
