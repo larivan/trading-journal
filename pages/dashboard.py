@@ -4,6 +4,7 @@ import altair as alt
 import streamlit as st
 from typing import Dict, Any, Optional, Tuple
 from datetime import date, timedelta
+from utils.date_periods import compute_date_range
 from helpers import (
     to_option_format,
     custom_selectbox,
@@ -301,19 +302,7 @@ if selected_key == "custom":
         format="DD.MM.YYYY",
     )
 else:
-    today = date.today()
-    if selected_key == "today":
-        date_range = (today, today)
-    elif selected_key == "week":
-        date_range = (today - timedelta(days=today.weekday()), today)
-    elif selected_key == "month":
-        date_range = (today.replace(day=1), today)
-    elif selected_key == "quarter":
-        quarter = (today.month - 1) // 3
-        quarter_start_month = quarter * 3 + 1
-        date_range = (today.replace(month=quarter_start_month, day=1), today)
-    elif selected_key == "year":
-        date_range = (today.replace(month=1, day=1), today)
+    date_range = compute_date_range(selected_key)
 
 # Apply filters
 if date_range:
