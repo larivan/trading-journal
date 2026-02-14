@@ -154,6 +154,8 @@ __all__ = [
     # Charts
     "add_chart",
     "get_chart",
+    "attach_chart",
+    "detach_chart",
     "update_chart",
     "delete_chart",
     "list_charts",
