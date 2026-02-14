@@ -57,7 +57,7 @@ with period_col:
     if not st.session_state.get(period_key):
         st.session_state[period_key] = list(TAB_DEFINITIONS.values())[0]
     selected_label = st.segmented_control(
-        "Период",
+        "Period",
         options=TAB_DEFINITIONS.values(),
         key=period_key,
         width="stretch",
@@ -83,7 +83,7 @@ if selected_key == "custom":
     with st.container():
         fc1, fc2, fc3, fc4, fc5, fc6, fc7 = st.columns(7)
         date_range = fc1.date_input(
-            "Диапазон дат",
+            "Date Range",
             value=(
                 date.today() - timedelta(days=7),
                 date.today()
@@ -200,7 +200,7 @@ render_entity_table(
     key=table_key,
     rows=rows,
     columns=trade_table_columns,
-    empty_message="Нет сделок для выбранного периода.",
+    empty_message="No trades for the selected period.",
     page_size=100,
     on_open=_handle_open_trade,
     on_delete=_handle_delete_trades,

@@ -18,10 +18,10 @@ _ENTITY_COLUMNS: Dict[EntityType, str] = {
 
 # Error messages for each entity type
 _ENTITY_LABELS: Dict[EntityType, str] = {
-    "trade": "сделке",
-    "analysis_stage": "этапу анализа",
-    "setup": "сетапу",
-    "note": "заметке",
+    "trade": "trade",
+    "analysis_stage": "analysis stage",
+    "setup": "setup",
+    "note": "note",
 }
 
 
@@ -182,17 +182,17 @@ def attach_chart(
         ).fetchone()
         
         if not chart_row:
-            raise ValueError(f"Чарт #{chart_id} не найден.")
+            raise ValueError(f"Chart #{chart_id} not found.")
         
         # Check if attached to another entity type
         for col in other_columns:
             if chart_row[col]:
-                raise ValueError("Чарт уже привязан к другой сущности.")
+                raise ValueError("Chart is already attached to another entity.")
         
         # Check if attached to different entity of same type
         if chart_row[target_column] not in (None, entity_id):
             label = _ENTITY_LABELS[entity_type]
-            raise ValueError(f"Чарт уже привязан к другой {label}.")
+            raise ValueError(f"Chart is already attached to another {label}.")
         
         # Build UPDATE: set target column, clear others
         set_parts = [f"{target_column}=?"]

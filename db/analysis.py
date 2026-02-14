@@ -79,7 +79,7 @@ def _normalize_analysis_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             continue
         if key == "state" and value not in ANALYSIS_STATE_VALUES:
             raise ValueError(
-                f"state должно быть одним из: {', '.join(ANALYSIS_STATE_VALUES)}"
+                f"state must be one of: {', '.join(ANALYSIS_STATE_VALUES)}"
             )
         payload[key] = value
     return payload
@@ -95,10 +95,13 @@ def _normalize_analysis_stage_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             payload[key] = None
             continue
         if key == "analysis_id":
-            try:
-                payload[key] = int(value)
-            except (TypeError, ValueError):
-                raise ValueError("analysis_id должно быть целым числом.")
+            if not isinstance(value, int):
+                try:
+                    payload[key] = int(value)
+                except (TypeError, ValueError):
+                    raise ValueError("analysis_id must be an integer.")
+            else:
+                payload[key] = value
             continue
         if key == "time_local":
             if isinstance(value, time):
@@ -110,7 +113,7 @@ def _normalize_analysis_stage_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             continue
         if key == "type" and value not in ANALYSIS_STATE_VALUES:
             raise ValueError(
-                f"type должно быть одним из: {', '.join(ANALYSIS_STATE_VALUES)}"
+                f"type must be one of: {', '.join(ANALYSIS_STATE_VALUES)}"
             )
         payload[key] = value
     return payload
@@ -126,7 +129,7 @@ def add_analysis(
 ) -> int:
     payload = _normalize_analysis_payload(data)
     if "date_local" not in payload:
-        raise ValueError("date_local обязательно для анализа.")
+        raise ValueError("date_local is required for analysis.")
 
     columns = ", ".join(payload.keys())
     placeholders = ", ".join(["?"] * len(payload))
@@ -226,7 +229,7 @@ def update_analysis(
             values + [analysis_id],
         )
         if cur.rowcount == 0:
-            raise ValueError(f"Анализ #{analysis_id} не найден.")
+            raise ValueError(f"Analysis #{analysis_id} not found.")
         if own:
             conn.commit()
     finally:
@@ -263,7 +266,7 @@ def add_analysis_stage(
         payload_data["time_local"] = datetime.now()
     payload = _normalize_analysis_stage_payload(payload_data)
     if not payload:
-        raise ValueError("Нет данных для создания этапа анализа.")
+        raise ValueError("No data to create analysis stage.")
 
     columns = ", ".join(payload.keys())
     placeholders = ", ".join(["?"] * len(payload))
@@ -373,7 +376,7 @@ def update_analysis_stage(
             values + [stage_id],
         )
         if cur.rowcount == 0:
-            raise ValueError(f"Этап анализа #{stage_id} не найден.")
+            raise ValueError(f"Analysis stage #{stage_id} not found.")
         if own:
             conn.commit()
     finally:

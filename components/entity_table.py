@@ -281,7 +281,7 @@ template.innerHTML = `
     </div>
     <div class="st-entity-table__toolbar-right">
       <button type="button" class="st-entity-table__toolbar-btn st-entity-table__toolbar-btn--danger" data-action-delete>
-        Удалить
+        Delete
       </button>
     </div>
   </div>
@@ -290,7 +290,7 @@ template.innerHTML = `
   </div>
   <div class="st-entity-table__footer" data-footer>
     <button type="button" class="st-entity-table__more-btn" data-action-more>
-      Показать ещё
+      Show more
     </button>
   </div>
 </div>
@@ -651,7 +651,7 @@ def render_entity_table(
     rows: Sequence[Dict[str, Any]],
     columns: Sequence[ColumnDefinition],
     id_field: str = "id",
-    empty_message: str = "Нет данных для отображения.",
+    empty_message: str = "No data to display.",
     page_size: int = 100,
     on_open: Optional[Callable[[Dict[str, Any]], None]] = None,
     on_delete: Optional[Callable[[List[Any]], None]] = None,

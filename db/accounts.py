@@ -28,7 +28,7 @@ def _normalize_account_payload(data: Dict[str, Any]) -> Dict[str, Any]:
         if key == "name":
             name = str(value).strip()
             if not name:
-                raise ValueError("Имя аккаунта не может быть пустым.")
+                raise ValueError("Account name cannot be empty.")
             payload[key] = name
             continue
 
@@ -36,7 +36,7 @@ def _normalize_account_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             try:
                 payload[key] = float(value)
             except (TypeError, ValueError):
-                raise ValueError("starting_balance должно быть числом.")
+                raise ValueError("starting_balance must be a number.")
             continue
 
         if key == "is_prop":

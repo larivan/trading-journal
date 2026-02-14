@@ -262,7 +262,7 @@ with period_col:
     if not st.session_state.get(period_key):
         st.session_state[period_key] = "Current quarter"
     selected_label = st.segmented_control(
-        "Период",
+        "Period",
         options=PERIOD_TABS.values(),
         key=period_key,
         width="stretch",
@@ -284,7 +284,7 @@ selected_key = label_to_key.get(selected_label, "quarter")
 
 if selected_key == "custom":
     date_range = date_col.date_input(
-        "Date range",
+        "Date Range",
         value=(
             date.today() - timedelta(days=7),
             date.today()

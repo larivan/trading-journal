@@ -81,7 +81,7 @@ def render_execution_stage(
                 {"field": "net_pnl", "label": "PnL", "id": "net_pnl"},
                 {"field": "risk_reward", "label": "R:R", "id": "risk_reward"},
             ],
-            empty_message="Нет трейдов для этого анализа.",
+            empty_message="No trades for this analysis.",
             page_size=100,
             on_open=_open_trade,
             on_delete=_delete_trades,

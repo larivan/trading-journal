@@ -48,7 +48,7 @@ with period_col:
     if not st.session_state.get(period_key):
         st.session_state[period_key] = list(TAB_DEFINITIONS.values())[0]
     selected_label = st.segmented_control(
-        "Период",
+        "Period",
         options=TAB_DEFINITIONS.values(),
         key=period_key,
         width="stretch",
@@ -73,7 +73,7 @@ if selected_key == "custom":
     with st.container():
         fc1, fc2, fc3, fc4, fc5, fc6 = st.columns(6)
         date_range = fc1.date_input(
-            "Диапазон дат",
+            "Date Range",
             value=(
                 date.today() - timedelta(days=7),
                 date.today()
@@ -81,35 +81,35 @@ if selected_key == "custom":
             format="DD.MM.YYYY",
         )
         asset_choice = fc2.selectbox(
-            "Инструмент",
-            ["Все"] + ASSETS_VALUES
+            "Asset",
+            ["All"] + ASSETS_VALUES
         )
         daily_bias_choice = fc3.selectbox(
             "Daily bias",
-            ["Все"] + DAILY_BIAS_VALUES
+            ["All"] + DAILY_BIAS_VALUES
         )
         fact_bias_choice = fc4.selectbox(
             "Fact bias",
-            ["Все"] + DAILY_BIAS_VALUES
+            ["All"] + DAILY_BIAS_VALUES
         )
         day_result_choice = fc5.selectbox(
-            "Результат",
-            ["Все"] + DAY_RESULT_VALUES
+            "Result",
+            ["All"] + DAY_RESULT_VALUES
         )
         state_choice = fc6.selectbox(
-            "Тип анализа",
-            ["Все"] + ANALYSIS_STATE_VALUES
+            "Analysis Type",
+            ["All"] + ANALYSIS_STATE_VALUES
         )
 
-    if asset_choice != "Все":
+    if asset_choice != "All":
         filters["asset"] = asset_choice
-    if daily_bias_choice != "Все":
+    if daily_bias_choice != "All":
         filters["daily_bias"] = daily_bias_choice
-    if fact_bias_choice != "Все":
+    if fact_bias_choice != "All":
         filters["fact_bias"] = fact_bias_choice
-    if day_result_choice != "Все":
+    if day_result_choice != "All":
         filters["day_result"] = day_result_choice
-    if state_choice != "Все":
+    if state_choice != "All":
         filters["state"] = state_choice
 else:
     date_range = compute_date_range(selected_key)
@@ -128,16 +128,16 @@ rows = list_analysis(filters)
 analysis_columns: List[Dict[str, Any]] = [
     {
         "field": "date_local",
-        "label": "Дата",
+        "label": "Date",
         "compute": lambda row: row.get("date_local"),
         "format": format_local_date,
         "id": "date_local",
     },
-    {"field": "asset", "label": "Инструмент", "id": "asset"},
+    {"field": "asset", "label": "Asset", "id": "asset"},
     {"field": "daily_bias", "label": "Daily bias", "id": "daily_bias"},
     {"field": "fact_bias", "label": "Fact bias", "id": "fact_bias"},
     {"field": "day_result", "label": "Result", "id": "day_result"},
-    {"field": "state", "label": "Тип анализа", "id": "state"},
+    {"field": "state", "label": "State", "id": "state"},
 ]
 
 
@@ -169,7 +169,7 @@ render_entity_table(
     key=table_key,
     rows=rows,
     columns=analysis_columns,
-    empty_message="Нет анализов за выбранный период.",
+    empty_message="No analysis found for the selected period.",
     page_size=100,
     on_open=_handle_open_analysis,
     on_delete=_handle_delete_analyses,

@@ -103,7 +103,7 @@ def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
         if key == "state":
             if value not in TRADE_STATE_VALUES:
                 raise ValueError(
-                    f"state должно быть одним из: {', '.join(TRADE_STATE_VALUES)}"
+                    f"state must be one of: {', '.join(TRADE_STATE_VALUES)}"
                 )
             payload[key] = value
             continue
@@ -112,7 +112,7 @@ def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
         if key == "session":
             if value not in TRADE_SESSION_VALUES:
                 raise ValueError(
-                    f"session должно быть одним из: {', '.join(TRADE_SESSION_VALUES)}"
+                    f"session must be one of: {', '.join(TRADE_SESSION_VALUES)}"
                 )
             payload[key] = value
             continue
@@ -122,7 +122,7 @@ def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             try:
                 payload[key] = int(value)
             except (TypeError, ValueError):
-                raise ValueError(f"{key} должно быть целым числом.")
+                raise ValueError(f"{key} must be an integer.")
             continue
 
         # Float coercion for numeric fields
@@ -130,7 +130,7 @@ def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             try:
                 payload[key] = float(value)
             except (TypeError, ValueError):
-                raise ValueError(f"{key} должно быть числом.")
+                raise ValueError(f"{key} must be a number.")
             continue
 
         # String fields (local_tz, asset, emotional_problems, hot_thoughts, cold_thoughts)
@@ -153,11 +153,11 @@ def create_trade(
     data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
 ) -> int:
     if not data:
-        raise ValueError("Нет данных для создания сделки.")
+        raise ValueError("No data to create trade.")
 
     payload = _normalize_trade_payload(data)
     if not payload:
-        raise ValueError("Нет допустимых полей для создания сделки.")
+        raise ValueError("No valid fields to create trade.")
 
     columns = ", ".join(payload.keys())
     placeholders = ", ".join(["?"] * len(payload))
@@ -199,7 +199,7 @@ def update_trade(
             values + [trade_id],
         )
         if cur.rowcount == 0:
-            raise ValueError(f"Сделка #{trade_id} не найдена.")
+            raise ValueError(f"Trade #{trade_id} not found.")
         if own:
             conn.commit()
     finally:
@@ -215,7 +215,7 @@ def delete_trade(trade_id: int, *, conn: Optional[sqlite3.Connection] = None) ->
         cur = conn.cursor()
         cur.execute("DELETE FROM trades WHERE id=?", (trade_id,))
         if cur.rowcount == 0:
-            raise ValueError(f"Сделка #{trade_id} не найдена.")
+            raise ValueError(f"Trade #{trade_id} not found.")
         if own:
             conn.commit()
     finally:

@@ -72,7 +72,7 @@ render_entity_gallery(
     key=table_key,
     rows=rows,
     columns=account_columns,
-    empty_message="Нет аккаунтов.",
+    empty_message="No accounts found.",
     page_size=9,
     on_open=_open_account,
     on_delete=_delete_accounts,

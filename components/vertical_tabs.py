@@ -240,7 +240,7 @@ def render_vertical_tabs(
     key: str,
     tabs: Sequence[TabItem],
     label: Optional[str] = None,
-    add_label: str = "Добавить",
+    add_label: str = "Add",
     remove_label: str = "×",
     min_tabs: int = 1,
     on_add: Optional[Callable[[], None]] = None,
@@ -251,7 +251,7 @@ def render_vertical_tabs(
     tab_list = list(tabs)
     if not tab_list:
         placeholder = st.container()
-        placeholder.info("Нет вкладок для отображения.")
+        placeholder.info("No tabs to display.")
         return None, placeholder
 
     tab_lookup = {tab["id"]: tab for tab in tab_list}

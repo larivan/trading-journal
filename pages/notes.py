@@ -115,7 +115,7 @@ render_entity_gallery(
     key=table_key,
     rows=rows,
     columns=note_columns,
-    empty_message="Нет заметок.",
+    empty_message="No notes found.",
     page_size=30,
     on_open=_open_note,
     on_delete=_delete_notes,

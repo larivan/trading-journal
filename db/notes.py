@@ -59,7 +59,7 @@ def create_note(
     payload = _normalize_note_payload(data or {})
     body_value = (payload.get("body") or "").strip()
     if not body_value:
-        raise ValueError("body обязательно для заметки.")
+        raise ValueError("body is required for note.")
 
     payload["body"] = body_value
     payload.setdefault("date_local", date.today().isoformat())
@@ -147,7 +147,7 @@ def update_note(
     if "body" in payload:
         body_value = (payload["body"] or "").strip()
         if not body_value:
-            raise ValueError("body обязательно для заметки.")
+            raise ValueError("body is required for note.")
         payload["body"] = body_value
     if not payload:
         return
@@ -163,7 +163,7 @@ def update_note(
             values + [note_id],
         )
         if cur.rowcount == 0:
-            raise ValueError(f"Заметка #{note_id} не найдена.")
+            raise ValueError(f"Note #{note_id} not found.")
         if own:
             conn.commit()
     finally:
@@ -180,7 +180,7 @@ def delete_note(note_id: int, *, conn: Optional[sqlite3.Connection] = None) -> N
         cur.execute("DELETE FROM charts WHERE note_id=?", (note_id,))
         cur.execute("DELETE FROM notes WHERE id=?", (note_id,))
         if cur.rowcount == 0:
-            raise ValueError(f"Заметка #{note_id} не найдена.")
+            raise ValueError(f"Note #{note_id} not found.")
         if own:
             conn.commit()
     finally:
