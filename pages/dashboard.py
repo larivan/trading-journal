@@ -71,8 +71,8 @@ def prepare_trades_df() -> pd.DataFrame:
 
     t_df = t_df[t_df["state"] == "Reviewed"]
     t_df["date"] = pd.to_datetime(t_df["date_local"])
-    t_df["rr"] = t_df["risk_reward"].astype(float)
-    t_df["pnl_usd"] = t_df["net_pnl"].astype(int)
+    t_df["rr"] = pd.to_numeric(t_df["risk_reward"], errors="coerce")
+    t_df["pnl_usd"] = pd.to_numeric(t_df["net_pnl"], errors="coerce").fillna(0.0)
     t_df["setup"] = t_df["setup_id"].fillna("No setup")
 
     return t_df
