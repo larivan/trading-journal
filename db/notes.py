@@ -35,9 +35,6 @@ def _normalize_note_payload(data: Dict[str, Any]) -> Dict[str, Any]:
         if value is None:
             payload[key] = None
             continue
-        if key == "title":
-            payload[key] = str(value).strip() or None
-            continue
         if key == "body":
             payload[key] = str(value).strip()
             continue
