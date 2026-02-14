@@ -114,9 +114,9 @@ class TestUpdateAnalysis:
         analysis = get_analysis(analysis_id)
         assert analysis["fact_bias"] == "Bearish"
 
-    def test_update_nonexistent_raises(self, temp_db):
-        """Test updating non-existent analysis raises error."""
-        with pytest.raises(ValueError, match="не найден"):
+    def test_update_nonexistent_raises(self, db_conn):
+        """Update invalid analysis ID raises ValueError."""
+        with pytest.raises(ValueError, match="not found"):
             update_analysis(99999, {"daily_bias": "Bullish"})
 
 
@@ -128,9 +128,9 @@ class TestDeleteAnalysis:
         
         assert get_analysis(analysis_id) is None
 
-    def test_delete_nonexistent_raises(self, temp_db):
-        """Test deleting non-existent analysis raises error."""
-        with pytest.raises(ValueError, match="не найден"):
+    def test_delete_nonexistent_raises(self, db_conn):
+        """Delete invalid analysis ID raises ValueError."""
+        with pytest.raises(ValueError, match="not found"):
             delete_analysis(99999)
 
 

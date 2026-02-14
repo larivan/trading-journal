@@ -245,7 +245,7 @@ def delete_analysis(
         cur = conn.cursor()
         cur.execute("DELETE FROM analysis WHERE id=?", (analysis_id,))
         if cur.rowcount == 0:
-            raise ValueError(f"Анализ #{analysis_id} не найден.")
+            raise ValueError(f"Analysis #{analysis_id} not found.")
         if own:
             conn.commit()
     finally:

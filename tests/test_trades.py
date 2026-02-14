@@ -72,9 +72,9 @@ class TestCreateTrade:
         assert trade["estimation"] == 1
         assert trade["hot_thoughts"] == "Followed plan"
 
-    def test_create_trade_empty_raises(self, temp_db):
-        """Test creating trade with empty data raises error."""
-        with pytest.raises(ValueError, match="Нет данных"):
+    def test_create_trade_empty_raises(self, trade_dependencies):
+        """Create trade with empty dict raises ValueError."""
+        with pytest.raises(ValueError, match="No data"):
             create_trade({})
 
 
@@ -164,9 +164,9 @@ class TestUpdateTrade:
         assert trade["estimation"] == 0
         assert trade["cold_thoughts"] == "Updated thoughts"
 
-    def test_update_nonexistent_raises(self, temp_db):
-        """Test updating non-existent trade raises error."""
-        with pytest.raises(ValueError, match="не найдена"):
+    def test_update_nonexistent_raises(self, trade_dependencies):
+        """Update invalid trade ID raises ValueError."""
+        with pytest.raises(ValueError, match="not found"):
             update_trade(99999, {"net_pnl": 100.0})
 
 
@@ -178,7 +178,7 @@ class TestDeleteTrade:
         
         assert get_trade_by_id(trade_id) is None
 
-    def test_delete_nonexistent_raises(self, temp_db):
-        """Test deleting non-existent trade raises error."""
-        with pytest.raises(ValueError, match="не найдена"):
+    def test_delete_nonexistent_raises(self, trade_dependencies):
+        """Delete invalid trade ID raises ValueError."""
+        with pytest.raises(ValueError, match="not found"):
             delete_trade(99999)
