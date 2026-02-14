@@ -94,6 +94,8 @@ def delete_chart(chart_id: int, *, conn: Optional[sqlite3.Connection] = None) ->
     try:
         cur = conn.cursor()
         cur.execute("DELETE FROM charts WHERE id=?", (chart_id,))
+        if cur.rowcount == 0:
+            raise ValueError(f"Чарт #{chart_id} не найден.")
         if own:
             conn.commit()
     finally:

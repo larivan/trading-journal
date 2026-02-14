@@ -5,6 +5,53 @@ from typing import Any, Dict, List, Optional
 from db.connection import get_conn, _managed_conn, _now_iso_utc, _rows_to_dicts
 
 
+ACCOUNT_WRITABLE_FIELDS = [
+    "name",
+    "broker",
+    "currency",
+    "starting_balance",
+    "is_prop",
+]
+
+
+def _normalize_account_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and normalize account data, filtering by ACCOUNT_WRITABLE_FIELDS whitelist."""
+    payload: Dict[str, Any] = {}
+    for key in ACCOUNT_WRITABLE_FIELDS:
+        if key not in data:
+            continue
+        value = data[key]
+        if value is None:
+            payload[key] = None
+            continue
+
+        if key == "name":
+            name = str(value).strip()
+            if not name:
+                raise ValueError("Имя аккаунта не может быть пустым.")
+            payload[key] = name
+            continue
+
+        if key == "starting_balance":
+            try:
+                payload[key] = float(value)
+            except (TypeError, ValueError):
+                raise ValueError("starting_balance должно быть числом.")
+            continue
+
+        if key == "is_prop":
+            try:
+                payload[key] = int(bool(value))
+            except (TypeError, ValueError):
+                payload[key] = 0
+            continue
+
+        # String fields: broker, currency
+        payload[key] = value
+
+    return payload
+
+
 def create_account(
     name: str,
     broker: Optional[str] = None,
@@ -63,8 +110,12 @@ def update_account(
     if not data:
         return
 
-    assignments = ", ".join(f"{col}=?" for col in data.keys())
-    values = list(data.values())
+    payload = _normalize_account_payload(data)
+    if not payload:
+        return
+
+    assignments = ", ".join(f"{col}=?" for col in payload.keys())
+    values = list(payload.values())
 
     conn, own = _managed_conn(conn)
     try:
