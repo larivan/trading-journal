@@ -15,7 +15,7 @@ from db import (
     list_analysis,
     list_accounts,
     list_notes,
-    list_trade_notes,
+    count_notes_by_trade,
 )
 from utils.metrics import (
     compute_overview_metrics,
@@ -89,17 +89,7 @@ def prepare_observations_df() -> pd.DataFrame:
     obs_df["excerpt"] = obs_df["body"].apply(
         lambda x: get_excerpt(x, 60)
     )
-    linked_counts = {}
-    if trades:
-        for trade in trades:
-            trade_id = trade.get("id")
-            if trade_id is None:
-                continue
-            for note in list_trade_notes(trade_id):
-                note_id = note.get("id")
-                if note_id is None:
-                    continue
-                linked_counts[note_id] = linked_counts.get(note_id, 0) + 1
+    linked_counts = count_notes_by_trade() if trades else {}
 
     obs_df["linked_trades"] = (
         obs_df["id"].map(linked_counts).fillna(0).astype(int)
