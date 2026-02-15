@@ -49,6 +49,7 @@ TM_KEY_PREFIX = "tm_trade_id_"
 TM_DEFAULT_PREFIX = "tm_default_"
 TRADE_STATE_VALUES = ["Open", "Outcome", "Reviewed"]
 TRADE_RESULT_VALUES = ["Win", "Loss", "BE", "Miss"]
+BE_THRESHOLD = 0.05
 TRADE_SESSION_VALUES = ["Frankfurt", "LOKZ",
                         "Lunch", "Pre-NY", "NYKZ", "Other"]
 

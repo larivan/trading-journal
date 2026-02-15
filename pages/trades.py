@@ -10,6 +10,7 @@ from helpers import (
     to_option_format,
     apply_page_config_from_file,
     custom_selectbox,
+    calculate_trade_result,
 )
 from utils.session_state import (
     open_dialog,
@@ -167,7 +168,13 @@ trade_table_columns: List[Dict[str, Any]] = [
     {"field": "session", "label": "Session", "id": "session"},
     {"field": "asset", "label": "Asset", "id": "asset"},
     {"field": "state", "label": "State", "id": "state"},
-    {"field": "result", "label": "Result", "id": "result"},
+    {"field": "state", "label": "State", "id": "state"},
+    {
+        "field": "result", 
+        "label": "Result",
+        "compute": lambda row: calculate_trade_result(row.get("risk_reward"), row.get("is_missed")),
+        "id": "result"
+    },
     {"field": "net_pnl", "label": "PnL", "id": "net_pnl"},
     {"field": "risk_reward", "label": "R:R", "id": "risk_reward"},
 ]

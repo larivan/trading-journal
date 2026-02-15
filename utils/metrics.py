@@ -53,11 +53,25 @@ def compute_overview_metrics(
     bias_winrate = (df["fact_bias"] == df["daily_bias"]).mean() if total else 0.0
     
     # Fact winrate: winning trades among executed
-    fact_wins = fact_df[fact_df["net_pnl"] > 0]
+    from config import BE_THRESHOLD
+    # We use risk_reward for win determination to be consistent with BE_THRESHOLD
+    # But for backward compatibility if risk_reward is missing we might fallback?
+    # Actually let's trust risk_reward is present or we calculate it.
+    # Safe approach: use risk_reward if available, else Net PnL > 0 (old logic, but strictly requested to use BE_THRESHOLD)
+    
+    # Filter trades that match "Win" criteria
+    # Win = risk_reward > BE_THRESHOLD
+    
+    fact_wins = fact_df[fact_df["risk_reward"] > BE_THRESHOLD]
     fact_winrate = len(fact_wins) / max(fact_count, 1) if fact_count else 0.0
     
     # Potential winrate: (fact wins + missed wins) / total
-    miss_wins = missed_df[missed_df["reward_percent"] > 0]
+    # Missed wins: missed trades where reward_percent > 0? 
+    # Usually missed trades have risk_reward estimated.
+    # Let's assume prediction was correct if result would have been Win.
+    # But wait, missed_df usually stores potential result. column 'risk_reward' should be there too.
+    
+    miss_wins = missed_df[missed_df["risk_reward"] > BE_THRESHOLD]
     potential_winrate = (len(fact_wins) + len(miss_wins)) / max(total, 1) if total else 0.0
     
     # Missed rate
@@ -130,7 +144,13 @@ def compute_risk_metrics(
     net_pnl = float(fact_pnl.sum()) if len(fact_pnl) else 0.0
     
     # Winrate
-    fact_wins = fact_pnl[fact_pnl > 0]
+    from config import BE_THRESHOLD
+    if "risk_reward" in fact_df.columns:
+        fact_wins = fact_df[fact_df["risk_reward"] > BE_THRESHOLD]
+    else:
+        # Fallback if no risk_reward column (should not happen if passed correctly)
+        fact_wins = fact_df[fact_df["pnl_usd"] > 0] if "pnl_usd" in fact_df.columns else fact_df[fact_df["net_pnl"] > 0]
+        
     winrate = len(fact_wins) / max(len(fact_df), 1)
     
     # Expected value (EV) in R

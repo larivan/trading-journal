@@ -24,7 +24,6 @@ def get_trade_defaults(
             "risk_pct": float(trade.get("risk_pct") or 1.0),
         },
         "outcome": {
-            "result": trade.get("result"),
             "net_pnl": float(trade.get("net_pnl") or 0.0),
             "risk_reward": float(trade.get("risk_reward") or 0.0),
             "reward_percent": float(trade.get("reward_percent") or 0.0),

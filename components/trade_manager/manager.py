@@ -194,17 +194,15 @@ def render_trade_manager() -> None:
             message_col.error("Select an account.")
             return
 
-        if selected_state in ("Outcome", "Reviewed"):
+        if selected_state in ("Outcome"):
             if not outcome_values:
                 message_col.error("Fill in the “Outcome” block.")
                 return
-            if not outcome_values["result"]:
-                message_col.error("Select the trade result.")
-                return
-            if outcome_values["result"] != "Miss" and outcome_values["net_pnl"] is None:
+            if outcome_values["net_pnl"] is None:
                 message_col.error("Provide Net PnL.")
                 return
-            if outcome_values["estimation"] is None:
+        if selected_state in ("Reviewed"):
+            if review_values["estimation"] is None:
                 message_col.error("Provide trade estimation.")
                 return
 
@@ -230,7 +228,6 @@ def render_trade_manager() -> None:
 
         if outcome_values:
             payload.update({
-                "result": outcome_values["result"],
                 "net_pnl": outcome_values["net_pnl"],
                 "risk_reward": outcome_values["risk_reward"],
                 "reward_percent": outcome_values["reward_percent"],

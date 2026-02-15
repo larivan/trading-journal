@@ -254,6 +254,16 @@ def list_trades(
         elif k in mapping:
             q += f" AND {mapping[k]} = ?"
             p.append(v)
+        elif k == "result":
+            from config import BE_THRESHOLD
+            if v == "Win":
+                 q += f" AND risk_reward > {BE_THRESHOLD} AND is_missed = 0"
+            elif v == "Loss":
+                 q += f" AND risk_reward < -{BE_THRESHOLD} AND is_missed = 0"
+            elif v == "BE":
+                 q += f" AND risk_reward BETWEEN -{BE_THRESHOLD} AND {BE_THRESHOLD} AND is_missed = 0"
+            elif v == "Miss":
+                 q += " AND is_missed = 1"
 
     if order_by:
         if order_by not in TRADE_ORDER_COLUMNS:

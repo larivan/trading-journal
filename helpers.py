@@ -9,7 +9,27 @@ RESULT_LABELS = {
     "win": "Win",
     "loss": "Loss",
     "be": "Break-even",
+    "miss": "Miss",
 }
+
+
+def calculate_trade_result(risk_reward: Optional[float], is_missed: int) -> str:
+    """Calculates trade result based on risk_reward and is_missed flag."""
+    from config import BE_THRESHOLD
+    
+    if is_missed:
+        return "Miss"
+    
+    if risk_reward is None:
+        return ""
+        
+    if risk_reward > BE_THRESHOLD:
+        return "Win"
+    elif risk_reward < -BE_THRESHOLD:
+        return "Loss"
+    else:
+        return "BE"
+
 
 
 def apply_page_config(page_key: str):
