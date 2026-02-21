@@ -177,10 +177,10 @@ def delete_note(note_id: int, *, conn: Optional[sqlite3.Connection] = None) -> N
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
+        if not cur.execute("SELECT id FROM notes WHERE id=?", (note_id,)).fetchone():
+            raise ValueError(f"Note #{note_id} not found.")
         cur.execute("DELETE FROM charts WHERE note_id=?", (note_id,))
         cur.execute("DELETE FROM notes WHERE id=?", (note_id,))
-        if cur.rowcount == 0:
-            raise ValueError(f"Note #{note_id} not found.")
         if own:
             conn.commit()
     finally:
