@@ -249,7 +249,8 @@ def render_trade_manager() -> None:
         }
 
         try:
-            with transaction() as conn:
+            with st.spinner("Saving..."):
+              with transaction() as conn:
                 current_trade_id = trade_id
                 trade_charts = charts or []
                 if is_new_trade:

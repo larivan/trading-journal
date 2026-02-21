@@ -144,7 +144,8 @@ def render_analysis_manager() -> None:
 
         current_analysis_id = analysis_id
         try:
-            with transaction() as conn:
+            with st.spinner("Saving..."):
+              with transaction() as conn:
                 if is_new_analysis:
                     current_analysis_id = add_analysis(
                         analysis_payload, conn=conn)
