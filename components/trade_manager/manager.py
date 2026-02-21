@@ -123,9 +123,10 @@ def render_trade_manager() -> None:
                         ":material/arrow_back: Back",
                         width="stretch"
                     ):
+                        prev = get_previous_dialog()
                         _handle_dialog_dismiss()
                         remove_previous_dialog()
-                        open_dialog(get_previous_dialog())
+                        open_dialog(prev)
                         st.rerun()
 
                 submitted = c2.button(

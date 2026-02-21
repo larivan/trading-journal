@@ -86,7 +86,7 @@ def render_analysis_manager() -> None:
                 selected_stage = st.selectbox(
                     "Analysis stage",
                     allowed_stages,
-                    index=len(allowed_stages) - 1,
+                    index=allowed_stages.index(current_stage) if current_stage in allowed_stages else 0,
                 )
 
             with actions_col:
