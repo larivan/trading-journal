@@ -82,9 +82,6 @@ const updateToolbar = (toolbarEl, selectionTextEl, deleteButton, selectedIds) =>
     return;
   }
   toolbarEl.classList.remove("is-empty");
-  if (selectionTextEl) {
-    selectionTextEl.textContent = `${count} selected`;
-  }
   if (deleteButton) {
     deleteButton.disabled = false;
   }
@@ -200,14 +197,27 @@ const renderTable = ({
     actionsTd.className = "st-entity-table__cell--actions";
     const openBtn = document.createElement("button");
     openBtn.type = "button";
-    openBtn.className = "st-entity-table__open-btn";
-    openBtn.textContent = "Open";
+    openBtn.className = "st-entity-table__action";
+    openBtn.textContent = "↗";
+    openBtn.title = "Open";
     openBtn.setAttribute("aria-label", "Open row");
     openBtn.onclick = (event) => {
       event.preventDefault();
       setTriggerValue("open", row.id);
     };
     actionsTd.appendChild(openBtn);
+
+    const deleteRowBtn = document.createElement("button");
+    deleteRowBtn.type = "button";
+    deleteRowBtn.className = "st-entity-table__action";
+    deleteRowBtn.textContent = "🗑";
+    deleteRowBtn.title = "Delete";
+    deleteRowBtn.onclick = (event) => {
+      event.preventDefault();
+      setTriggerValue("delete", [row.id]);
+    };
+    actionsTd.appendChild(deleteRowBtn);
+
     tr.appendChild(actionsTd);
 
     columns.forEach((col) => {

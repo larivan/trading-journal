@@ -115,11 +115,16 @@ def render_entity_table(
         return
 
     component_state = st.session_state.get(key, {})
-    initial_selected = (
-        list(component_state.get("selected_ids") or [])
-        if isinstance(component_state, dict)
-        else []
-    )
+    _clear_key = f"{key}__pending_clear_selection"
+    if st.session_state.get(_clear_key):
+        initial_selected = []
+        del st.session_state[_clear_key]
+    else:
+        initial_selected = (
+            list(component_state.get("selected_ids") or [])
+            if isinstance(component_state, dict)
+            else []
+        )
     raw_page = (
         component_state.get("page")
         if isinstance(component_state, dict)
@@ -197,6 +202,9 @@ def render_entity_table(
         and isinstance(delete_ids, list)
         and delete_ids
     ):
+        # Сбрасываем выделение через флаг — нельзя изменять состояние
+        # компонента после его создания в том же прогоне скрипта.
+        st.session_state[f"{key}__pending_clear_selection"] = True
         on_delete(delete_ids)
 
     handle_selection_change(entity_name, selected_ids)
