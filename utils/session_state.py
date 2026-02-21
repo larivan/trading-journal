@@ -57,10 +57,7 @@ def get_selected_entity(entity: EntityName) -> Optional[int]:
 
 def handle_selection_change(entity: EntityName, selected_ids: Sequence[Any]) -> None:
     if selected_ids:
-        try:
-            set_selected_entity(entity, selected_ids[-1])
-        except IndexError:
-            set_selected_entity(entity, None)
+        set_selected_entity(entity, selected_ids[-1])
         return
     set_selected_entity(entity, None)
 
