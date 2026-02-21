@@ -393,9 +393,10 @@ export default function (component) {
   let allNotes = normalizeNotes(data.all_notes || [], data.excerpt_limit);
   const excerptLimit = Number(data.excerpt_limit) || 120;
   let selected = new Set();
+  let _eventCounter = 0;
 
   const emitEvent = (payload) => {
-    setStateValue("event", { ...payload, event_id: Date.now() });
+    setStateValue("event", { ...payload, event_id: ++_eventCounter });
   };
 
   const updateToolbar = () => {
