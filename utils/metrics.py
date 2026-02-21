@@ -50,35 +50,35 @@ def compute_overview_metrics(
     missed_count = len(missed_df)
     
     # Bias winrate: how often daily_bias matched fact_bias
-    bias_winrate = (df["fact_bias"] == df["daily_bias"]).mean() if total else 0.0
-    
-    # Fact winrate: winning trades among executed
+    if total and "fact_bias" in df.columns and "daily_bias" in df.columns:
+        bias_winrate = (df["fact_bias"] == df["daily_bias"]).mean()
+    else:
+        bias_winrate = 0.0
+
     from config import BE_THRESHOLD
-    # We use risk_reward for win determination to be consistent with BE_THRESHOLD
-    # But for backward compatibility if risk_reward is missing we might fallback?
-    # Actually let's trust risk_reward is present or we calculate it.
-    # Safe approach: use risk_reward if available, else Net PnL > 0 (old logic, but strictly requested to use BE_THRESHOLD)
-    
-    # Filter trades that match "Win" criteria
-    # Win = risk_reward > BE_THRESHOLD
-    
-    fact_wins = fact_df[fact_df["risk_reward"] > BE_THRESHOLD]
-    fact_winrate = len(fact_wins) / max(fact_count, 1) if fact_count else 0.0
-    
+
+    # Fact winrate: winning trades among executed
+    if "risk_reward" in fact_df.columns:
+        fact_wins = fact_df[fact_df["risk_reward"] > BE_THRESHOLD]
+    else:
+        fact_wins = fact_df.iloc[:0]
+    fact_winrate = len(fact_wins) / fact_count if fact_count else 0.0
+
     # Potential winrate: (fact wins + missed wins) / total
-    # Missed wins: missed trades where reward_percent > 0? 
-    # Usually missed trades have risk_reward estimated.
-    # Let's assume prediction was correct if result would have been Win.
-    # But wait, missed_df usually stores potential result. column 'risk_reward' should be there too.
-    
-    miss_wins = missed_df[missed_df["risk_reward"] > BE_THRESHOLD]
-    potential_winrate = (len(fact_wins) + len(miss_wins)) / max(total, 1) if total else 0.0
-    
+    if "risk_reward" in missed_df.columns:
+        miss_wins = missed_df[missed_df["risk_reward"] > BE_THRESHOLD]
+    else:
+        miss_wins = missed_df.iloc[:0]
+    potential_winrate = (len(fact_wins) + len(miss_wins)) / total if total else 0.0
+
     # Missed rate
-    missed_rate = missed_count / max(total, 1) if total else 0.0
-    
+    missed_rate = missed_count / total if total else 0.0
+
     # Quality ratio: trades with estimation=1 (liked)
-    quality_ratio = len(df[df["estimation"] == 1]) / max(total, 1) if total else 0.0
+    if "estimation" in df.columns:
+        quality_ratio = len(df[df["estimation"] == 1]) / total if total else 0.0
+    else:
+        quality_ratio = 0.0
     
     return {
         "fact_count": fact_count,
@@ -222,19 +222,29 @@ def compute_equity_curve(
         return pd.DataFrame()
     
     # Ensure we have required columns
-    rr_col = "rr" if "rr" in fact_df.columns else "risk_reward"
-    pnl_col = "pnl_usd" if "pnl_usd" in fact_df.columns else "net_pnl"
-    
+    if "rr" in fact_df.columns:
+        rr_col = "rr"
+    elif "risk_reward" in fact_df.columns:
+        rr_col = "risk_reward"
+    else:
+        return pd.DataFrame()
+
+    if "pnl_usd" in fact_df.columns:
+        pnl_col = "pnl_usd"
+    elif "net_pnl" in fact_df.columns:
+        pnl_col = "net_pnl"
+    else:
+        return pd.DataFrame()
+
     df = fact_df.copy()
-    if date_col != "date":
-        df["date"] = pd.to_datetime(df[date_col])
+    df["date"] = pd.to_datetime(df[date_col])
     
     daily = (
         df.groupby(df["date"].dt.date)
         .agg(
             rr_sum=(rr_col, "sum"),
             pnl_sum=(pnl_col, "sum"),
-            reward_sum=("reward_percent", "sum") if "reward_percent" in df.columns else (rr_col, lambda x: 0),
+            reward_sum=("reward_percent", "sum") if "reward_percent" in df.columns else (rr_col, lambda _: 0),
         )
         .reset_index()
         .rename(columns={"date": "day"})
