@@ -89,12 +89,10 @@ def to_option_format(
     """Приводит элементы к списку с явными label/value, сохраняя дубликаты."""
     options: List[Dict[str, Any]] = []
     for item in items:
-        options.append(
-            {
-                "label": formatter(item),
-                "value": item.get("id"),
-            }
-        )
+        item_id = item.get("id")
+        if item_id is None:
+            continue
+        options.append({"label": formatter(item), "value": item_id})
     return options
 
 
