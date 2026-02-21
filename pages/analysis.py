@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import date, timedelta
 from utils.date_periods import compute_date_range
 from typing import Any, Dict, List, Optional, Tuple
@@ -167,7 +168,7 @@ def _confirm_delete_analyses(ids: List[Any]) -> None:
         for analysis_id in ids:
             try:
                 delete_analysis(analysis_id)
-            except Exception as exc:
+            except (ValueError, sqlite3.Error) as exc:
                 st.toast(f"Failed to delete analysis {analysis_id}: {exc}", icon="❌")
         st.session_state.pop("_pending_delete_analysis_ids", None)
         st.rerun()

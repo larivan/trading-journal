@@ -1,3 +1,4 @@
+import sqlite3
 from typing import Any, Dict, List
 
 import streamlit as st
@@ -60,7 +61,7 @@ def _delete_accounts(ids: List[Any]) -> None:
     for account_id in ids:
         try:
             delete_account(int(account_id))
-        except Exception as exc:
+        except (ValueError, sqlite3.Error) as exc:
             st.toast(
                 f"Failed to delete account #{account_id}: {exc}", icon="❌")
     st.rerun()

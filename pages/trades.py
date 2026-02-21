@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import date, timedelta
 from utils.date_periods import compute_date_range
 from typing import Any, Dict, List, Optional, Tuple
@@ -204,7 +205,7 @@ def _confirm_delete_trades(ids: List[Any]) -> None:
         for trade_id in ids:
             try:
                 delete_trade(trade_id)
-            except Exception as exc:
+            except (ValueError, sqlite3.Error) as exc:
                 st.toast(f"Failed to delete trade {trade_id}: {exc}", icon="❌")
         st.session_state.pop("_pending_delete_trade_ids", None)
         st.rerun()

@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import date
 from typing import Any, Dict, List
 import streamlit as st
@@ -104,7 +105,7 @@ def _delete_notes(ids: List[Any]) -> None:
     for note_id in ids:
         try:
             delete_note(int(note_id))
-        except Exception as exc:
+        except (ValueError, sqlite3.Error) as exc:
             st.toast(f"Failed to delete note #{note_id}: {exc}", icon="❌")
     st.rerun()
 

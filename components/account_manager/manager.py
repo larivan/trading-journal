@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Any, Dict, Optional
 
 import streamlit as st
@@ -115,7 +116,7 @@ def render_account_manager() -> None:
         if delete_clicked and not is_new:
             try:
                 delete_account(int(account_id))
-            except Exception as exc:
+            except (ValueError, sqlite3.Error) as exc:
                 st.error(f"Failed to delete account: {exc}")
                 return
             _reset_account_state()
@@ -126,7 +127,7 @@ def render_account_manager() -> None:
         if archive_clicked and not is_new:
             try:
                 set_account_archived(int(account_id), archived=not archived)
-            except Exception as exc:
+            except (ValueError, sqlite3.Error) as exc:
                 st.error(f"Failed to update archive status: {exc}")
                 return
             st.session_state[ACCOUNT_SUCCESS_STATE] = (
@@ -165,7 +166,7 @@ def render_account_manager() -> None:
                 else:
                     update_account(int(account_id), payload)
                     st.session_state[ACCOUNT_SUCCESS_STATE] = "Account saved."
-            except Exception as exc:
+            except (ValueError, sqlite3.Error) as exc:
                 st.error(f"Failed to save account: {exc}")
                 return
 

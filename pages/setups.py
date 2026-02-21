@@ -1,3 +1,4 @@
+import sqlite3
 from typing import Any, Dict, List
 
 import streamlit as st
@@ -66,7 +67,7 @@ def _delete_setups(ids: List[Any]) -> None:
     for setup_id in ids:
         try:
             delete_setup(int(setup_id))
-        except Exception as exc:
+        except (ValueError, sqlite3.Error) as exc:
             st.toast(f"Failed to delete setup #{setup_id}: {exc}", icon="❌")
     st.rerun()
 

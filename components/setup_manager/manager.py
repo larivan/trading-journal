@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Any, Dict, List
 
 import streamlit as st
@@ -100,7 +101,7 @@ def render_setup_manager() -> None:
         if delete_clicked and not is_new:
             try:
                 delete_setup(int(setup_id))
-            except Exception as exc:
+            except (ValueError, sqlite3.Error) as exc:
                 st.error(f"Failed to delete setup: {exc}")
                 return
             _reset_setup_state()
@@ -146,7 +147,7 @@ def render_setup_manager() -> None:
                     st.session_state[SETUP_SUCCESS_STATE] = "Setup created."
                 else:
                     st.session_state[SETUP_SUCCESS_STATE] = "Setup saved."
-            except Exception as exc:
+            except (ValueError, sqlite3.Error) as exc:
                 st.error(f"Failed to save setup: {exc}")
                 return
 

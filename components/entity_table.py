@@ -580,7 +580,7 @@ def _format_cell_value(value: Any, column: ColumnDefinition) -> str:
     if callable(formatter):
         try:
             return str(formatter(value))
-        except Exception:
+        except Exception:  # noqa: BLE001 — caller-supplied formatter may raise anything
             return str(value)
     return str(value)
 
@@ -633,7 +633,7 @@ def _build_rows_payload(
             if callable(compute):
                 try:
                     value = compute(row)
-                except Exception:
+                except Exception:  # noqa: BLE001 — caller-supplied compute may raise anything
                     value = None
             elif field:
                 value = row.get(field)
