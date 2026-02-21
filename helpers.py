@@ -189,4 +189,8 @@ def get_excerpt(value: Optional[str], limit: int) -> str:
     if not value:
         return ""
     text = value.strip()
-    return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
+    if len(text) <= limit:
+        return text
+    if limit <= 3:
+        return text[:limit]
+    return text[: limit - 3].rstrip() + "..."
