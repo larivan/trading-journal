@@ -207,8 +207,8 @@ def render_trade_manager() -> None:
                 message_col.error("Provide Net PnL.")
                 return
         if selected_state in ("Reviewed"):
-            if review_values["estimation"] is None:
-                message_col.error("Provide trade estimation.")
+            if review_values["estimation"] == 0 and not (review_values.get("cold_thoughts") or "").strip():
+                message_col.error("Fill in Cold thoughts when trade has mistake.")
                 return
 
         local_tz = trade.get("local_tz") or LOCAL_TZ
