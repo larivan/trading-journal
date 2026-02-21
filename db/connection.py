@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 # =====================================================================
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "journal.db")
+DB_PATH = os.environ.get("TRADE_JOURNAL_DB_PATH", os.path.join(BASE_DIR, "journal.db"))
 
 
 def _ensure_dirs() -> None:
