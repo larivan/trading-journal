@@ -335,6 +335,8 @@ def _calculate_rewards() -> None:
     net_pnl = st.session_state.get(widget_keys["net_pnl"])
     risk_reward = st.session_state.get(widget_keys["risk_reward"])
     account = st.session_state.get(f"{state_key}_main_account")
+    if not account:
+        return
     account_id = _get_account_id_by_label(account["label"])
     account_balance = _get_account_balance(account_id)
     if not account_balance or not risk_pct:
