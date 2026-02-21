@@ -676,6 +676,15 @@ def render_entity_table(
     initial_page = int(raw_page) if isinstance(
         raw_page, int) and raw_page >= 0 else 0
 
+    # Сбрасываем страницу если набор данных изменился
+    rows_count_key = f"{key}__rows_count"
+    prev_rows_count = st.session_state.get(rows_count_key)
+    if prev_rows_count is not None and prev_rows_count != len(rows):
+        initial_page = 0
+        if isinstance(component_state, dict):
+            component_state["page"] = 0
+    st.session_state[rows_count_key] = len(rows)
+
     normalized_columns, _ = _normalize_columns(columns)
     rows_payload, id_to_row = _build_rows_payload(
         rows=rows,
