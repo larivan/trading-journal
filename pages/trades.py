@@ -168,7 +168,6 @@ trade_table_columns: List[Dict[str, Any]] = [
     {"field": "session", "label": "Session", "id": "session"},
     {"field": "asset", "label": "Asset", "id": "asset"},
     {"field": "state", "label": "State", "id": "state"},
-    {"field": "state", "label": "State", "id": "state"},
     {
         "field": "result", 
         "label": "Result",
