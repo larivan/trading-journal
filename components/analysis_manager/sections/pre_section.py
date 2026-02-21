@@ -34,14 +34,14 @@ def render_pre_stage(
         col1, col2 = st.columns([1, 3], gap="medium")
         with col1:
             analysis_result['date_local'] = st.date_input(
-                "Date",
+                "Date*",
                 value=parse_date(analysis_defaults.get(
                     "date_local")) or "today",
                 format="DD.MM.YYYY",
                 key=f"{state_key}_date"
             )
             analysis_result['asset'] = st.selectbox(
-                "Asset",
+                "Asset*",
                 options=ASSETS_VALUES,
                 placeholder="- Not set -",
                 key=f"{state_key}_asset",
@@ -50,7 +50,7 @@ def render_pre_stage(
             )
             st.divider()
             analysis_result['daily_bias'] = st.selectbox(
-                "Daily bias",
+                "Daily bias*",
                 options=DAILY_BIAS_VALUES,
                 placeholder="- Not set -",
                 key=f"{state_key}_daily_bias",

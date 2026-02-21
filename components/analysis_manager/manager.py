@@ -134,6 +134,12 @@ def render_analysis_manager() -> None:
         if pre_analysis_values and not pre_analysis_values.get("daily_bias"):
             message_col.error("Select a daily bias.")
             return
+        if post_analysis_values and not post_analysis_values.get("fact_bias"):
+            message_col.error("Select a fact bias.")
+            return
+        if post_analysis_values and not post_analysis_values.get("day_result"):
+            message_col.error("Select a day result.")
+            return
 
         analysis_payload: Dict[str, Any] = {"state": selected_stage}
         if pre_analysis_values:

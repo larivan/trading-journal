@@ -35,7 +35,7 @@ def render_post_stage(
 
         with col1:
             analysis_result["fact_bias"] = st.selectbox(
-                "Fact bias",
+                "Fact bias*",
                 options=DAILY_BIAS_VALUES,
                 placeholder="- Not set -",
                 key=f"{state_key}_fact_bias",
@@ -43,7 +43,7 @@ def render_post_stage(
                     DAILY_BIAS_VALUES, defaults.get("fact_bias")),
             )
             analysis_result["day_result"] = st.selectbox(
-                "Day result",
+                "Day result*",
                 options=DAY_RESULT_VALUES,
                 placeholder="- Not set -",
                 key=f"{state_key}_day_result",

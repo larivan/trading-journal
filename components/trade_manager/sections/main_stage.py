@@ -29,25 +29,25 @@ def render_main_stage(
         )
         oc1, oc2 = st.columns(2)
         data["date"] = oc1.date_input(
-            "Date",
+            "Date*",
             value=data.get("date") or "today",
             format="DD.MM.YYYY",
             key=f"{state_key}_date"
         )
         data["time"] = oc2.time_input(
-            "Time",
+            "Time*",
             value=data.get("time") or "now",
             key=f"{state_key}_time"
         )
         data["account"] = custom_selectbox(
-            "Account",
+            "Account*",
             account_options,
             placeholder="- Not set -",
             value=data.get("account"),
             key=f"{state_key}_account",
         )
         data["asset"] = st.selectbox(
-            "Asset",
+            "Asset*",
             ASSETS_VALUES,
             placeholder="- Not set -",
             key=f"{state_key}_asset",
