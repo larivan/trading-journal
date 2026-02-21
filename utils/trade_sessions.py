@@ -10,6 +10,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from config import LOCAL_TZ, TRADE_SESSION_VALUES
 
 DateLike = Union[date, datetime, str]
+
+_LOCAL_TZ_CACHE = None  # resolved once on first use
 TimeLike = Union[time, datetime, str]
 
 FRANKFURT_TZ = ZoneInfo("Europe/Berlin")
@@ -41,10 +43,15 @@ def detect_trade_session(
 ) -> str:
     """Определяет торговую сессию на основании локального времени сделки."""
 
+    global _LOCAL_TZ_CACHE
+    if _LOCAL_TZ_CACHE is None:
+        _LOCAL_TZ_CACHE = _resolve_tz(LOCAL_TZ)
+
     local_dt = _make_local_datetime(
         date_value,
         time_value,
-        local_tz_label or LOCAL_TZ,
+        local_tz_label,
+        _LOCAL_TZ_CACHE if local_tz_label is None else None,
     )
 
     for tzinfo, windows in (
@@ -81,11 +88,12 @@ def _in_window(moment: time, start: time, end: time) -> bool:
 def _make_local_datetime(
     date_value: DateLike,
     time_value: TimeLike,
-    local_tz_label: str,
+    local_tz_label: Optional[str],
+    resolved_tz=None,
 ) -> datetime:
     date_part = _ensure_date(date_value)
     time_part = _ensure_time(time_value)
-    tzinfo = _resolve_tz(local_tz_label)
+    tzinfo = resolved_tz if resolved_tz is not None else _resolve_tz(local_tz_label)
     naive_time = time(hour=time_part.hour, minute=time_part.minute, second=time_part.second)
     return datetime.combine(date_part, naive_time, tzinfo=tzinfo)
 
