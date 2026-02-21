@@ -18,11 +18,21 @@ def render_outcome_stage(
     if not visible:
         return None
 
+    net_pnl_key = f"{state_key}_net_pnl"
+    risk_reward_key = f"{state_key}_risk_reward"
+    reward_percent_key = f"{state_key}_reward_percent"
+
+    if net_pnl_key not in st.session_state:
+        st.session_state[net_pnl_key] = float(data.get("net_pnl") or 0.0)
+    if risk_reward_key not in st.session_state:
+        st.session_state[risk_reward_key] = float(data.get("risk_reward") or 0.0)
+    if reward_percent_key not in st.session_state:
+        st.session_state[reward_percent_key] = float(data.get("reward_percent") or 0.0)
+
     with st.expander("Outcome", expanded=expanded):
         data["net_pnl"] = st.number_input(
             "Net PnL, $",
-            value=float(data.get("net_pnl") or 0.0),
-            key=f"{state_key}_net_pnl",
+            key=net_pnl_key,
             step=1.0,
             disabled=is_missed,
             on_change=on_change,
@@ -30,8 +40,7 @@ def render_outcome_stage(
         cc3, cc4 = st.columns(2)
         data["risk_reward"] = cc3.number_input(
             "R:R",
-            value=float(data.get("risk_reward") or 0.0),
-            key=f"{state_key}_risk_reward",
+            key=risk_reward_key,
             step=0.1,
             format="%.2f",
             disabled=not is_missed,
@@ -39,8 +48,7 @@ def render_outcome_stage(
         )
         data["reward_percent"] = cc4.number_input(
             "Reward, %",
-            value=float(data.get("reward_percent") or 0.0),
-            key=f"{state_key}_reward_percent",
+            key=reward_percent_key,
             step=0.1,
             format="%.2f",
             disabled=True,
