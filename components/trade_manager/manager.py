@@ -26,7 +26,7 @@ from config import (
     TRADE_ID_STATE,
     TRADE_SUCCESS_STATE,
     TM_KEY_PREFIX,
-    TM_DEFAULT_ANALYSIS_ID_STATE,
+    TM_DEFAULT_PREFIX,
     LOCAL_TZ,
     ANALYSIS_DIALOG_NAME
 )
@@ -92,7 +92,7 @@ def render_trade_manager() -> None:
             formatter=lambda setup: f"{setup['name']}",
         )
         analyses = to_option_format(
-            list_analysis(filters={"state": "post-market"}),
+            list_analysis(),
             formatter=lambda analysis: f"{analysis.get('date_local')} · {analysis.get('asset')}",
         )
         defaults = get_trade_defaults(trade, accounts)
@@ -303,7 +303,7 @@ def _handle_dialog_dismiss() -> None:
     current_trade_id = st.session_state.get(TRADE_ID_STATE)
     close_dialog()
     st.session_state.pop(TRADE_ID_STATE, None)
-    st.session_state.pop(TM_DEFAULT_ANALYSIS_ID_STATE, None)
+    st.session_state.pop(f"{TM_DEFAULT_PREFIX}analysis", None)
     clear_note_selector_state(
         f"{TM_KEY_PREFIX}{current_trade_id or 'new'}_note_selector"
     )
