@@ -13,22 +13,29 @@ RESULT_LABELS = {
 }
 
 
+def is_win_rr(risk_reward: Optional[float]) -> bool:
+    """Returns True if risk_reward qualifies as a Win."""
+    from config import BE_THRESHOLD
+    return risk_reward is not None and risk_reward > BE_THRESHOLD
+
+
+def is_loss_rr(risk_reward: Optional[float]) -> bool:
+    """Returns True if risk_reward qualifies as a Loss."""
+    from config import BE_THRESHOLD
+    return risk_reward is not None and risk_reward < -BE_THRESHOLD
+
+
 def calculate_trade_result(risk_reward: Optional[float], is_missed: int) -> str:
     """Calculates trade result based on risk_reward and is_missed flag."""
-    from config import BE_THRESHOLD
-
     if is_missed:
         return "Miss"
-
     if risk_reward is None:
         return ""
-
-    if risk_reward > BE_THRESHOLD:
+    if is_win_rr(risk_reward):
         return "Win"
-    elif risk_reward < -BE_THRESHOLD:
+    if is_loss_rr(risk_reward):
         return "Loss"
-    else:
-        return "BE"
+    return "BE"
 
 
 def apply_page_config(page_key: str):

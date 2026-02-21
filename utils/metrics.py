@@ -6,6 +6,7 @@ All trading metrics are calculated here and reused across dashboard and other pa
 from typing import Any, Dict, Optional
 import pandas as pd
 import numpy as np
+from helpers import is_win_rr
 
 
 def compute_overview_metrics(
@@ -55,18 +56,16 @@ def compute_overview_metrics(
     else:
         bias_winrate = 0.0
 
-    from config import BE_THRESHOLD
-
     # Fact winrate: winning trades among executed
     if "risk_reward" in fact_df.columns:
-        fact_wins = fact_df[fact_df["risk_reward"] > BE_THRESHOLD]
+        fact_wins = fact_df[fact_df["risk_reward"].map(is_win_rr)]
     else:
         fact_wins = fact_df.iloc[:0]
     fact_winrate = len(fact_wins) / fact_count if fact_count else 0.0
 
     # Potential winrate: (fact wins + missed wins) / total
     if "risk_reward" in missed_df.columns:
-        miss_wins = missed_df[missed_df["risk_reward"] > BE_THRESHOLD]
+        miss_wins = missed_df[missed_df["risk_reward"].map(is_win_rr)]
     else:
         miss_wins = missed_df.iloc[:0]
     potential_winrate = (len(fact_wins) + len(miss_wins)) / total if total else 0.0
@@ -144,12 +143,11 @@ def compute_risk_metrics(
     net_pnl = float(fact_pnl.sum()) if len(fact_pnl) else 0.0
     
     # Winrate
-    from config import BE_THRESHOLD
     if "risk_reward" in fact_df.columns:
-        fact_wins = fact_df[fact_df["risk_reward"] > BE_THRESHOLD]
+        fact_wins = fact_df[fact_df["risk_reward"].map(is_win_rr)]
     else:
-        # Fallback if no risk_reward column (should not happen if passed correctly)
-        fact_wins = fact_df[fact_df["pnl_usd"] > 0] if "pnl_usd" in fact_df.columns else fact_df[fact_df["net_pnl"] > 0]
+        pnl_col_fb = "pnl_usd" if "pnl_usd" in fact_df.columns else "net_pnl"
+        fact_wins = fact_df[fact_df[pnl_col_fb] > 0] if pnl_col_fb in fact_df.columns else fact_df.iloc[:0]
         
     winrate = len(fact_wins) / max(len(fact_df), 1)
     
