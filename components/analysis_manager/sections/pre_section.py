@@ -52,6 +52,7 @@ def render_pre_stage(
             analysis_result['daily_bias'] = st.selectbox(
                 "Daily bias",
                 options=DAILY_BIAS_VALUES,
+                placeholder="- Not set -",
                 key=f"{state_key}_daily_bias",
                 index=safe_choice_index(
                     DAILY_BIAS_VALUES, analysis_defaults.get("daily_bias")),

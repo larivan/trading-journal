@@ -44,7 +44,6 @@ def render_main_stage(
             placeholder="- Not set -",
             value=data.get("account"),
             key=f"{state_key}_account",
-            is_required=True,
         )
         data["asset"] = st.selectbox(
             "Asset",

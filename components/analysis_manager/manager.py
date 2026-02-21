@@ -129,6 +129,13 @@ def render_analysis_manager() -> None:
         if not submitted:
             return
 
+        if pre_analysis_values and not pre_analysis_values.get("asset"):
+            message_col.error("Select an asset.")
+            return
+        if pre_analysis_values and not pre_analysis_values.get("daily_bias"):
+            message_col.error("Select a daily bias.")
+            return
+
         analysis_payload: Dict[str, Any] = {"state": selected_stage}
         if pre_analysis_values:
             analysis_payload.update(pre_analysis_values)
