@@ -167,7 +167,7 @@ def format_local_time(value: Any) -> str:
             parsed = datetime.fromisoformat(value)
             return parsed.strftime("%H:%M")
         except ValueError:
-            return value[:5]
+            return value[:5] if len(value) >= 5 else value
     return str(value)
 
 
