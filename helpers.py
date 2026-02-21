@@ -2,7 +2,7 @@ from datetime import date, datetime, time
 from typing import Any, Callable, Dict, List, Optional
 from config import PAGES
 import streamlit as st
-import secrets
+import uuid
 
 
 RESULT_LABELS = {
@@ -116,7 +116,7 @@ def custom_selectbox(
                 break
 
     if key is None:
-        key = secrets.token_hex(16)
+        key = str(uuid.uuid4())
 
     selection = st.selectbox(
         label,
