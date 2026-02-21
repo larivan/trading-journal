@@ -111,6 +111,7 @@ def render_analysis_manager() -> None:
 
         render_execution_stage(
             analysis_id=analysis_id,
+            analysis_asset=analysis.get("asset"),
             visible="execution" in visible,
             expanded=(selected_stage == "execution"),
             state_key=f"{state_key}_execution",

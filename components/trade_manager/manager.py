@@ -142,6 +142,8 @@ def render_trade_manager() -> None:
             visible = visible_stages(selected_state)
             outcome_visible = "outcome" in visible
 
+            locked_from_analysis = st.session_state.get(f"{TM_DEFAULT_PREFIX}analysis") is not None
+
             main_values = render_main_stage(
                 expanded=(selected_state == "Open"),
                 defaults=defaults["open"],
@@ -150,6 +152,7 @@ def render_trade_manager() -> None:
                 setup_options=setups,
                 state_key=f"{state_key}_main",
                 on_risk_change=_calculate_rewards,
+                locked_fields=locked_from_analysis,
             )
 
             outcome_values = render_outcome_stage(
@@ -304,6 +307,7 @@ def _handle_dialog_dismiss() -> None:
     close_dialog()
     st.session_state.pop(TRADE_ID_STATE, None)
     st.session_state.pop(f"{TM_DEFAULT_PREFIX}analysis", None)
+    st.session_state.pop(f"{TM_DEFAULT_PREFIX}asset", None)
     clear_note_selector_state(
         f"{TM_KEY_PREFIX}{current_trade_id or 'new'}_note_selector"
     )

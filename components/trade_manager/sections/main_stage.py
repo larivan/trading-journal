@@ -16,6 +16,7 @@ def render_main_stage(
     setup_options: List[OptionItem],
     state_key: str,
     on_risk_change: Optional[Callable[[], None]] = None,
+    locked_fields: bool = False,
 ) -> Dict[str, Any]:
     """Отрисовывает блок открытия сделки (дата, счёт, сетап и риск)."""
     data = defaults.copy()
@@ -51,13 +52,15 @@ def render_main_stage(
             placeholder="- Not set -",
             key=f"{state_key}_asset",
             index=safe_choice_index(ASSETS_VALUES, data.get("asset")),
+            disabled=locked_fields,
         )
         data["analysis"] = custom_selectbox(
             "Analysis",
             analysis_options,
             placeholder="- Not set -",
             value=data.get("analysis"),
-            key=f"{state_key}_analysis"
+            key=f"{state_key}_analysis",
+            disabled=locked_fields,
         )
         data["setup"] = custom_selectbox(
             "Setup",

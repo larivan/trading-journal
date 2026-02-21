@@ -18,6 +18,7 @@ from config import (
 def render_execution_stage(
     *,
     analysis_id: Optional[int],
+    analysis_asset: Optional[str] = None,
     visible: bool,
     expanded: bool,
     state_key: str,
@@ -38,6 +39,7 @@ def render_execution_stage(
             key=f"{state_key}_create_trade",
         ):
             st.session_state[f"{TM_DEFAULT_PREFIX}analysis"] = analysis_id
+            st.session_state[f"{TM_DEFAULT_PREFIX}asset"] = analysis_asset
             set_previous_dialog(ANALYSIS_DIALOG_NAME)
             open_dialog(TRADE_DIALOG_NAME)
             st.rerun()
@@ -48,6 +50,7 @@ def render_execution_stage(
                 return
             st.session_state[TRADE_ID_STATE] = trade_id
             st.session_state[f"{TM_DEFAULT_PREFIX}analysis"] = analysis_id
+            st.session_state[f"{TM_DEFAULT_PREFIX}asset"] = analysis_asset
             set_previous_dialog(ANALYSIS_DIALOG_NAME)
             open_dialog(TRADE_DIALOG_NAME)
 

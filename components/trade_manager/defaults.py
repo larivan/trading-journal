@@ -18,7 +18,7 @@ def get_trade_defaults(
             "date": parse_date(trade.get("date_local")),
             "time": parse_time(trade.get("time_local")),
             "account": trade.get("account_id") or accounts[0]["value"] if accounts else None,
-            "asset": trade.get("asset"),
+            "asset": _get_session_default("asset") or trade.get("asset"),
             "analysis": _get_session_default("analysis") or trade.get("analysis_id"),
             "setup": trade.get("setup_id"),
             "risk_pct": float(trade.get("risk_pct") or 1.0),
