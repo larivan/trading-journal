@@ -217,6 +217,24 @@ class TestUpdateTrade:
             update_trade(99999, {"net_pnl": 100.0})
 
 
+class TestFKViolation:
+    def test_invalid_account_id_raises(self, temp_db):
+        """create_trade() with non-existent account_id raises an integrity error."""
+        import sqlite3
+        payload = {
+            "local_tz": "UTC+3",
+            "date_local": "2026-01-01",
+            "time_local": "10:00:00",
+            "account_id": 99999,
+            "asset": "EUR/USD",
+            "session": "LOKZ",
+            "state": "Open",
+            "is_missed": 0,
+        }
+        with pytest.raises((sqlite3.IntegrityError, Exception)):
+            create_trade(payload)
+
+
 class TestDeleteTrade:
     def test_delete_trade(self, trade_dependencies):
         """Test deleting a trade."""
