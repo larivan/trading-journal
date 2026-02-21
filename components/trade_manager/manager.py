@@ -92,7 +92,7 @@ def render_trade_manager() -> None:
             formatter=lambda setup: f"{setup['name']}",
         )
         analyses = to_option_format(
-            list_analysis(),
+            list_analysis(filters={"state": "post-market"}),
             formatter=lambda analysis: f"{analysis.get('date_local')} · {analysis.get('asset')}",
         )
         defaults = get_trade_defaults(trade, accounts)
