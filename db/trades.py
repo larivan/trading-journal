@@ -1,9 +1,9 @@
 # db/trades.py — Trade CRUD operations
 import sqlite3
-from datetime import date, datetime, time
 from typing import Any, Dict, List, Optional
 
 from config import TRADE_STATE_VALUES, TRADE_SESSION_VALUES
+from db._normalize import coerce_float, coerce_int, normalize_date, normalize_time
 from db.connection import get_conn, _managed_conn, _rows_to_dicts
 
 
@@ -81,25 +81,14 @@ def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             payload[key] = None
             continue
 
-        # Date coercion → ISO string
         if key == "date_local":
-            if isinstance(value, date):
-                payload[key] = value.isoformat()
-            else:
-                payload[key] = str(value)
+            payload[key] = normalize_date(value)
             continue
 
-        # Time coercion → HH:MM:SS string
         if key == "time_local":
-            if isinstance(value, time):
-                payload[key] = value.strftime("%H:%M:%S")
-            elif isinstance(value, datetime):
-                payload[key] = value.strftime("%H:%M:%S")
-            else:
-                payload[key] = str(value)
+            payload[key] = normalize_time(value)
             continue
 
-        # State validation
         if key == "state":
             if value not in TRADE_STATE_VALUES:
                 raise ValueError(
@@ -108,7 +97,6 @@ def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             payload[key] = value
             continue
 
-        # Session validation
         if key == "session":
             if value not in TRADE_SESSION_VALUES:
                 raise ValueError(
@@ -117,23 +105,14 @@ def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             payload[key] = value
             continue
 
-        # Integer coercion for FK IDs and flags
         if key in _INT_FIELDS:
-            try:
-                payload[key] = int(value)
-            except (TypeError, ValueError):
-                raise ValueError(f"{key} must be an integer.")
+            payload[key] = coerce_int(key, value)
             continue
 
-        # Float coercion for numeric fields
         if key in _FLOAT_FIELDS:
-            try:
-                payload[key] = float(value)
-            except (TypeError, ValueError):
-                raise ValueError(f"{key} must be a number.")
+            payload[key] = coerce_float(key, value)
             continue
 
-        # String fields (local_tz, asset, emotional_problems, hot_thoughts, cold_thoughts)
         payload[key] = value
 
     return payload

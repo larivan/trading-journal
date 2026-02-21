@@ -2,6 +2,7 @@
 import sqlite3
 from typing import Any, Dict, List, Optional
 
+from db._normalize import coerce_float
 from db.connection import get_conn, _managed_conn, _now_iso_utc, _rows_to_dicts
 
 
@@ -33,10 +34,7 @@ def _normalize_account_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             continue
 
         if key == "starting_balance":
-            try:
-                payload[key] = float(value)
-            except (TypeError, ValueError):
-                raise ValueError("starting_balance must be a number.")
+            payload[key] = coerce_float(key, value)
             continue
 
         if key == "is_prop":

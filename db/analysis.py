@@ -1,9 +1,10 @@
 # db/analysis.py — Analysis and Analysis Stages CRUD operations
 import sqlite3
-from datetime import date, datetime, time
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from config import ANALYSIS_STATE_VALUES
+from db._normalize import coerce_int, normalize_date, normalize_time
 from db.connection import get_conn, _managed_conn, _rows_to_dicts
 
 
@@ -74,8 +75,8 @@ def _normalize_analysis_payload(data: Dict[str, Any]) -> Dict[str, Any]:
         if value is None:
             payload[key] = None
             continue
-        if key == "date_local" and isinstance(value, date):
-            payload[key] = value.isoformat()
+        if key == "date_local":
+            payload[key] = normalize_date(value)
             continue
         if key == "state" and value not in ANALYSIS_STATE_VALUES:
             raise ValueError(
@@ -95,21 +96,10 @@ def _normalize_analysis_stage_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             payload[key] = None
             continue
         if key == "analysis_id":
-            if not isinstance(value, int):
-                try:
-                    payload[key] = int(value)
-                except (TypeError, ValueError):
-                    raise ValueError("analysis_id must be an integer.")
-            else:
-                payload[key] = value
+            payload[key] = coerce_int(key, value)
             continue
         if key == "time_local":
-            if isinstance(value, time):
-                payload[key] = value.strftime("%H:%M:%S")
-            elif isinstance(value, datetime):
-                payload[key] = value.strftime("%H:%M:%S")
-            else:
-                payload[key] = value
+            payload[key] = normalize_time(value)
             continue
         if key == "type" and value not in ANALYSIS_STATE_VALUES:
             raise ValueError(

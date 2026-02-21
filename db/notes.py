@@ -1,8 +1,9 @@
 # db/notes.py — Notes CRUD operations and relations
 import sqlite3
-from datetime import date, datetime, time
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
+from db._normalize import normalize_date, normalize_time
 from db.connection import get_conn, _managed_conn, _rows_to_dicts
 
 
@@ -38,16 +39,11 @@ def _normalize_note_payload(data: Dict[str, Any]) -> Dict[str, Any]:
         if key == "body":
             payload[key] = str(value).strip()
             continue
-        if key == "date_local" and isinstance(value, date):
-            payload[key] = value.isoformat()
+        if key == "date_local":
+            payload[key] = normalize_date(value)
             continue
         if key == "time_local":
-            if isinstance(value, time):
-                payload[key] = value.strftime("%H:%M:%S")
-            elif isinstance(value, datetime):
-                payload[key] = value.strftime("%H:%M:%S")
-            else:
-                payload[key] = str(value)
+            payload[key] = normalize_time(value)
             continue
         payload[key] = value
     return payload
