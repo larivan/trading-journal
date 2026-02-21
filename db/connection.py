@@ -188,6 +188,7 @@ CREATE INDEX IF NOT EXISTS idx_trades_date_local   ON trades(date_local);
 CREATE INDEX IF NOT EXISTS idx_trades_account      ON trades(account_id);
 CREATE INDEX IF NOT EXISTS idx_trades_asset        ON trades(asset);
 CREATE INDEX IF NOT EXISTS idx_trades_setup        ON trades(setup_id);
+CREATE INDEX IF NOT EXISTS idx_trades_analysis     ON trades(analysis_id);
 
 CREATE INDEX IF NOT EXISTS idx_analysis_date_local         ON analysis(date_local);
 CREATE INDEX IF NOT EXISTS idx_analysis_asset              ON analysis(asset);
