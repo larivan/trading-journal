@@ -1,6 +1,7 @@
 from datetime import date, datetime, time
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
-from config import PAGES
+from config import BE_THRESHOLD, PAGES
 import streamlit as st
 import uuid
 
@@ -15,13 +16,11 @@ RESULT_LABELS = {
 
 def is_win_rr(risk_reward: Optional[float]) -> bool:
     """Returns True if risk_reward qualifies as a Win."""
-    from config import BE_THRESHOLD
     return risk_reward is not None and risk_reward > BE_THRESHOLD
 
 
 def is_loss_rr(risk_reward: Optional[float]) -> bool:
     """Returns True if risk_reward qualifies as a Loss."""
-    from config import BE_THRESHOLD
     return risk_reward is not None and risk_reward < -BE_THRESHOLD
 
 
@@ -39,7 +38,6 @@ def calculate_trade_result(risk_reward: Optional[float], is_missed: int) -> str:
 
 
 def apply_page_config(page_key: str):
-    import streamlit as st
     options = PAGES.get(page_key)
     st.set_page_config(
         page_title=options['title'],
@@ -50,12 +48,11 @@ def apply_page_config(page_key: str):
 
 
 def apply_page_config_from_file(file):
-    from pathlib import Path
     return apply_page_config(Path(file).stem)
 
 
 # --- Trade helpers (можно переиспользовать в различных компонентах) ---
-def parse_time(value: Optional[str]) -> time:
+def parse_time(value: Optional[str]) -> Optional[time]:
     if isinstance(value, time):
         return value
     if isinstance(value, str):
@@ -67,7 +64,7 @@ def parse_time(value: Optional[str]) -> time:
     return None
 
 
-def parse_date(value: Optional[str]) -> date:
+def parse_date(value: Optional[str]) -> Optional[date]:
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, date):
