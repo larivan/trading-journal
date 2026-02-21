@@ -30,6 +30,7 @@ def render_outcome_stage(
         cc3, cc4 = st.columns(2)
         data["risk_reward"] = cc3.number_input(
             "R:R",
+            value=float(data.get("risk_reward") or 0.0),
             key=f"{state_key}_risk_reward",
             step=0.1,
             format="%.2f",
@@ -38,6 +39,7 @@ def render_outcome_stage(
         )
         data["reward_percent"] = cc4.number_input(
             "Reward, %",
+            value=float(data.get("reward_percent") or 0.0),
             key=f"{state_key}_reward_percent",
             step=0.1,
             format="%.2f",
