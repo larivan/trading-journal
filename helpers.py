@@ -61,6 +61,8 @@ def parse_time(value: Optional[str]) -> time:
 
 
 def parse_date(value: Optional[str]) -> date:
+    if isinstance(value, datetime):
+        return value.date()
     if isinstance(value, date):
         return value
     if isinstance(value, str):
@@ -142,6 +144,8 @@ def result_label(value: Optional[str]) -> str:
 def format_local_date(value: Any) -> str:
     if value is None:
         return ""
+    if isinstance(value, datetime):
+        return value.date().strftime("%d.%m.%Y")
     if isinstance(value, date):
         return value.strftime("%d.%m.%Y")
     if isinstance(value, str):
