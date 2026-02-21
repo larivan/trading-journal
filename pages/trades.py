@@ -191,12 +191,26 @@ def _handle_open_trade(row: Dict[str, Any]) -> None:
 def _handle_delete_trades(ids: List[Any]) -> None:
     if not ids:
         return
-    for id in ids:
-        try:
-            delete_trade(id)
-        except Exception as exc:
-            st.toast(f"Failed to delete trade with ID {id}: {exc}", icon="❌")
+    st.session_state["_pending_delete_trade_ids"] = ids
     st.rerun()
+
+
+@st.dialog("Delete trades")
+def _confirm_delete_trades(ids: List[Any]) -> None:
+    n = len(ids)
+    st.warning(f"Delete {n} trade{'s' if n > 1 else ''}? This cannot be undone.")
+    col1, col2 = st.columns(2)
+    if col1.button("Delete", type="primary", width="stretch"):
+        for trade_id in ids:
+            try:
+                delete_trade(trade_id)
+            except Exception as exc:
+                st.toast(f"Failed to delete trade {trade_id}: {exc}", icon="❌")
+        st.session_state.pop("_pending_delete_trade_ids", None)
+        st.rerun()
+    if col2.button("Cancel", width="stretch"):
+        st.session_state.pop("_pending_delete_trade_ids", None)
+        st.rerun()
 
 
 # --- Создаём таблицу с обработкой выделений и действий ---
@@ -211,5 +225,9 @@ render_entity_table(
     on_open=_handle_open_trade,
     on_delete=_handle_delete_trades,
 )
+
+pending_delete_ids = st.session_state.get("_pending_delete_trade_ids")
+if pending_delete_ids:
+    _confirm_delete_trades(pending_delete_ids)
 
 render_trade_manager()
