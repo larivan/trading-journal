@@ -196,6 +196,8 @@ CREATE INDEX IF NOT EXISTS idx_charts_trade_id             ON charts(trade_id);
 CREATE INDEX IF NOT EXISTS idx_charts_analysis_stage_id    ON charts(analysis_stage_id);
 CREATE INDEX IF NOT EXISTS idx_charts_setup_id             ON charts(setup_id);
 CREATE INDEX IF NOT EXISTS idx_charts_note_id              ON charts(note_id);
+CREATE INDEX IF NOT EXISTS idx_trade_notes_note_id         ON trade_notes(note_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_notes_note_id      ON analysis_notes(note_id);
 """
 
 
