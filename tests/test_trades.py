@@ -125,6 +125,53 @@ class TestListTrades:
         assert len(trades) == 1
 
 
+class TestFilterByResult:
+    """Tests for list_trades() result filter using BE_THRESHOLD logic."""
+
+    @pytest.fixture
+    def result_deps(self, temp_db):
+        account_id = create_account(name="Acc", starting_balance=10000.0)
+        setup_id = create_setup(name="S")
+        analysis_id = add_analysis({"date_local": "2026-01-01"})
+        return {"account_id": account_id, "setup_id": setup_id, "analysis_id": analysis_id}
+
+    def _make(self, deps, **kw):
+        return make_trade_data(deps, **kw)
+
+    def test_filter_win(self, result_deps):
+        create_trade(self._make(result_deps, risk_reward=2.0, is_missed=0))
+        create_trade(self._make(result_deps, risk_reward=-1.0, is_missed=0, date_local="2026-01-02"))
+        create_trade(self._make(result_deps, risk_reward=0.0, is_missed=0, date_local="2026-01-03"))
+
+        trades = list_trades({"result": "Win"})
+        assert len(trades) == 1
+        assert trades[0]["risk_reward"] == 2.0
+
+    def test_filter_loss(self, result_deps):
+        create_trade(self._make(result_deps, risk_reward=2.0, is_missed=0))
+        create_trade(self._make(result_deps, risk_reward=-1.0, is_missed=0, date_local="2026-01-02"))
+
+        trades = list_trades({"result": "Loss"})
+        assert len(trades) == 1
+        assert trades[0]["risk_reward"] == -1.0
+
+    def test_filter_be(self, result_deps):
+        create_trade(self._make(result_deps, risk_reward=0.0, is_missed=0))
+        create_trade(self._make(result_deps, risk_reward=2.0, is_missed=0, date_local="2026-01-02"))
+
+        trades = list_trades({"result": "BE"})
+        assert len(trades) == 1
+        assert trades[0]["risk_reward"] == 0.0
+
+    def test_filter_miss(self, result_deps):
+        create_trade(self._make(result_deps, is_missed=1, risk_reward=0.0))
+        create_trade(self._make(result_deps, is_missed=0, risk_reward=2.0, date_local="2026-01-02"))
+
+        trades = list_trades({"result": "Miss"})
+        assert len(trades) == 1
+        assert trades[0]["is_missed"] == 1
+
+
 class TestGetTrade:
     def test_get_existing(self, trade_dependencies):
         """Test getting an existing trade."""
