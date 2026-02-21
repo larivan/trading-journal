@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, time, timedelta, timezone
+from functools import lru_cache
 from typing import Optional, Sequence, Tuple, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from config import LOCAL_TZ, TRADE_SESSION_VALUES
 
 DateLike = Union[date, datetime, str]
-
-_LOCAL_TZ_CACHE = None  # resolved once on first use
 TimeLike = Union[time, datetime, str]
 
 FRANKFURT_TZ = ZoneInfo("Europe/Berlin")
@@ -42,16 +41,11 @@ def detect_trade_session(
     local_tz_label: Optional[str] = None,
 ) -> str:
     """Определяет торговую сессию на основании локального времени сделки."""
-
-    global _LOCAL_TZ_CACHE
-    if _LOCAL_TZ_CACHE is None:
-        _LOCAL_TZ_CACHE = _resolve_tz(LOCAL_TZ)
-
     local_dt = _make_local_datetime(
         date_value,
         time_value,
         local_tz_label,
-        _LOCAL_TZ_CACHE if local_tz_label is None else None,
+        _resolve_tz(LOCAL_TZ) if local_tz_label is None else None,
     )
 
     for tzinfo, windows in (
@@ -126,6 +120,7 @@ def _ensure_time(value: TimeLike) -> time:
     raise ValueError(f"Unsupported time value: {value!r}")
 
 
+@lru_cache(maxsize=32)
 def _resolve_tz(label: str):
     try:
         return ZoneInfo(label)
