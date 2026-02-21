@@ -47,6 +47,7 @@ TRADE_ID_STATE = "tm_trade_id"
 TRADE_SUCCESS_STATE = "tm_success_message"
 TM_KEY_PREFIX = "tm_trade_id_"
 TM_DEFAULT_PREFIX = "tm_default_"
+TM_DEFAULT_ANALYSIS_ID_STATE = "tm_default_analysis_id"
 TRADE_STATE_VALUES = ["Open", "Outcome", "Reviewed"]
 TRADE_RESULT_VALUES = ["Win", "Loss", "BE", "Miss"]
 BE_THRESHOLD = 0.05

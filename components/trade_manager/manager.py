@@ -26,6 +26,7 @@ from config import (
     TRADE_ID_STATE,
     TRADE_SUCCESS_STATE,
     TM_KEY_PREFIX,
+    TM_DEFAULT_ANALYSIS_ID_STATE,
     LOCAL_TZ,
     ANALYSIS_DIALOG_NAME
 )
@@ -300,7 +301,7 @@ def _handle_dialog_dismiss() -> None:
     current_trade_id = st.session_state.get(TRADE_ID_STATE)
     close_dialog()
     st.session_state.pop(TRADE_ID_STATE, None)
-    st.session_state.pop("tm_default_analysis_id", None)
+    st.session_state.pop(TM_DEFAULT_ANALYSIS_ID_STATE, None)
     clear_note_selector_state(
         f"{TM_KEY_PREFIX}{current_trade_id or 'new'}_note_selector"
     )
