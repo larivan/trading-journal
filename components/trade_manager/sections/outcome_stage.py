@@ -21,8 +21,7 @@ def render_outcome_stage(
     with st.expander("Outcome", expanded=expanded):
         data["net_pnl"] = st.number_input(
             "Net PnL, $",
-            value=data.get(
-                "net_pnl") if f"{state_key}_net_pnl" not in st.session_state else None,
+            value=float(data.get("net_pnl") or 0.0),
             key=f"{state_key}_net_pnl",
             step=1.0,
             disabled=is_missed,
