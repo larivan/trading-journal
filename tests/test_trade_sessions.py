@@ -1,7 +1,13 @@
 
 import pytest
 from datetime import datetime, time, date
-from utils.trade_sessions import detect_trade_session
+
+from utils.trade_sessions import (
+    detect_trade_session,
+    _ensure_date,
+    _ensure_time,
+    _resolve_tz,
+)
 
 # Test with a fixed timezone context if possible, 
 # but detect_trade_session accepts local_tz_label.
@@ -93,3 +99,94 @@ def test_unsupported_timezone():
     # Implementation raises ValueError for invalid label in _resolve_tz.
     with pytest.raises(ValueError):
         detect_trade_session(date(2023,1,1), time(12,0), local_tz_label="INVALID")
+
+
+class TestEnsureDate:
+    def test_date_object(self):
+        d = date(2026, 1, 15)
+        assert _ensure_date(d) == d
+
+    def test_datetime_extracts_date(self):
+        dt = datetime(2026, 1, 15, 10, 30)
+        assert _ensure_date(dt) == date(2026, 1, 15)
+
+    def test_string_iso(self):
+        assert _ensure_date("2026-01-15") == date(2026, 1, 15)
+
+    def test_string_dot_format(self):
+        assert _ensure_date("15.01.2026") == date(2026, 1, 15)
+
+    def test_invalid_raises(self):
+        with pytest.raises(ValueError):
+            _ensure_date("not-a-date")
+
+    def test_unsupported_type_raises(self):
+        with pytest.raises((ValueError, TypeError)):
+            _ensure_date(12345)
+
+
+class TestEnsureTime:
+    def test_time_object(self):
+        t = time(10, 30)
+        assert _ensure_time(t) == t
+
+    def test_datetime_extracts_time(self):
+        dt = datetime(2026, 1, 15, 10, 30)
+        assert _ensure_time(dt) == time(10, 30)
+
+    def test_string_hhmmss(self):
+        assert _ensure_time("10:30:00") == time(10, 30, 0)
+
+    def test_string_hhmm(self):
+        assert _ensure_time("10:30") == time(10, 30)
+
+    def test_invalid_raises(self):
+        with pytest.raises(ValueError):
+            _ensure_time("not-a-time")
+
+    def test_unsupported_type_raises(self):
+        with pytest.raises((ValueError, TypeError)):
+            _ensure_time(99999)
+
+
+class TestResolveTz:
+    def test_utc_plus_offset(self):
+        from datetime import timezone, timedelta
+        tz = _resolve_tz("UTC+3")
+        assert tz == timezone(timedelta(hours=3))
+
+    def test_utc_minus_offset(self):
+        from datetime import timezone, timedelta
+        tz = _resolve_tz("UTC-5")
+        assert tz == timezone(timedelta(hours=-5))
+
+    def test_iana_name(self):
+        from zoneinfo import ZoneInfo
+        tz = _resolve_tz("Europe/Moscow")
+        assert isinstance(tz, ZoneInfo)
+
+    def test_invalid_label_raises(self):
+        with pytest.raises(ValueError):
+            _resolve_tz("BADTZ")
+
+
+class TestDetectSessionWithLocalTzLabel:
+    def test_iana_tz_label_override(self):
+        """detect_trade_session принимает IANA-имя в local_tz_label."""
+        d = date(2023, 1, 1)
+        # 11:30 Europe/Moscow = 08:30 UTC = 08:30 London → LOKZ
+        t = time(11, 30)
+        session = detect_trade_session(d, t, local_tz_label="Europe/Moscow")
+        assert session == "LOKZ"
+
+    def test_string_date_and_time_inputs(self):
+        """detect_trade_session принимает строки вместо объектов date/time."""
+        session = detect_trade_session("2023-01-01", "11:30:00", local_tz_label="UTC+3")
+        assert session == "LOKZ"
+
+    def test_datetime_inputs(self):
+        """detect_trade_session принимает datetime-объекты."""
+        dt_date = datetime(2023, 1, 1)
+        dt_time = datetime(2023, 1, 1, 11, 30)
+        session = detect_trade_session(dt_date, dt_time, local_tz_label="UTC+3")
+        assert session == "LOKZ"
