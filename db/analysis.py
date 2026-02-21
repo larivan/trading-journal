@@ -392,7 +392,7 @@ def delete_analysis_stage(
         cur = conn.cursor()
         cur.execute("DELETE FROM analysis_stages WHERE id=?", (stage_id,))
         if cur.rowcount == 0:
-            raise ValueError(f"Этап анализа #{stage_id} не найден.")
+            raise ValueError(f"Analysis stage #{stage_id} not found.")
         if own:
             conn.commit()
     finally:

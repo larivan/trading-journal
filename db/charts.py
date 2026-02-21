@@ -81,7 +81,7 @@ def update_chart(
             (chart_url, caption, chart_id),
         )
         if cur.rowcount == 0:
-            raise ValueError(f"Чарт #{chart_id} не найден.")
+            raise ValueError(f"Chart #{chart_id} not found.")
         if own:
             conn.commit()
     finally:
@@ -95,7 +95,7 @@ def delete_chart(chart_id: int, *, conn: Optional[sqlite3.Connection] = None) ->
         cur = conn.cursor()
         cur.execute("DELETE FROM charts WHERE id=?", (chart_id,))
         if cur.rowcount == 0:
-            raise ValueError(f"Чарт #{chart_id} не найден.")
+            raise ValueError(f"Chart #{chart_id} not found.")
         if own:
             conn.commit()
     finally:
