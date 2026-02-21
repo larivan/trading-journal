@@ -34,6 +34,7 @@ from .sections import (
     render_post_stage,
     render_pre_stage,
 )
+from .state import get_allowed_analysis_stages
 
 
 def render_analysis_manager() -> None:
@@ -81,14 +82,11 @@ def render_analysis_manager() -> None:
             with status_col:
                 current_stage = analysis.get(
                     "state") or ANALYSIS_STATE_VALUES[0]
+                allowed_stages = get_allowed_analysis_stages(current_stage)
                 selected_stage = st.selectbox(
                     "Analysis stage",
-                    ANALYSIS_STATE_VALUES,
-                    index=(
-                        ANALYSIS_STATE_VALUES.index(current_stage)
-                        if current_stage
-                        else 0
-                    ),
+                    allowed_stages,
+                    index=len(allowed_stages) - 1,
                 )
 
             with actions_col:
