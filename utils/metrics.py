@@ -236,13 +236,15 @@ def compute_equity_curve(
 
     df = fact_df.copy()
     df["date"] = pd.to_datetime(df[date_col])
-    
+    if "reward_percent" not in df.columns:
+        df["reward_percent"] = 0.0
+
     daily = (
         df.groupby(df["date"].dt.date)
         .agg(
             rr_sum=(rr_col, "sum"),
             pnl_sum=(pnl_col, "sum"),
-            reward_sum=("reward_percent", "sum") if "reward_percent" in df.columns else (rr_col, lambda _: 0),
+            reward_sum=("reward_percent", "sum"),
         )
         .reset_index()
         .rename(columns={"date": "day"})
