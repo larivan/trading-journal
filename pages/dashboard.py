@@ -62,6 +62,7 @@ def prepare_trades_df() -> pd.DataFrame:
     t_df = pd.DataFrame(trades)
 
     if not a_df.empty:
+        t_df["analysis_id"] = pd.to_numeric(t_df["analysis_id"], errors="coerce")
         t_df = t_df.merge(
             a_df[["id", "daily_bias", "fact_bias"]],
             left_on="analysis_id",
