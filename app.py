@@ -1,6 +1,6 @@
 import streamlit as st
 from db import init_db
-from config import PAGES
+from config import PAGES, SETTINGS_PAGES
 from utils.auth import (
     render_login_form,
     require_auth,
@@ -55,9 +55,21 @@ else:
         set_session_cookie()
         st.session_state["_cookie_set"] = True
 
-    pages = []
+    main_pages = []
     for name, options in PAGES.items():
-        pages.append(
+        main_pages.append(
+            st.Page(
+                f"pages/{name}.py",
+                title=options["title"],
+                icon=options["icon"],
+                url_path=name,
+                default=options["default"],
+            )
+        )
+
+    settings_pages = []
+    for name, options in SETTINGS_PAGES.items():
+        settings_pages.append(
             st.Page(
                 f"pages/{name}.py",
                 title=options["title"],
@@ -68,7 +80,7 @@ else:
         )
 
     # Регистрируем навигацию первой — ссылки окажутся вверху сайдбара
-    nav = st.navigation(pages)
+    nav = st.navigation({"": main_pages, "Settings": settings_pages})
 
     # Никнейм и Logout — прижаты к низу через CSS
     with st.sidebar:

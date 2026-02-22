@@ -7,13 +7,18 @@ from components.account_manager import render_account_manager
 from components.entity_gallery import render_entity_gallery
 from config import ACCOUNT_DIALOG_NAME, ACCOUNT_ID_STATE
 from db import delete_account, list_accounts
-from helpers import apply_page_config_from_file
 from utils.auth import get_current_user_id
 from utils.session_state import open_dialog
 
-apply_page_config_from_file(__file__)
+st.set_page_config(
+    page_title="Accounts",
+    page_icon=":material/account_balance_wallet:",
+    layout="wide",
+)
 
 user_id = get_current_user_id()
+
+st.title(":material/account_balance_wallet: Accounts")
 
 actions_col, _ = st.columns([0.2, 0.8])
 with actions_col:
