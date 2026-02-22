@@ -112,6 +112,7 @@ def _render_register_form(is_first: bool) -> bool:
     label = "Create first account" if is_first else "Register"
     with st.form(f"register_form_{'first' if is_first else 'new'}"):
         username = st.text_input("Username")
+        email = st.text_input("Email (optional)")
         password = st.text_input("Password", type="password")
         confirm = st.text_input("Confirm password", type="password")
         submitted = st.form_submit_button(label, type="primary")
@@ -120,6 +121,7 @@ def _render_register_form(is_first: bool) -> bool:
         return False
 
     username = (username or "").strip()
+    email = (email or "").strip() or None
     if not username:
         st.error("Username is required.")
         return False
@@ -134,6 +136,6 @@ def _render_register_form(is_first: bool) -> bool:
         return False
 
     hashed = hash_password(password)
-    user_id = create_user(username, hashed)
+    user_id = create_user(username, hashed, email=email)
     load_user_session(user_id)
     return True
