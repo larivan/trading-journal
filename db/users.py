@@ -30,9 +30,8 @@ _DEFAULT_SETTINGS: Dict[str, Any] = {
 
 
 def create_user(
-    username: str,
-    password_hash: str,
-    email: Optional[str] = None,
+    email: str,
+    username: str = "",
     *,
     conn: Optional[sqlite3.Connection] = None,
 ) -> int:
@@ -41,8 +40,8 @@ def create_user(
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO users (username, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
-            (username, email, password_hash, _now_iso_utc()),
+            "INSERT INTO users (email, username, created_at) VALUES (?, ?, ?)",
+            (email, username, _now_iso_utc()),
         )
         user_id = cur.lastrowid
         cur.execute(
@@ -57,12 +56,12 @@ def create_user(
             conn.close()
 
 
-def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
+def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT * FROM users WHERE username = ? AND is_active = 1",
-            (username,),
+            "SELECT * FROM users WHERE email = ? AND is_active = 1",
+            (email,),
         ).fetchone()
         return dict(row) if row else None
     finally:
@@ -79,25 +78,6 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
         return dict(row) if row else None
     finally:
         conn.close()
-
-
-def update_user_password(
-    user_id: int,
-    password_hash: str,
-    *,
-    conn: Optional[sqlite3.Connection] = None,
-) -> None:
-    conn, own = _managed_conn(conn)
-    try:
-        conn.execute(
-            "UPDATE users SET password_hash = ? WHERE id = ?",
-            (password_hash, user_id),
-        )
-        if own:
-            conn.commit()
-    finally:
-        if own:
-            conn.close()
 
 
 def get_user_settings(user_id: int) -> Dict[str, Any]:
@@ -173,15 +153,5 @@ def list_users() -> List[Dict[str, Any]]:
             "SELECT id, username, email, created_at, is_active FROM users ORDER BY id ASC"
         ).fetchall()
         return _rows_to_dicts(rows)
-    finally:
-        conn.close()
-
-
-def count_users() -> int:
-    """Return total number of users."""
-    conn = get_conn()
-    try:
-        row = conn.execute("SELECT COUNT(*) as cnt FROM users").fetchone()
-        return row["cnt"] if row else 0
     finally:
         conn.close()

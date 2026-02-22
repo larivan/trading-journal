@@ -11,13 +11,11 @@ from db.connection import (
 
 from db.users import (
     create_user,
-    get_user_by_username,
+    get_user_by_email,
     get_user_by_id,
-    update_user_password,
     get_user_settings,
     update_user_settings,
     list_users,
-    count_users,
     WRITABLE_SETTING_FIELDS,
 )
 
@@ -107,9 +105,6 @@ from db.trades import (
     WRITABLE_TRADE_FIELDS,
 )
 
-# Alias for app.py auth usage
-list_users_for_auth = list_users
-
 __all__ = [
     # Connection
     "get_conn",
@@ -119,14 +114,11 @@ __all__ = [
     "BASE_DIR",
     # Users
     "create_user",
-    "get_user_by_username",
+    "get_user_by_email",
     "get_user_by_id",
-    "update_user_password",
     "get_user_settings",
     "update_user_settings",
     "list_users",
-    "list_users_for_auth",
-    "count_users",
     "WRITABLE_SETTING_FIELDS",
     # Accounts
     "create_account",
