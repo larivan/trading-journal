@@ -8,10 +8,12 @@ from components.setup_manager import render_setup_manager
 from config import SETUP_DIALOG_NAME, SETUP_ID_STATE
 from db import delete_setup, list_setups
 from helpers import apply_page_config_from_file, get_excerpt
+from utils.auth import get_current_user_id
 from utils.session_state import open_dialog
 
-
 apply_page_config_from_file(__file__)
+
+user_id = get_current_user_id()
 
 search_col, _, actions_col = st.columns(
     [0.6, 0.2, 0.2], vertical_alignment="bottom"
@@ -34,7 +36,7 @@ filters: Dict[str, Any] = {}
 if query:
     filters["query"] = query
 
-rows = list_setups(filters, order_by="name", ascending=True)
+rows = list_setups(user_id, filters, order_by="name", ascending=True)
 
 setup_columns: List[Dict[str, Any]] = [
     {
@@ -66,7 +68,7 @@ def _delete_setups(ids: List[Any]) -> None:
         return
     for setup_id in ids:
         try:
-            delete_setup(int(setup_id))
+            delete_setup(int(setup_id), user_id)
         except (ValueError, sqlite3.Error) as exc:
             st.toast(f"Failed to delete setup #{setup_id}: {exc}", icon="❌")
     st.rerun()

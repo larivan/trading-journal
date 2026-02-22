@@ -16,12 +16,22 @@ RESULT_LABELS = {
 
 def is_win_rr(risk_reward: Optional[float]) -> bool:
     """Returns True if risk_reward qualifies as a Win."""
-    return risk_reward is not None and risk_reward > BE_THRESHOLD
+    try:
+        from utils.auth import get_setting
+        threshold = get_setting("be_threshold", BE_THRESHOLD)
+    except Exception:
+        threshold = BE_THRESHOLD
+    return risk_reward is not None and risk_reward > threshold
 
 
 def is_loss_rr(risk_reward: Optional[float]) -> bool:
     """Returns True if risk_reward qualifies as a Loss."""
-    return risk_reward is not None and risk_reward < -BE_THRESHOLD
+    try:
+        from utils.auth import get_setting
+        threshold = get_setting("be_threshold", BE_THRESHOLD)
+    except Exception:
+        threshold = BE_THRESHOLD
+    return risk_reward is not None and risk_reward < -threshold
 
 
 def calculate_trade_result(risk_reward: Optional[float], is_missed: int) -> str:

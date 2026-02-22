@@ -16,6 +16,7 @@ from helpers import (
 from utils.session_state import (
     open_dialog,
 )
+from utils.auth import get_current_user_id
 from config import (
     ASSETS_VALUES,
     TRADE_RESULT_VALUES,
@@ -26,8 +27,9 @@ from config import (
 )
 
 # === БАЗОВАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ ===
-# Настраиваем страницу и готовим исходные значения для фильтров и диапазонов.
 apply_page_config_from_file(__file__)
+
+user_id = get_current_user_id()
 
 TAB_DEFINITIONS: Dict[str, str] = {
     "today": "Today",
@@ -44,9 +46,9 @@ ESTIMATION_VARS = {
 }
 
 
-# --- Загружаем список счетов и настраиваем state для форм ---
+# --- Загружаем список счетов ---
 accounts = to_option_format(
-    list_accounts(),
+    list_accounts(user_id),
     formatter=lambda acc: f"{acc['name']}",
 )
 
@@ -154,7 +156,7 @@ if date_range:
     filter["date_to"] = date_range[1].isoformat()
 
 # === ЗАГРУЗКА ДАННЫХ И ОПРЕДЕЛЕНИЕ КОЛОНОК ===
-rows = list_trades(filter)
+rows = list_trades(user_id, filter)
 
 
 # --- Настройка отображаемых колонок таблицы ---
@@ -170,7 +172,7 @@ trade_table_columns: List[Dict[str, Any]] = [
     {"field": "asset", "label": "Asset", "id": "asset"},
     {"field": "state", "label": "State", "id": "state"},
     {
-        "field": "result", 
+        "field": "result",
         "label": "Result",
         "compute": lambda row: calculate_trade_result(row.get("risk_reward"), row.get("is_missed")),
         "id": "result"
@@ -202,11 +204,16 @@ def _confirm_delete_trades(ids: List[Any]) -> None:
     st.warning(f"Delete {n} trade{'s' if n > 1 else ''}? This cannot be undone.")
     col1, col2 = st.columns(2)
     if col1.button("Delete", type="primary", width="stretch"):
-        for trade_id in ids:
-            try:
-                delete_trade(trade_id)
-            except (ValueError, sqlite3.Error) as exc:
-                st.toast(f"Failed to delete trade {trade_id}: {exc}", icon="❌")
+        from db import transaction
+        try:
+            with transaction() as conn:
+                for trade_id in ids:
+                    try:
+                        delete_trade(trade_id, user_id, conn=conn)
+                    except (ValueError, sqlite3.Error) as exc:
+                        st.toast(f"Failed to delete trade {trade_id}: {exc}", icon="❌")
+        except Exception as exc:
+            st.toast(f"Delete failed: {exc}", icon="❌")
         st.session_state.pop("_pending_delete_trade_ids", None)
         st.rerun()
     if col2.button("Cancel", width="stretch"):

@@ -27,6 +27,7 @@ from db import (
     transaction,
     update_setup,
 )
+from utils.auth import get_current_user_id
 from utils.session_state import close_dialog, dialog_is_active
 
 
@@ -38,12 +39,13 @@ def render_setup_manager() -> None:
     if not dialog_is_active(SETUP_DIALOG_NAME):
         return
 
+    user_id = get_current_user_id()
     setup_id = st.session_state.get(SETUP_ID_STATE)
     is_new = setup_id is None
     setup: Dict[str, Any] = {}
 
     if not is_new:
-        setup = get_setup(int(setup_id)) or {}
+        setup = get_setup(int(setup_id), user_id) or {}
         if not setup:
             st.error("Setup not found.")
             _reset_setup_state()
@@ -100,7 +102,7 @@ def render_setup_manager() -> None:
 
         if delete_clicked and not is_new:
             try:
-                delete_setup(int(setup_id))
+                delete_setup(int(setup_id), user_id)
             except (ValueError, sqlite3.Error) as exc:
                 st.error(f"Failed to delete setup: {exc}")
                 return
@@ -126,12 +128,13 @@ def render_setup_manager() -> None:
                     setup_charts = charts or []
                     if is_new:
                         current_setup_id = create_setup(
+                            user_id,
                             payload["name"],
                             payload["description"],
                             conn=conn,
                         )
                     else:
-                        update_setup(int(setup_id), payload, conn=conn)
+                        update_setup(int(setup_id), user_id, payload, conn=conn)
 
                     persist_chart_editor(
                         attached_charts=setup_charts,

@@ -142,13 +142,12 @@ def compute_risk_metrics(
     total_rr = float(fact_rr.sum()) if len(fact_rr) else 0.0
     net_pnl = float(fact_pnl.sum()) if len(fact_pnl) else 0.0
     
-    # Winrate
+    # Winrate — only based on risk_reward, never fallback to PnL
     if "risk_reward" in fact_df.columns:
         fact_wins = fact_df[fact_df["risk_reward"].map(is_win_rr)]
     else:
-        pnl_col_fb = "pnl_usd" if "pnl_usd" in fact_df.columns else "net_pnl"
-        fact_wins = fact_df[fact_df[pnl_col_fb] > 0] if pnl_col_fb in fact_df.columns else fact_df.iloc[:0]
-        
+        fact_wins = fact_df.iloc[:0]
+
     winrate = len(fact_wins) / max(len(fact_df), 1)
     
     # Expected value (EV) in R

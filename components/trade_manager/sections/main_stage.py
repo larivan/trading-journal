@@ -1,5 +1,6 @@
 """Блок открытия сделки."""
 
+from datetime import date as date_type
 from typing import Any, Dict, List, Optional, Callable
 import streamlit as st
 from config import ASSETS_VALUES
@@ -17,9 +18,11 @@ def render_main_stage(
     state_key: str,
     on_risk_change: Optional[Callable[[], None]] = None,
     locked_fields: bool = False,
+    assets: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Отрисовывает блок открытия сделки (дата, счёт, сетап и риск)."""
     data = defaults.copy()
+    effective_assets = assets if assets else ASSETS_VALUES
 
     with st.expander("Main", expanded=expanded):
         data["is_missed"] = st.toggle(
@@ -32,6 +35,7 @@ def render_main_stage(
             "Date*",
             value=data.get("date") or "today",
             format="DD.MM.YYYY",
+            max_value=date_type.today(),
             key=f"{state_key}_date"
         )
         data["time"] = oc2.time_input(
@@ -48,10 +52,10 @@ def render_main_stage(
         )
         data["asset"] = st.selectbox(
             "Asset*",
-            ASSETS_VALUES,
+            effective_assets,
             placeholder="- Not set -",
             key=f"{state_key}_asset",
-            index=safe_choice_index(ASSETS_VALUES, data.get("asset")),
+            index=safe_choice_index(effective_assets, data.get("asset")),
             disabled=locked_fields,
         )
         data["analysis"] = custom_selectbox(

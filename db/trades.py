@@ -25,6 +25,7 @@ TRADE_ORDER_COLUMNS = {
 
 TRADE_COLUMNS = [
     "id",
+    "user_id",
     "local_tz",
     "date_local",
     "time_local",
@@ -118,18 +119,23 @@ def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
     return payload
 
 
-def get_trade_by_id(trade_id: int) -> Optional[Dict[str, Any]]:
+def get_trade_by_id(trade_id: int, user_id: int) -> Optional[Dict[str, Any]]:
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM trades WHERE id=?",
-                           (trade_id,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM trades WHERE id=? AND user_id=?",
+            (trade_id, user_id),
+        ).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
 
 
 def create_trade(
-    data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+    user_id: int,
+    data: Dict[str, Any],
+    *,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> int:
     if not data:
         raise ValueError("No data to create trade.")
@@ -138,6 +144,7 @@ def create_trade(
     if not payload:
         raise ValueError("No valid fields to create trade.")
 
+    payload["user_id"] = user_id
     columns = ", ".join(payload.keys())
     placeholders = ", ".join(["?"] * len(payload))
     values = list(payload.values())
@@ -158,7 +165,11 @@ def create_trade(
 
 
 def update_trade(
-    trade_id: int, data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+    trade_id: int,
+    user_id: int,
+    data: Dict[str, Any],
+    *,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> None:
     if not data:
         return
@@ -174,8 +185,8 @@ def update_trade(
     try:
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE trades SET {assignments} WHERE id=?",
-            values + [trade_id],
+            f"UPDATE trades SET {assignments} WHERE id=? AND user_id=?",
+            values + [trade_id, user_id],
         )
         if cur.rowcount == 0:
             raise ValueError(f"Trade #{trade_id} not found.")
@@ -186,13 +197,18 @@ def update_trade(
             conn.close()
 
 
-def delete_trade(trade_id: int, *, conn: Optional[sqlite3.Connection] = None) -> None:
+def delete_trade(
+    trade_id: int,
+    user_id: int,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> None:
     if trade_id is None:
         return
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM trades WHERE id=?", (trade_id,))
+        cur.execute("DELETE FROM trades WHERE id=? AND user_id=?", (trade_id, user_id))
         if cur.rowcount == 0:
             raise ValueError(f"Trade #{trade_id} not found.")
         if own:
@@ -203,14 +219,15 @@ def delete_trade(trade_id: int, *, conn: Optional[sqlite3.Connection] = None) ->
 
 
 def list_trades(
+    user_id: int,
     filters: Optional[Dict[str, Any]] = None,
     order_by: Optional[str] = None,
     ascending: bool = True,
 ) -> List[Dict[str, Any]]:
     filters = filters or {}
     select_clause = ", ".join(TRADE_COLUMNS)
-    q = f"SELECT {select_clause} FROM trades WHERE 1=1"
-    p: List[Any] = []
+    q = f"SELECT {select_clause} FROM trades WHERE user_id=?"
+    p: List[Any] = [user_id]
 
     mapping = {
         "account_id": "account_id",

@@ -1,4 +1,3 @@
-from typing import Dict, List
 
 PAGES = {
     'dashboard': {
@@ -31,15 +30,42 @@ PAGES = {
         'default': False,
         'layout': 'wide',
     },
-    'accounts': {
+}
+
+SETTINGS_PAGES = {
+    'settings_accounts': {
         'title': 'Accounts',
         'icon': ':material/account_balance_wallet:',
         'default': False,
         'layout': 'wide',
     },
+    'settings_profile': {
+        'title': 'Profile',
+        'icon': ':material/person:',
+        'default': False,
+        'layout': 'wide',
+    },
+    'settings_journal_setup': {
+        'title': 'Journal Setup',
+        'icon': ':material/tune:',
+        'default': False,
+        'layout': 'wide',
+    },
+    'settings_preferences': {
+        'title': 'Preferences',
+        'icon': ':material/language:',
+        'default': False,
+        'layout': 'wide',
+    },
+    'settings_backup': {
+        'title': 'Backup',
+        'icon': ':material/backup:',
+        'default': False,
+        'layout': 'wide',
+    },
 }
 
-LOCAL_TZ = 'UTC+3'  # Москва
+LOCAL_TZ = 'Europe/Moscow'
 
 # Trades
 TRADE_DIALOG_NAME = "trade_manager"

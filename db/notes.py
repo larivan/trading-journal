@@ -15,6 +15,7 @@ NOTE_WRITABLE_FIELDS = [
 
 NOTE_SELECT_COLUMNS = [
     "id",
+    "user_id",
     "body",
     "date_local",
     "time_local",
@@ -50,7 +51,10 @@ def _normalize_note_payload(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def create_note(
-    data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+    user_id: int,
+    data: Dict[str, Any],
+    *,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> int:
     payload = _normalize_note_payload(data or {})
     body_value = (payload.get("body") or "").strip()
@@ -58,6 +62,7 @@ def create_note(
         raise ValueError("body is required for note.")
 
     payload["body"] = body_value
+    payload["user_id"] = user_id
     payload.setdefault("date_local", date.today().isoformat())
     payload.setdefault("time_local", datetime.now().strftime("%H:%M:%S"))
 
@@ -81,14 +86,15 @@ def create_note(
 
 
 def list_notes(
+    user_id: int,
     filters: Optional[Dict[str, Any]] = None,
     order_by: Optional[str] = None,
     ascending: bool = False,
 ) -> List[Dict[str, Any]]:
     filters = filters or {}
     select_clause = ", ".join(NOTE_SELECT_COLUMNS)
-    q = f"SELECT {select_clause} FROM notes WHERE 1=1"
-    params: List[Any] = []
+    q = f"SELECT {select_clause} FROM notes WHERE user_id=?"
+    params: List[Any] = [user_id]
 
     mapping = {
         "date_from": "date_local >= ?",
@@ -124,12 +130,12 @@ def list_notes(
         conn.close()
 
 
-def get_note(note_id: int) -> Optional[Dict[str, Any]]:
+def get_note(note_id: int, user_id: int) -> Optional[Dict[str, Any]]:
     conn = get_conn()
     try:
         row = conn.execute(
-            f"SELECT {', '.join(NOTE_SELECT_COLUMNS)} FROM notes WHERE id=?",
-            (note_id,),
+            f"SELECT {', '.join(NOTE_SELECT_COLUMNS)} FROM notes WHERE id=? AND user_id=?",
+            (note_id, user_id),
         ).fetchone()
         return dict(row) if row else None
     finally:
@@ -137,7 +143,11 @@ def get_note(note_id: int) -> Optional[Dict[str, Any]]:
 
 
 def update_note(
-    note_id: int, data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+    note_id: int,
+    user_id: int,
+    data: Dict[str, Any],
+    *,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> None:
     payload = _normalize_note_payload(data or {})
     if "body" in payload:
@@ -155,8 +165,8 @@ def update_note(
     try:
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE notes SET {assignments} WHERE id=?",
-            values + [note_id],
+            f"UPDATE notes SET {assignments} WHERE id=? AND user_id=?",
+            values + [note_id, user_id],
         )
         if cur.rowcount == 0:
             raise ValueError(f"Note #{note_id} not found.")
@@ -167,14 +177,18 @@ def update_note(
             conn.close()
 
 
-def delete_note(note_id: int, *, conn: Optional[sqlite3.Connection] = None) -> None:
+def delete_note(
+    note_id: int,
+    user_id: int,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> None:
     if note_id is None:
         return
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
-        # CASCADE on charts.note_id handles related chart rows automatically
-        cur.execute("DELETE FROM notes WHERE id=?", (note_id,))
+        cur.execute("DELETE FROM notes WHERE id=? AND user_id=?", (note_id, user_id))
         if cur.rowcount == 0:
             raise ValueError(f"Note #{note_id} not found.")
         if own:

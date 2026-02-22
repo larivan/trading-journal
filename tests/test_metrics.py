@@ -173,14 +173,15 @@ def test_risk_metrics_no_rr_or_pnl_columns():
     assert metrics["winrate"] == 0.0
 
 
-def test_risk_metrics_no_risk_reward_falls_back_to_pnl():
-    """Нет risk_reward → winrate считается по net_pnl > 0."""
+def test_risk_metrics_no_risk_reward_winrate_is_zero():
+    """Нет risk_reward → winrate = 0 (нет fallback через PnL)."""
     df = pd.DataFrame([
         {"net_pnl": 100.0},
         {"net_pnl": -50.0},
     ])
     metrics = compute_risk_metrics(df)
-    assert metrics["winrate"] == 0.5
+    # Without risk_reward column there's no way to determine wins — winrate = 0
+    assert metrics["winrate"] == 0.0
 
 
 def test_risk_metrics_no_all_df():

@@ -9,6 +9,7 @@ import streamlit as st
 
 from config import NOTE_DIALOG_NAME, NOTE_ID_STATE
 from db import delete_note, list_analysis_stage_notes, list_notes, list_trade_notes
+from utils.auth import get_current_user_id
 from utils.session_state import open_dialog, set_previous_dialog
 from helpers import get_excerpt
 
@@ -77,7 +78,7 @@ def render_note_selector(
         base_notes_value = _list_attached_notes(entity_type, entity_id)
     else:
         base_notes_value = []
-    all_notes = list_notes(order_by="date_local", ascending=False)
+    all_notes = list_notes(get_current_user_id(), order_by="date_local", ascending=False)
 
     base_ids = [note.get("id")
                 for note in base_notes_value if note.get("id") is not None]

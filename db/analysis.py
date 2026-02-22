@@ -10,6 +10,7 @@ from db.connection import get_conn, _managed_conn, _rows_to_dicts
 
 ANALYSIS_COLUMNS = [
     "id",
+    "user_id",
     "date_local",
     "asset",
     "daily_bias",
@@ -115,12 +116,16 @@ def _normalize_analysis_stage_payload(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def add_analysis(
-    data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+    user_id: int,
+    data: Dict[str, Any],
+    *,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> int:
     payload = _normalize_analysis_payload(data)
     if "date_local" not in payload:
         raise ValueError("date_local is required for analysis.")
 
+    payload["user_id"] = user_id
     columns = ", ".join(payload.keys())
     placeholders = ", ".join(["?"] * len(payload))
     values = list(payload.values())
@@ -141,14 +146,15 @@ def add_analysis(
 
 
 def list_analysis(
+    user_id: int,
     filters: Optional[Dict[str, Any]] = None,
     order_by: Optional[str] = None,
     ascending: bool = False,
 ) -> List[Dict[str, Any]]:
     filters = filters or {}
     select_clause = ", ".join(ANALYSIS_COLUMNS)
-    q = f"SELECT {select_clause} FROM analysis WHERE 1=1"
-    params: List[Any] = []
+    q = f"SELECT {select_clause} FROM analysis WHERE user_id=?"
+    params: List[Any] = [user_id]
 
     mapping = {
         "asset": "asset",
@@ -189,12 +195,12 @@ def list_analysis(
         conn.close()
 
 
-def get_analysis(analysis_id: int) -> Optional[Dict[str, Any]]:
+def get_analysis(analysis_id: int, user_id: int) -> Optional[Dict[str, Any]]:
     conn = get_conn()
     try:
         row = conn.execute(
-            f"SELECT {', '.join(ANALYSIS_COLUMNS)} FROM analysis WHERE id=?",
-            (analysis_id,),
+            f"SELECT {', '.join(ANALYSIS_COLUMNS)} FROM analysis WHERE id=? AND user_id=?",
+            (analysis_id, user_id),
         ).fetchone()
         return dict(row) if row else None
     finally:
@@ -202,7 +208,11 @@ def get_analysis(analysis_id: int) -> Optional[Dict[str, Any]]:
 
 
 def update_analysis(
-    analysis_id: int, data: Dict[str, Any], *, conn: Optional[sqlite3.Connection] = None
+    analysis_id: int,
+    user_id: int,
+    data: Dict[str, Any],
+    *,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> None:
     payload = _normalize_analysis_payload(data)
     if not payload:
@@ -215,8 +225,8 @@ def update_analysis(
     try:
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE analysis SET {assignments} WHERE id=?",
-            values + [analysis_id],
+            f"UPDATE analysis SET {assignments} WHERE id=? AND user_id=?",
+            values + [analysis_id, user_id],
         )
         if cur.rowcount == 0:
             raise ValueError(f"Analysis #{analysis_id} not found.")
@@ -228,12 +238,15 @@ def update_analysis(
 
 
 def delete_analysis(
-    analysis_id: int, *, conn: Optional[sqlite3.Connection] = None
+    analysis_id: int,
+    user_id: int,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> None:
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM analysis WHERE id=?", (analysis_id,))
+        cur.execute("DELETE FROM analysis WHERE id=? AND user_id=?", (analysis_id, user_id))
         if cur.rowcount == 0:
             raise ValueError(f"Analysis #{analysis_id} not found.")
         if own:
@@ -244,7 +257,7 @@ def delete_analysis(
 
 
 # =====================================================================
-# Analysis stages
+# Analysis stages (no user_id — cascade from analysis)
 # =====================================================================
 
 
@@ -293,6 +306,7 @@ def get_analysis_stage(stage_id: int) -> Optional[Dict[str, Any]]:
 
 
 def list_analysis_stages(
+    user_id: int,
     filters: Optional[Dict[str, Any]] = None,
     order_by: Optional[str] = None,
     ascending: bool = False,
@@ -303,9 +317,9 @@ def list_analysis_stages(
         f"SELECT {select_clause} "
         "FROM analysis_stages s "
         "JOIN analysis a ON a.id = s.analysis_id "
-        "WHERE 1=1"
+        "WHERE a.user_id=?"
     )
-    params: List[Any] = []
+    params: List[Any] = [user_id]
 
     mapping = {
         "analysis_id": "s.analysis_id",
