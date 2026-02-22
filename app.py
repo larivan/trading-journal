@@ -10,12 +10,12 @@ from utils.auth import (
     set_session_cookie,
     clear_session_cookie,
 )
-from utils.backup import create_backup
+from utils.backup import maybe_create_daily_backup
 
 init_db()
 
 try:
-    create_backup()
+    maybe_create_daily_backup()
 except Exception:
     pass
 

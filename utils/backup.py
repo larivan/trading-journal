@@ -36,3 +36,19 @@ def list_backups() -> list[Path]:
 def get_backup_bytes(path: Path) -> bytes:
     """Read backup file as bytes for download."""
     return path.read_bytes()
+
+
+def maybe_create_daily_backup() -> None:
+    """Create a backup at most once per calendar day (auto-backup on startup)."""
+    from datetime import date
+    existing = list_backups()
+    if existing:
+        try:
+            ts = datetime.strptime(
+                existing[0].stem.replace("journal_backup_", ""), "%Y%m%d_%H%M%S"
+            )
+            if ts.date() >= date.today():
+                return  # уже есть бекап за сегодня
+        except ValueError:
+            pass
+    create_backup()
