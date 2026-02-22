@@ -92,15 +92,19 @@ def try_restore_from_cookie() -> None:
 
     Must be called at the very top of app.py, before require_auth().
     """
+    import sys
     if require_auth():
         return  # Already authenticated via session_state
     try:
         token = st.context.cookies.get(_SESSION_COOKIE)
-    except Exception:
+    except Exception as e:
+        print(f"[AUTH DEBUG] try_restore_from_cookie exception: {e}", file=sys.stderr)
         return
     if not token:
+        print("[AUTH DEBUG] try_restore_from_cookie: no token in cookie", file=sys.stderr)
         return
     user_id = _verify_token(token)
+    print(f"[AUTH DEBUG] _verify_token result: {user_id}", file=sys.stderr)
     if user_id:
         load_user_session(user_id)
 
