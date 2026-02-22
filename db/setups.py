@@ -12,6 +12,7 @@ SETUP_WRITABLE_FIELDS = [
 
 SETUP_SELECT_COLUMNS = [
     "id",
+    "user_id",
     "name",
     "description",
 ]
@@ -42,6 +43,7 @@ def _normalize_setup_payload(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def create_setup(
+    user_id: int,
     name: str,
     description: Optional[str] = None,
     *,
@@ -58,8 +60,8 @@ def create_setup(
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO setups (name, description) VALUES (?, ?)",
-            (name_value, payload.get("description")),
+            "INSERT INTO setups (user_id, name, description) VALUES (?, ?, ?)",
+            (user_id, name_value, payload.get("description")),
         )
         if own:
             conn.commit()
@@ -70,14 +72,15 @@ def create_setup(
 
 
 def list_setups(
+    user_id: int,
     filters: Optional[Dict[str, Any]] = None,
     order_by: Optional[str] = None,
     ascending: bool = True,
 ) -> List[Dict[str, Any]]:
     filters = filters or {}
     select_clause = ", ".join(SETUP_SELECT_COLUMNS)
-    q = f"SELECT {select_clause} FROM setups WHERE 1=1"
-    params: List[Any] = []
+    q = f"SELECT {select_clause} FROM setups WHERE user_id=?"
+    params: List[Any] = [user_id]
 
     for key, value in filters.items():
         if value in (None, ""):
@@ -107,12 +110,12 @@ def list_setups(
         conn.close()
 
 
-def get_setup(setup_id: int) -> Optional[Dict[str, Any]]:
+def get_setup(setup_id: int, user_id: int) -> Optional[Dict[str, Any]]:
     conn = get_conn()
     try:
         row = conn.execute(
-            f"SELECT {', '.join(SETUP_SELECT_COLUMNS)} FROM setups WHERE id=?",
-            (setup_id,),
+            f"SELECT {', '.join(SETUP_SELECT_COLUMNS)} FROM setups WHERE id=? AND user_id=?",
+            (setup_id, user_id),
         ).fetchone()
         return dict(row) if row else None
     finally:
@@ -121,6 +124,7 @@ def get_setup(setup_id: int) -> Optional[Dict[str, Any]]:
 
 def update_setup(
     setup_id: int,
+    user_id: int,
     data: Dict[str, Any],
     *,
     conn: Optional[sqlite3.Connection] = None,
@@ -140,8 +144,8 @@ def update_setup(
     try:
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE setups SET {assignments} WHERE id=?",
-            values + [setup_id],
+            f"UPDATE setups SET {assignments} WHERE id=? AND user_id=?",
+            values + [setup_id, user_id],
         )
         if cur.rowcount == 0:
             raise ValueError(f"Setup #{setup_id} not found.")
@@ -153,14 +157,17 @@ def update_setup(
 
 
 def delete_setup(
-    setup_id: int, *, conn: Optional[sqlite3.Connection] = None
+    setup_id: int,
+    user_id: int,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> None:
     if setup_id is None:
         return
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM setups WHERE id=?", (setup_id,))
+        cur.execute("DELETE FROM setups WHERE id=? AND user_id=?", (setup_id, user_id))
         if cur.rowcount == 0:
             raise ValueError(f"Setup #{setup_id} not found.")
         if own:

@@ -12,13 +12,15 @@ from helpers import (
     get_excerpt
 )
 from utils.session_state import open_dialog
+from utils.auth import get_current_user_id
 from config import (
     NOTE_DIALOG_NAME,
     NOTE_ID_STATE,
 )
 
-
 apply_page_config_from_file(__file__)
+
+user_id = get_current_user_id()
 
 # === Верхняя панель фильтров ===
 search_col, period_col, _, actions_col = st.columns(
@@ -59,11 +61,11 @@ if query:
     filters["query"] = query
 
 rows = list_notes(
+    user_id,
     filters,
     order_by="date_local",
     ascending=False,
 )
-
 
 note_columns: List[Dict[str, Any]] = [
     {
@@ -104,7 +106,7 @@ def _delete_notes(ids: List[Any]) -> None:
         return
     for note_id in ids:
         try:
-            delete_note(int(note_id))
+            delete_note(int(note_id), user_id)
         except (ValueError, sqlite3.Error) as exc:
             st.toast(f"Failed to delete note #{note_id}: {exc}", icon="❌")
     st.rerun()

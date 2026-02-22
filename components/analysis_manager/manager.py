@@ -9,6 +9,7 @@ from components.chart_editor import persist_chart_editor
 from components.trade_manager import render_trade_manager
 from components.note_selector import clear_note_selector_state
 from utils.session_state import close_dialog, dialog_is_active
+from utils.auth import get_current_user_id
 from config import (
     ANALYSIS_DIALOG_NAME,
     ANALYSIS_ID_STATE,
@@ -46,6 +47,8 @@ def render_analysis_manager() -> None:
         render_trade_manager()
         return
 
+    user_id = get_current_user_id()
+
     analysis_id = None
     is_new_analysis = True
     if ANALYSIS_ID_STATE in st.session_state:
@@ -57,7 +60,7 @@ def render_analysis_manager() -> None:
     analysis: Dict[str, Any] = {}
 
     if not is_new_analysis:
-        analysis = get_analysis(analysis_id) or {}
+        analysis = get_analysis(analysis_id, user_id) or {}
         if not analysis:
             st.error("Analysis not found.")
             st.session_state.pop(ANALYSIS_ID_STATE, None)
@@ -153,9 +156,9 @@ def render_analysis_manager() -> None:
               with transaction() as conn:
                 if is_new_analysis:
                     current_analysis_id = add_analysis(
-                        analysis_payload, conn=conn)
+                        user_id, analysis_payload, conn=conn)
                 else:
-                    update_analysis(current_analysis_id,
+                    update_analysis(current_analysis_id, user_id,
                                     analysis_payload, conn=conn)
 
                 if pre_values:
@@ -207,8 +210,7 @@ def render_analysis_manager() -> None:
                             plan_payload, conn=conn)
 
                     persist_chart_editor(
-                        attached_charts=charts_payload.get(
-                            "rows_source") or [],
+                        attached_charts=charts_payload.get("rows_source") or [],
                         editor_rows=charts_payload.get("editor_value") or [],
                         conn=conn,
                         attach_chart=lambda chart_id, stage_id=plan_stage_id: attach_chart_to_analysis_stage(
@@ -289,8 +291,6 @@ def _handle_dialog_dismiss() -> None:
 
 
 def _visible_stage_types(current_stage: str) -> List[str]:
-    """Возвращает последовательность этапов, которые должны отображаться."""
-
     if current_stage not in ANALYSIS_STATE_VALUES:
         return [ANALYSIS_STATE_VALUES[0]]
     idx = ANALYSIS_STATE_VALUES.index(current_stage)

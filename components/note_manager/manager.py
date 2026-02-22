@@ -26,6 +26,7 @@ from db import (
     transaction,
     update_note,
 )
+from utils.auth import get_current_user_id
 from utils.session_state import (
     open_dialog,
     close_dialog,
@@ -44,12 +45,13 @@ def render_note_manager() -> None:
     if not dialog_is_active(NOTE_DIALOG_NAME):
         return
 
+    user_id = get_current_user_id()
     note_id = st.session_state.get(NOTE_ID_STATE)
     is_new_note = note_id is None
     note: Dict[str, Any] = {}
 
     if not is_new_note:
-        note = get_note(note_id) or {}
+        note = get_note(note_id, user_id) or {}
         if not note:
             st.error("Note not found.")
             st.session_state.pop(NOTE_ID_STATE, None)
@@ -90,10 +92,7 @@ def render_note_manager() -> None:
             )
             with actions_col:
                 c1, c2 = st.columns(2)
-                if c1.button(
-                    ":material/arrow_back: Back",
-                    width="stretch"
-                ):
+                if c1.button(":material/arrow_back: Back", width="stretch"):
                     close_dialog()
                     open_dialog(get_previous_dialog())
                     remove_previous_dialog()
@@ -118,7 +117,6 @@ def render_note_manager() -> None:
                 )
 
         if save_clicked:
-
             body_clean = (body_value or "").strip()
             if not body_clean:
                 message_col.error("Fill in the content.")
@@ -135,9 +133,9 @@ def render_note_manager() -> None:
                 with transaction() as conn:
                     current_note_id = note_id
                     if is_new_note:
-                        current_note_id = create_note(payload, conn=conn)
+                        current_note_id = create_note(user_id, payload, conn=conn)
                     else:
-                        update_note(current_note_id, payload, conn=conn)
+                        update_note(current_note_id, user_id, payload, conn=conn)
 
                     persist_chart_editor(
                         attached_charts=charts,

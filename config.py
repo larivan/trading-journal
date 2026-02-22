@@ -37,6 +37,12 @@ PAGES = {
         'default': False,
         'layout': 'wide',
     },
+    'settings': {
+        'title': 'Settings',
+        'icon': ':material/settings:',
+        'default': False,
+        'layout': 'centered',
+    },
 }
 
 LOCAL_TZ = 'UTC+3'  # Москва

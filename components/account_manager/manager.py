@@ -20,6 +20,7 @@ from db import (
     set_account_archived,
     update_account,
 )
+from utils.auth import get_current_user_id
 from utils.session_state import close_dialog, dialog_is_active
 
 
@@ -31,12 +32,13 @@ def render_account_manager() -> None:
     if not dialog_is_active(ACCOUNT_DIALOG_NAME):
         return
 
+    user_id = get_current_user_id()
     account_id = st.session_state.get(ACCOUNT_ID_STATE)
     is_new = account_id is None
     account: Dict[str, Any] = {}
 
     if not is_new:
-        account = get_account(int(account_id)) or {}
+        account = get_account(int(account_id), user_id) or {}
         if not account:
             st.error("Account not found.")
             st.session_state.pop(ACCOUNT_ID_STATE, None)
@@ -82,9 +84,7 @@ def render_account_manager() -> None:
                     f"""{':blue-badge[Prop Account]' if bool(account.get("is_prop")) else ''}
                     {':gray-badge[Archived]' if bool(account.get("archived")) else ''}"""
                 )
-            st.markdown(
-                f"**Broker:** {account.get('broker') or 'N/A'}"
-            )
+            st.markdown(f"**Broker:** {account.get('broker') or 'N/A'}")
             st.markdown(
                 f"**Starting balance:** ${float(account.get('starting_balance') or 0.0):,.2f}"
             )
@@ -115,7 +115,7 @@ def render_account_manager() -> None:
 
         if delete_clicked and not is_new:
             try:
-                delete_account(int(account_id))
+                delete_account(int(account_id), user_id)
             except (ValueError, sqlite3.Error) as exc:
                 st.error(f"Failed to delete account: {exc}")
                 return
@@ -126,7 +126,7 @@ def render_account_manager() -> None:
 
         if archive_clicked and not is_new:
             try:
-                set_account_archived(int(account_id), archived=not archived)
+                set_account_archived(int(account_id), user_id, archived=not archived)
             except (ValueError, sqlite3.Error) as exc:
                 st.error(f"Failed to update archive status: {exc}")
                 return
@@ -155,6 +155,7 @@ def render_account_manager() -> None:
             try:
                 if is_new:
                     new_id = create_account(
+                        user_id,
                         payload["name"],
                         payload["broker"],
                         "USD",
@@ -164,7 +165,7 @@ def render_account_manager() -> None:
                     st.session_state[ACCOUNT_ID_STATE] = new_id
                     st.session_state[ACCOUNT_SUCCESS_STATE] = "Account created."
                 else:
-                    update_account(int(account_id), payload)
+                    update_account(int(account_id), user_id, payload)
                     st.session_state[ACCOUNT_SUCCESS_STATE] = "Account saved."
             except (ValueError, sqlite3.Error) as exc:
                 st.error(f"Failed to save account: {exc}")

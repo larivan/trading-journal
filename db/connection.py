@@ -67,17 +67,76 @@ SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
 
 -- =========================
--- ТАБЛИЦЫ
+-- ПОЛЬЗОВАТЕЛИ
 -- =========================
+
+CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT NOT NULL UNIQUE,
+    email         TEXT UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at    TEXT NOT NULL,
+    is_active     INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS user_settings (
+    user_id       INTEGER PRIMARY KEY,
+    assets        TEXT    DEFAULT '["EUR/USD","GBP/USD","XAU/USD","XAG/USD"]',
+    be_threshold  REAL    DEFAULT 0.05,
+    risk_min      REAL    DEFAULT 0.5,
+    risk_max      REAL    DEFAULT 2.0,
+    local_tz      TEXT    DEFAULT 'UTC+3',
+    currency      TEXT    DEFAULT 'USD',
+    theme         TEXT    DEFAULT 'light',
+    language      TEXT    DEFAULT 'en',
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- =========================
+-- ТАБЛИЦЫ СУЩНОСТЕЙ
+-- =========================
+
+CREATE TABLE IF NOT EXISTS accounts (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id           INTEGER NOT NULL,
+    name              TEXT NOT NULL,
+    broker            TEXT,
+    currency          TEXT,
+    starting_balance  REAL NOT NULL,
+    is_prop           INTEGER DEFAULT 0,
+    created_at        TEXT,
+    archived          INTEGER DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS setups (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL,
+    name         TEXT NOT NULL,
+    description  TEXT,
+    UNIQUE(name, user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    body        TEXT NOT NULL,
+    date_local  TEXT NOT NULL,
+    time_local  TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 
 CREATE TABLE IF NOT EXISTS analysis (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
     date_local  TEXT NOT NULL,
     asset       TEXT,
     daily_bias  TEXT,
     fact_bias   TEXT,
     day_result  TEXT,
-    state       TEXT
+    state       TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS analysis_stages (
@@ -91,6 +150,7 @@ CREATE TABLE IF NOT EXISTS analysis_stages (
 
 CREATE TABLE IF NOT EXISTS trades (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id            INTEGER NOT NULL,
     local_tz           TEXT NOT NULL,
     date_local         TEXT NOT NULL,
     time_local         TEXT NOT NULL,
@@ -109,34 +169,10 @@ CREATE TABLE IF NOT EXISTS trades (
     emotional_problems TEXT,
     hot_thoughts       TEXT,
     cold_thoughts      TEXT,
-    
+    FOREIGN KEY (user_id)     REFERENCES users(id)    ON DELETE CASCADE,
     FOREIGN KEY (account_id)  REFERENCES accounts(id)  ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (setup_id)    REFERENCES setups(id)    ON DELETE SET NULL   ON UPDATE CASCADE,
     FOREIGN KEY (analysis_id) REFERENCES analysis(id)  ON DELETE SET NULL   ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS accounts (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    name              TEXT NOT NULL,
-    broker            TEXT,
-    currency          TEXT,
-    starting_balance  REAL NOT NULL,
-    is_prop           INTEGER DEFAULT 0,
-    created_at        TEXT,
-    archived          INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS setups (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    name         TEXT NOT NULL UNIQUE,
-    description  TEXT
-);
-
-CREATE TABLE IF NOT EXISTS notes (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    body        TEXT NOT NULL,
-    date_local  TEXT NOT NULL,
-    time_local  TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS charts (
@@ -183,6 +219,12 @@ CREATE TABLE IF NOT EXISTS trade_notes (
 -- =========================
 -- ИНДЕКСЫ
 -- =========================
+
+CREATE INDEX IF NOT EXISTS idx_trades_user_id    ON trades(user_id);
+CREATE INDEX IF NOT EXISTS idx_accounts_user_id  ON accounts(user_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_user_id  ON analysis(user_id);
+CREATE INDEX IF NOT EXISTS idx_notes_user_id     ON notes(user_id);
+CREATE INDEX IF NOT EXISTS idx_setups_user_id    ON setups(user_id);
 
 CREATE INDEX IF NOT EXISTS idx_trades_date_local   ON trades(date_local);
 CREATE INDEX IF NOT EXISTS idx_trades_account      ON trades(account_id);

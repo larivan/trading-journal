@@ -7,6 +7,7 @@ from components.chart_editor import persist_chart_editor, render_chart_editor
 from components.note_selector import render_note_selector, clear_note_selector_state
 from helpers import to_option_format, parse_date, parse_time
 from utils.trade_sessions import detect_trade_session
+from utils.auth import get_current_user_id, get_setting
 from .state import get_allowed_states, visible_stages
 from .defaults import get_trade_defaults
 from .sections import (
@@ -28,6 +29,7 @@ from config import (
     TM_KEY_PREFIX,
     TM_DEFAULT_PREFIX,
     LOCAL_TZ,
+    ASSETS_VALUES,
     ANALYSIS_DIALOG_NAME
 )
 from db import (
@@ -54,6 +56,8 @@ def render_trade_manager() -> None:
         render_note_manager()
         return
 
+    user_id = get_current_user_id()
+
     trade_id = None
     is_new_trade = True
     if TRADE_ID_STATE in st.session_state:
@@ -67,7 +71,7 @@ def render_trade_manager() -> None:
 
     trade: Dict[str, Any] = {}
     if not is_new_trade:
-        trade = get_trade_by_id(trade_id)
+        trade = get_trade_by_id(trade_id, user_id)
         if not trade:
             st.error("Trade not found.")
             st.session_state.pop(TRADE_ID_STATE, None)
@@ -75,24 +79,33 @@ def render_trade_manager() -> None:
             st.rerun()
             return
 
+    # UX: warning при редактировании Reviewed трейда
+    loaded_state = trade.get("state") if trade else None
+
     @st.dialog(
         _get_dialog_title(trade, is_new_trade),
         width="large",
         on_dismiss=_handle_dialog_dismiss
     )
     def _dialog() -> None:
+        if loaded_state == "Reviewed":
+            st.warning("⚠️ This trade is already reviewed. Changes will overwrite the final record.")
+
+        # Динамические активы из user_settings
+        assets = get_setting("assets", ASSETS_VALUES)
+
         # Подготовка данных
-        account_rows = list_accounts(include_archived=True)
+        account_rows = list_accounts(user_id, include_archived=True)
         accounts = to_option_format(
             account_rows,
             formatter=lambda acc: f"{acc['name']}",
         )
         setups = to_option_format(
-            list_setups(),
+            list_setups(user_id),
             formatter=lambda setup: f"{setup['name']}",
         )
         analyses = to_option_format(
-            list_analysis(),
+            list_analysis(user_id),
             formatter=lambda analysis: f"{analysis.get('date_local')} · {analysis.get('asset')}",
         )
         defaults = get_trade_defaults(trade, accounts)
@@ -153,6 +166,7 @@ def render_trade_manager() -> None:
                 state_key=f"{state_key}_main",
                 on_risk_change=_calculate_rewards,
                 locked_fields=locked_from_analysis,
+                assets=assets,
             )
 
             outcome_values = render_outcome_stage(
@@ -201,7 +215,7 @@ def render_trade_manager() -> None:
 
         if selected_state in ("Outcome"):
             if not outcome_values:
-                message_col.error("Fill in the “Outcome” block.")
+                message_col.error('Fill in the "Outcome" block.')
                 return
             if outcome_values["net_pnl"] is None:
                 message_col.error("Provide Net PnL.")
@@ -211,7 +225,7 @@ def render_trade_manager() -> None:
                 message_col.error("Fill in Cold thoughts when trade has mistake.")
                 return
 
-        local_tz = trade.get("local_tz") or LOCAL_TZ
+        local_tz = trade.get("local_tz") or get_setting("local_tz", LOCAL_TZ)
         session_value = detect_trade_session(
             main_values["date"],
             main_values["time"],
@@ -259,9 +273,9 @@ def render_trade_manager() -> None:
                 trade_charts = charts or []
                 if is_new_trade:
                     payload["local_tz"] = local_tz
-                    current_trade_id = create_trade(payload, conn=conn)
+                    current_trade_id = create_trade(user_id, payload, conn=conn)
                 else:
-                    update_trade(current_trade_id, payload, conn=conn)
+                    update_trade(current_trade_id, user_id, payload, conn=conn)
 
                 persist_chart_editor(
                     attached_charts=trade_charts,
@@ -315,7 +329,8 @@ def _handle_dialog_dismiss() -> None:
 
 def _get_account_id_by_label(label: str) -> Optional[int]:
     """Возвращает ID счёта по его названию."""
-    account_rows = list_accounts(include_archived=True)
+    user_id = get_current_user_id()
+    account_rows = list_accounts(user_id, include_archived=True)
     for acc in account_rows:
         if acc.get("name") == label:
             return acc.get("id")
@@ -352,20 +367,22 @@ def _calculate_rewards() -> None:
         if risk_reward is None:
             return
         st.session_state[widget_keys["net_pnl"]] = float(0)
-        st.session_state[widget_keys["reward_percent"]
-                         ] = round(risk_pct * risk_reward, 2)
+        st.session_state[widget_keys["reward_percent"]] = round(risk_pct * risk_reward, 2)
     else:
         if net_pnl is None:
             return
-        st.session_state[widget_keys["risk_reward"]
-                         ] = round(net_pnl / (account_balance * (risk_pct / 100)), 2)
-        st.session_state[widget_keys["reward_percent"]] = round((
-            net_pnl / account_balance) * 100, 2)
+        st.session_state[widget_keys["risk_reward"]] = round(
+            net_pnl / (account_balance * (risk_pct / 100)), 2
+        )
+        st.session_state[widget_keys["reward_percent"]] = round(
+            (net_pnl / account_balance) * 100, 2
+        )
 
 
 def _get_account_balance(account_id: Optional[int]) -> Optional[float]:
     """Возвращает стартовый баланс счёта по его ID."""
-    accounts = list_accounts(include_archived=True)
+    user_id = get_current_user_id()
+    accounts = list_accounts(user_id, include_archived=True)
     if account_id is None:
         return None
     for acc in accounts:

@@ -33,7 +33,8 @@ def render_outcome_stage(
         data["net_pnl"] = st.number_input(
             "Net PnL, $",
             key=net_pnl_key,
-            step=1.0,
+            step=0.01,
+            format="%.2f",
             disabled=is_missed,
             on_change=on_change,
         )

@@ -8,10 +8,12 @@ from components.entity_gallery import render_entity_gallery
 from config import ACCOUNT_DIALOG_NAME, ACCOUNT_ID_STATE
 from db import delete_account, list_accounts
 from helpers import apply_page_config_from_file
+from utils.auth import get_current_user_id
 from utils.session_state import open_dialog
 
-
 apply_page_config_from_file(__file__)
+
+user_id = get_current_user_id()
 
 actions_col, _ = st.columns([0.2, 0.8])
 with actions_col:
@@ -19,7 +21,7 @@ with actions_col:
         st.session_state.pop(ACCOUNT_ID_STATE, None)
         open_dialog(ACCOUNT_DIALOG_NAME)
 
-rows = list_accounts(include_archived=True)
+rows = list_accounts(user_id, include_archived=True)
 
 
 def _bool_label(value: Any) -> str:
@@ -60,10 +62,9 @@ def _delete_accounts(ids: List[Any]) -> None:
         return
     for account_id in ids:
         try:
-            delete_account(int(account_id))
+            delete_account(int(account_id), user_id)
         except (ValueError, sqlite3.Error) as exc:
-            st.toast(
-                f"Failed to delete account #{account_id}: {exc}", icon="❌")
+            st.toast(f"Failed to delete account #{account_id}: {exc}", icon="❌")
     st.rerun()
 
 

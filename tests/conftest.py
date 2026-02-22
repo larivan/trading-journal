@@ -6,30 +6,25 @@ from typing import Generator
 
 import pytest
 
-# Override DB_PATH before importing db modules
-_temp_db_file = None
-
 
 @pytest.fixture(scope="function")
 def temp_db() -> Generator[str, None, None]:
     """Create a temporary database for each test."""
-    global _temp_db_file
-    
     # Create temp file
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
-    
+
     # Patch the DB_PATH in connection module
     import db.connection as conn_module
     original_path = conn_module.DB_PATH
     conn_module.DB_PATH = path
-    
+
     # Initialize schema
     from db import init_db
     init_db()
-    
+
     yield path
-    
+
     # Restore and cleanup
     conn_module.DB_PATH = original_path
     try:
@@ -45,3 +40,11 @@ def db_conn(temp_db: str) -> Generator[sqlite3.Connection, None, None]:
     conn = get_conn()
     yield conn
     conn.close()
+
+
+@pytest.fixture
+def test_user(temp_db) -> int:
+    """Create a test user and return user_id."""
+    from db.users import create_user
+    user_id = create_user("testuser", "hashed_password_placeholder")
+    return user_id

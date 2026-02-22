@@ -20,12 +20,12 @@ from db.accounts import create_account
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_account(conn=None):
-    return create_account("Test", starting_balance=1000.0, conn=conn)
+def _make_account(user_id, conn=None):
+    return create_account(user_id, "Test", starting_balance=1000.0, conn=conn)
 
 
-def _make_trade(account_id, conn=None):
-    return create_trade({
+def _make_trade(user_id, account_id, conn=None):
+    return create_trade(user_id, {
         "date_local": "2024-01-01",
         "time_local": "10:00:00",
         "account_id": account_id,
@@ -126,9 +126,9 @@ class TestListCharts:
             for c in charts
         )
 
-    def test_list_by_trade_id(self, temp_db):
-        acc_id = _make_account()
-        trade_id = _make_trade(acc_id)
+    def test_list_by_trade_id(self, test_user):
+        acc_id = _make_account(test_user)
+        trade_id = _make_trade(test_user, acc_id)
         chart_id = add_chart("https://x.com/t.png")
         attach_chart("trade", trade_id, chart_id)
         charts = list_charts(trade_id=trade_id)
@@ -141,26 +141,26 @@ class TestListCharts:
 # ---------------------------------------------------------------------------
 
 class TestAttachDetachChart:
-    def test_attach_to_trade(self, temp_db):
-        acc_id = _make_account()
-        trade_id = _make_trade(acc_id)
+    def test_attach_to_trade(self, test_user):
+        acc_id = _make_account(test_user)
+        trade_id = _make_trade(test_user, acc_id)
         chart_id = add_chart("https://x.com/c.png")
         attach_chart("trade", trade_id, chart_id)
         chart = get_chart(chart_id)
         assert chart["trade_id"] == trade_id
 
-    def test_attach_idempotent_same_entity(self, temp_db):
-        acc_id = _make_account()
-        trade_id = _make_trade(acc_id)
+    def test_attach_idempotent_same_entity(self, test_user):
+        acc_id = _make_account(test_user)
+        trade_id = _make_trade(test_user, acc_id)
         chart_id = add_chart("https://x.com/c.png")
         attach_chart("trade", trade_id, chart_id)
         attach_chart("trade", trade_id, chart_id)  # should not raise
         assert get_chart(chart_id)["trade_id"] == trade_id
 
-    def test_attach_to_different_entity_raises(self, temp_db):
-        acc_id = _make_account()
-        trade_id1 = _make_trade(acc_id)
-        trade_id2 = _make_trade(acc_id)
+    def test_attach_to_different_entity_raises(self, test_user):
+        acc_id = _make_account(test_user)
+        trade_id1 = _make_trade(test_user, acc_id)
+        trade_id2 = _make_trade(test_user, acc_id)
         chart_id = add_chart("https://x.com/c.png")
         attach_chart("trade", trade_id1, chart_id)
         with pytest.raises(ValueError):
@@ -175,9 +175,9 @@ class TestAttachDetachChart:
         with pytest.raises(ValueError, match="not found"):
             attach_chart("trade", 1, 9999)
 
-    def test_detach_from_trade(self, temp_db):
-        acc_id = _make_account()
-        trade_id = _make_trade(acc_id)
+    def test_detach_from_trade(self, test_user):
+        acc_id = _make_account(test_user)
+        trade_id = _make_trade(test_user, acc_id)
         chart_id = add_chart("https://x.com/c.png")
         attach_chart("trade", trade_id, chart_id)
         detach_chart("trade", trade_id, chart_id)
@@ -188,9 +188,9 @@ class TestAttachDetachChart:
         with pytest.raises(ValueError, match="Unknown entity type"):
             detach_chart("unknown_type", 1, chart_id)
 
-    def test_wrapper_attach_detach_trade(self, temp_db):
-        acc_id = _make_account()
-        trade_id = _make_trade(acc_id)
+    def test_wrapper_attach_detach_trade(self, test_user):
+        acc_id = _make_account(test_user)
+        trade_id = _make_trade(test_user, acc_id)
         chart_id = add_chart("https://x.com/c.png")
         attach_chart_to_trade(trade_id, chart_id)
         assert get_chart(chart_id)["trade_id"] == trade_id

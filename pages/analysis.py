@@ -17,13 +17,15 @@ from config import (
 )
 from db import delete_analysis, list_analysis
 from helpers import apply_page_config_from_file, format_local_date
+from utils.auth import get_current_user_id
 from utils.session_state import (
     open_dialog,
     set_selected_entity,
 )
 
-# === ОСНОВНАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ АНАЛИЗОВ ===
 apply_page_config_from_file(__file__)
+
+user_id = get_current_user_id()
 
 TAB_DEFINITIONS: Dict[str, str] = {
     "today": "Today",
@@ -40,7 +42,6 @@ def _open_new_analysis() -> None:
     open_dialog(ANALYSIS_DIALOG_NAME)
 
 
-# === ВЕРХНЯЯ ПАНЕЛЬ С ВЫБОРОМ ПЕРИОДА ===
 period_col, _, actions_col = st.columns(
     [0.5, 0.3, 0.2], vertical_alignment="bottom"
 )
@@ -56,14 +57,9 @@ with period_col:
     )
 
 with actions_col:
-    if st.button(
-        "Create",
-        type="primary",
-        width="stretch",
-    ):
+    if st.button("Create", type="primary", width="stretch"):
         _open_new_analysis()
 
-# === ФИЛЬТРЫ ПЕРИОДОВ И ДОПОЛНИТЕЛЬНЫЕ НАСТРОЙКИ ===
 filters: Dict[str, Any] = {}
 date_range: Optional[Tuple[date, date]] = None
 
@@ -81,26 +77,11 @@ if selected_key == "custom":
             ),
             format="DD.MM.YYYY",
         )
-        asset_choice = fc2.selectbox(
-            "Asset",
-            ["All"] + ASSETS_VALUES
-        )
-        daily_bias_choice = fc3.selectbox(
-            "Daily bias",
-            ["All"] + DAILY_BIAS_VALUES
-        )
-        fact_bias_choice = fc4.selectbox(
-            "Fact bias",
-            ["All"] + DAILY_BIAS_VALUES
-        )
-        day_result_choice = fc5.selectbox(
-            "Result",
-            ["All"] + DAY_RESULT_VALUES
-        )
-        state_choice = fc6.selectbox(
-            "Analysis Type",
-            ["All"] + ANALYSIS_STATE_VALUES
-        )
+        asset_choice = fc2.selectbox("Asset", ["All"] + ASSETS_VALUES)
+        daily_bias_choice = fc3.selectbox("Daily bias", ["All"] + DAILY_BIAS_VALUES)
+        fact_bias_choice = fc4.selectbox("Fact bias", ["All"] + DAILY_BIAS_VALUES)
+        day_result_choice = fc5.selectbox("Result", ["All"] + DAY_RESULT_VALUES)
+        state_choice = fc6.selectbox("Analysis Type", ["All"] + ANALYSIS_STATE_VALUES)
 
     if asset_choice != "All":
         filters["asset"] = asset_choice
@@ -121,11 +102,8 @@ if date_range:
     filters["date_from"] = date_range[0].isoformat()
     filters["date_to"] = date_range[1].isoformat()
 
-# === ЗАГРУЗКА ДАННЫХ ДЛЯ ОТОБРАЖЕНИЯ ===
-rows = list_analysis(filters)
+rows = list_analysis(user_id, filters)
 
-
-# --- Настройка колонок таблицы ---
 analysis_columns: List[Dict[str, Any]] = [
     {
         "field": "date_local",
@@ -142,7 +120,6 @@ analysis_columns: List[Dict[str, Any]] = [
 ]
 
 
-# === ОБРАБОТЧИКИ ДЕЙСТВИЙ ТАБЛИЦЫ ===
 def _handle_open_analysis(row: Dict[str, Any]) -> None:
     analysis_id = row.get("id")
     if not analysis_id:
@@ -165,11 +142,16 @@ def _confirm_delete_analyses(ids: List[Any]) -> None:
     st.warning(f"Delete {n} {'analyses' if n > 1 else 'analysis'}? This cannot be undone.")
     col1, col2 = st.columns(2)
     if col1.button("Delete", type="primary", width="stretch"):
-        for analysis_id in ids:
-            try:
-                delete_analysis(analysis_id)
-            except (ValueError, sqlite3.Error) as exc:
-                st.toast(f"Failed to delete analysis {analysis_id}: {exc}", icon="❌")
+        from db import transaction
+        try:
+            with transaction() as conn:
+                for analysis_id in ids:
+                    try:
+                        delete_analysis(analysis_id, user_id, conn=conn)
+                    except (ValueError, sqlite3.Error) as exc:
+                        st.toast(f"Failed to delete analysis {analysis_id}: {exc}", icon="❌")
+        except Exception as exc:
+            st.toast(f"Delete failed: {exc}", icon="❌")
         st.session_state.pop("_pending_delete_analysis_ids", None)
         st.rerun()
     if col2.button("Cancel", width="stretch"):
@@ -177,7 +159,6 @@ def _confirm_delete_analyses(ids: List[Any]) -> None:
         st.rerun()
 
 
-# --- Отрисовываем таблицу с подключенными обработчиками ---
 table_key = f"analysis_table_{selected_key}"
 render_entity_table(
     entity_name="analysis",
@@ -190,8 +171,6 @@ render_entity_table(
     on_delete=_handle_delete_analyses,
 )
 
-
-# === ЛОГИКА УПРАВЛЕНИЯ МОДАЛЬНЫМИ ОКНАМИ ===
 pending_delete_ids = st.session_state.get("_pending_delete_analysis_ids")
 if pending_delete_ids:
     _confirm_delete_analyses(pending_delete_ids)

@@ -51,6 +51,7 @@ def _normalize_account_payload(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def create_account(
+    user_id: int,
     name: str,
     broker: Optional[str] = None,
     currency: str = "USD",
@@ -63,9 +64,9 @@ def create_account(
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO accounts (name, broker, currency, starting_balance, is_prop, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (name, broker, currency, starting_balance, is_prop, _now_iso_utc()),
+            "INSERT INTO accounts (user_id, name, broker, currency, starting_balance, is_prop, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (user_id, name, broker, currency, starting_balance, is_prop, _now_iso_utc()),
         )
         if own:
             conn.commit()
@@ -75,24 +76,29 @@ def create_account(
             conn.close()
 
 
-def list_accounts(include_archived: bool = False) -> List[Dict[str, Any]]:
+def list_accounts(
+    user_id: int,
+    include_archived: bool = False,
+) -> List[Dict[str, Any]]:
     conn = get_conn()
     try:
-        query = "SELECT * FROM accounts"
+        query = "SELECT * FROM accounts WHERE user_id=?"
+        params: List[Any] = [user_id]
         if not include_archived:
-            query += " WHERE archived IS NULL OR archived=0"
+            query += " AND (archived IS NULL OR archived=0)"
         query += " ORDER BY id ASC"
-        rows = conn.execute(query).fetchall()
+        rows = conn.execute(query, params).fetchall()
         return _rows_to_dicts(rows)
     finally:
         conn.close()
 
 
-def get_account(account_id: int) -> Optional[Dict[str, Any]]:
+def get_account(account_id: int, user_id: int) -> Optional[Dict[str, Any]]:
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT * FROM accounts WHERE id = ?", (account_id,)
+            "SELECT * FROM accounts WHERE id = ? AND user_id = ?",
+            (account_id, user_id),
         ).fetchone()
         return dict(row) if row else None
     finally:
@@ -101,6 +107,7 @@ def get_account(account_id: int) -> Optional[Dict[str, Any]]:
 
 def update_account(
     account_id: int,
+    user_id: int,
     data: Dict[str, Any],
     *,
     conn: Optional[sqlite3.Connection] = None,
@@ -119,8 +126,8 @@ def update_account(
     try:
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE accounts SET {assignments} WHERE id=?",
-            values + [account_id],
+            f"UPDATE accounts SET {assignments} WHERE id=? AND user_id=?",
+            values + [account_id, user_id],
         )
         if cur.rowcount == 0:
             raise ValueError(f"Account #{account_id} not found.")
@@ -133,6 +140,7 @@ def update_account(
 
 def set_account_archived(
     account_id: int,
+    user_id: int,
     archived: bool = True,
     *,
     conn: Optional[sqlite3.Connection] = None,
@@ -141,8 +149,8 @@ def set_account_archived(
     try:
         cur = conn.cursor()
         cur.execute(
-            "UPDATE accounts SET archived=? WHERE id=?",
-            (1 if archived else 0, account_id),
+            "UPDATE accounts SET archived=? WHERE id=? AND user_id=?",
+            (1 if archived else 0, account_id, user_id),
         )
         if cur.rowcount == 0:
             raise ValueError(f"Account #{account_id} not found.")
@@ -154,14 +162,17 @@ def set_account_archived(
 
 
 def delete_account(
-    account_id: int, *, conn: Optional[sqlite3.Connection] = None
+    account_id: int,
+    user_id: int,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> None:
     if account_id is None:
         return
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM accounts WHERE id=?", (account_id,))
+        cur.execute("DELETE FROM accounts WHERE id=? AND user_id=?", (account_id, user_id))
         if cur.rowcount == 0:
             raise ValueError(f"Account #{account_id} not found.")
         if own:

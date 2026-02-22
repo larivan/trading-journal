@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -85,7 +86,8 @@ def _build_rows_payload(
             if callable(compute):
                 try:
                     value = compute(row)
-                except Exception:  # noqa: BLE001 — caller-supplied compute may raise anything
+                except Exception as exc:  # noqa: BLE001 — caller-supplied compute may raise anything
+                    logging.warning("compute() failed for row %s: %s", row.get("id"), exc)
                     value = None
             elif field:
                 value = row.get(field)
