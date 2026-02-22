@@ -1,4 +1,4 @@
-# db/ package - SQLite database layer for Trade Journal
+# db/ package - SQLite database layer for Trading Workspace
 # Re-exports all public functions for backwards compatibility
 
 from db.connection import (

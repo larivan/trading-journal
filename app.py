@@ -19,12 +19,12 @@ except Exception:
 
 def _login_page() -> None:
     st.set_page_config(
-        page_title="Trade Journal — Sign in",
+        page_title="Trading Workspace — Sign in",
         page_icon=":material/lock:",
         layout="centered",
         initial_sidebar_state="collapsed",
     )
-    st.title("Trade Journal")
+    st.title("Trading Workspace")
     st.button("Sign in with Google", on_click=st.login, args=("google",))
 
 
