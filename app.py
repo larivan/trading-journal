@@ -55,18 +55,6 @@ else:
         set_session_cookie()
         st.session_state["_cookie_set"] = True
 
-    # Logout в sidebar
-    with st.sidebar:
-        user_id = get_current_user_id()
-        from db import get_user_by_id
-        user = get_user_by_id(user_id) if user_id else None
-        if user:
-            st.write(f"👤 {user['username']}")
-        if st.button("Logout", key="sidebar_logout", width="stretch"):
-            logout()
-            clear_session_cookie()
-            st.rerun()
-
     pages = []
     for name, options in PAGES.items():
         pages.append(
@@ -79,4 +67,34 @@ else:
             )
         )
 
-    st.navigation(pages).run()
+    # Регистрируем навигацию первой — ссылки окажутся вверху сайдбара
+    nav = st.navigation(pages)
+
+    # Никнейм и Logout — прижаты к низу через CSS
+    with st.sidebar:
+        st.markdown(
+            """
+            <style>
+            [data-testid="stSidebarContent"] {
+                display: flex !important;
+                flex-direction: column !important;
+                height: 100% !important;
+            }
+            [data-testid="stSidebarUserContent"] {
+                margin-top: auto !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        user_id = get_current_user_id()
+        from db import get_user_by_id
+        user = get_user_by_id(user_id) if user_id else None
+        if user:
+            st.write(f"👤 {user['username']}")
+        if st.button("Logout", key="sidebar_logout", width="stretch"):
+            logout()
+            clear_session_cookie()
+            st.rerun()
+
+    nav.run()
