@@ -30,6 +30,13 @@ try:
     print(f"[AUTH DEBUG] token prefix: {_dbg_token[:20] if _dbg_token != '<not found>' else _dbg_token}", file=sys.stderr)
 except Exception as _dbg_e:
     print(f"[AUTH DEBUG] st.context.cookies error: {_dbg_e}", file=sys.stderr)
+try:
+    _dbg_headers = dict(st.context.headers)
+    _dbg_cookie_hdr = _dbg_headers.get("cookie", _dbg_headers.get("Cookie", "<missing>"))
+    print(f"[AUTH DEBUG] header Cookie: {_dbg_cookie_hdr[:80] if _dbg_cookie_hdr != '<missing>' else _dbg_cookie_hdr}", file=sys.stderr)
+    print(f"[AUTH DEBUG] header Host: {_dbg_headers.get('host', _dbg_headers.get('Host', '<missing>'))}", file=sys.stderr)
+except Exception as _dbg_e2:
+    print(f"[AUTH DEBUG] st.context.headers error: {_dbg_e2}", file=sys.stderr)
 
 try_restore_from_cookie()
 
