@@ -22,7 +22,7 @@ _DEFAULT_SETTINGS: Dict[str, Any] = {
     "be_threshold": 0.05,
     "risk_min": 0.5,
     "risk_max": 2.0,
-    "local_tz": "UTC+3",
+    "local_tz": "Europe/Moscow",
     "currency": "USD",
     "theme": "light",
     "language": "en",
@@ -46,8 +46,8 @@ def create_user(
         )
         user_id = cur.lastrowid
         cur.execute(
-            "INSERT INTO user_settings (user_id) VALUES (?)",
-            (user_id,),
+            "INSERT INTO user_settings (user_id, local_tz) VALUES (?, ?)",
+            (user_id, _DEFAULT_SETTINGS["local_tz"]),
         )
         if own:
             conn.commit()

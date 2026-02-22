@@ -30,7 +30,8 @@ st.title(":material/settings: Settings")
 # Профиль
 # =====================================================================
 with st.expander("Profile", expanded=True):
-    st.text_input("Username", value=user.get("username", "") if user else "", disabled=True)
+    st.text_input("Username", value=user.get(
+        "username", "") if user else "", disabled=True)
     st.markdown("##### Change password")
     with st.form("change_password_form"):
         current_pw = st.text_input("Current password", type="password")
@@ -121,8 +122,7 @@ with st.expander("Trading settings", expanded=True):
 # =====================================================================
 with st.expander("Localization"):
     all_timezones = sorted(pytz.all_timezones)
-    current_tz = settings.get("local_tz", "UTC+3")
-    # Попытаться найти в списке pytz
+    current_tz = settings.get("local_tz", "Europe/Moscow")
     tz_index = None
     for i, tz in enumerate(all_timezones):
         if tz == current_tz:
@@ -159,7 +159,8 @@ with st.expander("Interface"):
     selected_language = st.selectbox(
         "Language",
         ["en", "ru"],
-        index=["en", "ru"].index(current_language) if current_language in ["en", "ru"] else 0,
+        index=["en", "ru"].index(current_language) if current_language in [
+            "en", "ru"] else 0,
         format_func=lambda x: "English" if x == "en" else "Русский",
     )
 
@@ -215,6 +216,7 @@ with st.expander("Backups"):
             try:
                 with open(DB_PATH, "wb") as f:
                     f.write(uploaded.read())
-                st.success("Database restored. Please restart the application.")
+                st.success(
+                    "Database restored. Please restart the application.")
             except Exception as exc:
                 st.error(f"Restore failed: {exc}")

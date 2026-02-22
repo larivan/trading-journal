@@ -45,7 +45,7 @@ PAGES = {
     },
 }
 
-LOCAL_TZ = 'UTC+3'  # Москва
+LOCAL_TZ = 'Europe/Moscow'
 
 # Trades
 TRADE_DIALOG_NAME = "trade_manager"

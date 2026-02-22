@@ -83,7 +83,7 @@ class TestUserSettings:
         assert settings["be_threshold"] == pytest.approx(0.05)
         assert settings["risk_min"] == pytest.approx(0.5)
         assert settings["risk_max"] == pytest.approx(2.0)
-        assert settings["local_tz"] == "UTC+3"
+        assert settings["local_tz"] == "Europe/Moscow"
         assert settings["currency"] == "USD"
         assert settings["language"] == "en"
 
