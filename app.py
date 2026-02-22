@@ -1,3 +1,4 @@
+import sys
 import streamlit as st
 from db import init_db
 from config import PAGES, SETTINGS_PAGES
@@ -21,6 +22,15 @@ except Exception:
 
 # Восстанавливаем сессию из cookie при каждом новом подключении
 # (F5, рестарт сервера, hot-reload). Должно быть ДО require_auth().
+try:
+    _dbg_cookies = dict(st.context.cookies)
+    _dbg_token = _dbg_cookies.get("tj_session", "<not found>")
+    print(f"[AUTH DEBUG] cookies keys: {list(_dbg_cookies.keys())}", file=sys.stderr)
+    print(f"[AUTH DEBUG] tj_session present: {'tj_session' in _dbg_cookies}", file=sys.stderr)
+    print(f"[AUTH DEBUG] token prefix: {_dbg_token[:20] if _dbg_token != '<not found>' else _dbg_token}", file=sys.stderr)
+except Exception as _dbg_e:
+    print(f"[AUTH DEBUG] st.context.cookies error: {_dbg_e}", file=sys.stderr)
+
 try_restore_from_cookie()
 
 
