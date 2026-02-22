@@ -18,44 +18,48 @@ settings = get_user_settings(user_id) if user_id else {}
 
 st.title(":material/tune: Journal Setup")
 
-st.markdown("##### Assets")
-current_assets = settings.get("assets", ASSETS_VALUES)
-if not isinstance(current_assets, list):
-    current_assets = ASSETS_VALUES
+col_assets, col_thresh = st.columns([0.45, 0.55])
 
-assets_df = pd.DataFrame({"Asset": current_assets})
-edited_assets_df = st.data_editor(
-    assets_df,
-    num_rows="dynamic",
-    use_container_width=True,
-    key="settings_assets_editor",
-)
+with col_assets:
+    st.markdown("##### Assets")
+    current_assets = settings.get("assets", ASSETS_VALUES)
+    if not isinstance(current_assets, list):
+        current_assets = ASSETS_VALUES
 
-st.markdown("##### Thresholds")
-col1, col2, col3 = st.columns(3)
-be_threshold = col1.number_input(
-    "BE Threshold",
-    value=float(settings.get("be_threshold", BE_THRESHOLD)),
-    step=0.01,
-    min_value=0.0,
-    max_value=0.5,
-    format="%.2f",
-    help="Trades with |RR| ≤ threshold are considered Break-even",
-)
-risk_min = col2.number_input(
-    "Risk min, %",
-    value=float(settings.get("risk_min", 0.5)),
-    step=0.1,
-    min_value=0.1,
-    format="%.1f",
-)
-risk_max = col3.number_input(
-    "Risk max, %",
-    value=float(settings.get("risk_max", 2.0)),
-    step=0.1,
-    min_value=0.1,
-    format="%.1f",
-)
+    assets_df = pd.DataFrame({"Asset": current_assets})
+    edited_assets_df = st.data_editor(
+        assets_df,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="settings_assets_editor",
+    )
+
+with col_thresh:
+    st.markdown("##### Thresholds")
+    col1, col2, col3 = st.columns(3)
+    be_threshold = col1.number_input(
+        "BE Threshold",
+        value=float(settings.get("be_threshold", BE_THRESHOLD)),
+        step=0.01,
+        min_value=0.0,
+        max_value=0.5,
+        format="%.2f",
+        help="Trades with |RR| ≤ threshold are considered Break-even",
+    )
+    risk_min = col2.number_input(
+        "Risk min, %",
+        value=float(settings.get("risk_min", 0.5)),
+        step=0.1,
+        min_value=0.1,
+        format="%.1f",
+    )
+    risk_max = col3.number_input(
+        "Risk max, %",
+        value=float(settings.get("risk_max", 2.0)),
+        step=0.1,
+        min_value=0.1,
+        format="%.1f",
+    )
 
 if st.button("Save trading settings", type="primary"):
     new_assets = [
