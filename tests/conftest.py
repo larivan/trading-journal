@@ -48,3 +48,21 @@ def test_user(temp_db) -> int:
     from db.users import create_user
     user_id = create_user("testuser", "hashed_password_placeholder")
     return user_id
+
+
+@pytest.fixture
+def page_app(test_user):
+    """Factory fixture: returns callable that creates AppTest for a given page."""
+    from db.users import get_user_settings
+    from streamlit.testing.v1 import AppTest
+
+    user_id = test_user
+    settings = get_user_settings(user_id)
+
+    def factory(page_path: str) -> AppTest:
+        at = AppTest.from_file(page_path)
+        at.session_state["user_id"] = user_id
+        at.session_state["user_settings"] = settings or {}
+        return at
+
+    return factory
