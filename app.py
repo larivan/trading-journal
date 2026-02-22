@@ -1,7 +1,15 @@
 import streamlit as st
 from db import init_db
 from config import PAGES
-from utils.auth import render_login_form, require_auth, get_current_user_id, logout
+from utils.auth import (
+    render_login_form,
+    require_auth,
+    get_current_user_id,
+    logout,
+    try_restore_from_cookie,
+    set_session_cookie,
+    clear_session_cookie,
+)
 from utils.backup import create_backup
 
 init_db()
@@ -10,6 +18,10 @@ try:
     create_backup()
 except Exception:
     pass
+
+# Восстанавливаем сессию из cookie при каждом новом подключении
+# (F5, рестарт сервера, hot-reload). Должно быть ДО require_auth().
+try_restore_from_cookie()
 
 
 def _login_page() -> None:
@@ -35,6 +47,14 @@ if not require_auth():
     )
     pg.run()
 else:
+    # Устанавливаем/обновляем session cookie один раз за сессию.
+    # Делаем это здесь (не в _login_page перед st.rerun()), чтобы JavaScript
+    # гарантированно выполнился в браузере — цикл рендеринга не прерывается
+    # немедленным rerun.
+    if not st.session_state.get("_cookie_set"):
+        set_session_cookie()
+        st.session_state["_cookie_set"] = True
+
     # Logout в sidebar
     with st.sidebar:
         user_id = get_current_user_id()
@@ -42,8 +62,9 @@ else:
         user = get_user_by_id(user_id) if user_id else None
         if user:
             st.write(f"👤 {user['username']}")
-        if st.button("Logout", key="sidebar_logout"):
+        if st.button("Logout", key="sidebar_logout", width="stretch"):
             logout()
+            clear_session_cookie()
             st.rerun()
 
     pages = []

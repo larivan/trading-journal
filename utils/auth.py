@@ -1,9 +1,14 @@
-# utils/auth.py — Authentication helpers (bcrypt + session_state)
+# utils/auth.py — Authentication helpers (bcrypt + session_state + cookie sessions)
 from __future__ import annotations
 
+import hashlib
+import hmac as _hmac
+import os
+import time
 from typing import Any, Dict, Optional
 
 import streamlit as st
+import streamlit.components.v1 as _components
 
 try:
     import bcrypt as _bcrypt
@@ -13,6 +18,96 @@ except ImportError:
 
 from db.users import get_user_by_username, get_user_settings, create_user, count_users
 
+# ---------------------------------------------------------------------------
+# Cookie-based session persistence
+# ---------------------------------------------------------------------------
+_SESSION_COOKIE = "tj_session"
+_SESSION_SECRET = os.environ.get("TJ_SECRET_KEY", "tj-default-secret-please-change")
+_SESSION_MAX_AGE = 30 * 24 * 3600  # 30 days
+
+
+def _sign_token(user_id: int) -> str:
+    """Create a signed session token: '<user_id>:<ts>:<hmac>'."""
+    ts = int(time.time())
+    payload = f"{user_id}:{ts}"
+    sig = _hmac.new(
+        _SESSION_SECRET.encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()
+    return f"{payload}:{sig}"
+
+
+def _verify_token(token: str) -> Optional[int]:
+    """Verify signature and expiry. Return user_id or None."""
+    try:
+        # token = "user_id:ts:sig" — split from right to handle any colons in future
+        parts = token.rsplit(":", 2)
+        if len(parts) != 3:
+            return None
+        user_id_s, ts_s, sig = parts
+        payload = f"{user_id_s}:{ts_s}"
+        expected = _hmac.new(
+            _SESSION_SECRET.encode(), payload.encode(), hashlib.sha256
+        ).hexdigest()
+        if not _hmac.compare_digest(sig, expected):
+            return None
+        if time.time() - int(ts_s) > _SESSION_MAX_AGE:
+            return None
+        return int(user_id_s)
+    except Exception:
+        return None
+
+
+def _inject_js(script: str) -> None:
+    """Inject JavaScript via components.v1.html which has allow-same-origin.
+
+    st.html() sandboxes content without allow-same-origin, so document.cookie
+    writes go to a null origin and are never sent to the server.
+    st.components.v1.html() uses a different iframe policy that allows
+    same-origin cookie access.
+    """
+    _components.html(f"<script>{script}</script>", height=0)
+
+
+def set_session_cookie() -> None:
+    """Write signed session cookie to browser via JavaScript injection."""
+    user_id = get_current_user_id()
+    if not user_id:
+        return
+    token = _sign_token(user_id)
+    _inject_js(
+        f"document.cookie='{_SESSION_COOKIE}={token}; path=/; "
+        f"max-age={_SESSION_MAX_AGE}; SameSite=Strict';"
+    )
+
+
+def clear_session_cookie() -> None:
+    """Delete session cookie from browser via JavaScript injection."""
+    _inject_js(
+        f"document.cookie='{_SESSION_COOKIE}=; path=/; max-age=0; SameSite=Strict';"
+    )
+
+
+def try_restore_from_cookie() -> None:
+    """On fresh page load, try to restore session from cookie.
+
+    Must be called at the very top of app.py, before require_auth().
+    """
+    if require_auth():
+        return  # Already authenticated via session_state
+    try:
+        token = st.context.cookies.get(_SESSION_COOKIE)
+    except Exception:
+        return
+    if not token:
+        return
+    user_id = _verify_token(token)
+    if user_id:
+        load_user_session(user_id)
+
+
+# ---------------------------------------------------------------------------
+# Password helpers
+# ---------------------------------------------------------------------------
 
 def hash_password(plain: str) -> str:
     """Return bcrypt hash of a plain-text password."""
@@ -31,6 +126,10 @@ def verify_password(plain: str, hashed: str) -> bool:
     except Exception:
         return False
 
+
+# ---------------------------------------------------------------------------
+# Session helpers
+# ---------------------------------------------------------------------------
 
 def get_current_user_id() -> Optional[int]:
     """Return current user's id from session_state, or None."""
@@ -64,10 +163,14 @@ def logout() -> None:
         st.session_state.pop(key, None)
 
 
+# ---------------------------------------------------------------------------
+# Login / registration UI
+# ---------------------------------------------------------------------------
+
 def render_login_form() -> bool:
     """
     Render login / first-user-registration form.
-    Returns True if the user just logged in (trigger st.rerun()).
+    Returns True if the user just logged in (caller should trigger st.rerun()).
     """
     is_first_user = count_users() == 0
 
