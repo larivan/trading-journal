@@ -13,11 +13,12 @@ from config import (
     DAY_RESULT_VALUES,
     ANALYSIS_STATE_VALUES,
     ANALYSIS_DIALOG_NAME,
-    ANALYSIS_ID_STATE
+    ANALYSIS_ID_STATE,
+    LOCAL_TZ,
 )
 from db import delete_analysis, list_analysis
 from helpers import apply_page_config_from_file, format_local_date
-from utils.auth import get_current_user_id
+from utils.auth import get_current_user_id, get_setting
 from utils.session_state import (
     open_dialog,
     set_selected_entity,
@@ -48,7 +49,7 @@ period_col, _, actions_col = st.columns(
 with period_col:
     period_key = "analysis_current_period_label"
     if not st.session_state.get(period_key):
-        st.session_state[period_key] = list(TAB_DEFINITIONS.values())[0]
+        st.session_state[period_key] = "Current month"
     selected_label = st.segmented_control(
         "Period",
         options=TAB_DEFINITIONS.values(),
@@ -94,7 +95,8 @@ if selected_key == "custom":
     if state_choice != "All":
         filters["state"] = state_choice
 else:
-    date_range = compute_date_range(selected_key)
+    local_tz = get_setting("local_tz", LOCAL_TZ)
+    date_range = compute_date_range(selected_key, tz_name=local_tz)
 
 if date_range:
     if len(date_range) < 2:

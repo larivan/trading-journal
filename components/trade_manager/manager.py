@@ -167,6 +167,7 @@ def render_trade_manager() -> None:
                 on_risk_change=_calculate_rewards,
                 locked_fields=locked_from_analysis,
                 assets=assets,
+                user_tz=trade.get("local_tz") or get_setting("local_tz", LOCAL_TZ),
             )
 
             outcome_values = render_outcome_stage(

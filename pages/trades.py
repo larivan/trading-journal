@@ -16,9 +16,10 @@ from helpers import (
 from utils.session_state import (
     open_dialog,
 )
-from utils.auth import get_current_user_id
+from utils.auth import get_current_user_id, get_setting
 from config import (
     ASSETS_VALUES,
+    LOCAL_TZ,
     TRADE_RESULT_VALUES,
     TRADE_SESSION_VALUES,
     TRADE_STATE_VALUES,
@@ -59,7 +60,7 @@ period_col, _, actions_col = st.columns(
 with period_col:
     period_key = "trade_current_period_label"
     if not st.session_state.get(period_key):
-        st.session_state[period_key] = list(TAB_DEFINITIONS.values())[0]
+        st.session_state[period_key] = "Current month"
     selected_label = st.segmented_control(
         "Period",
         options=TAB_DEFINITIONS.values(),
@@ -147,7 +148,8 @@ if selected_key == "custom":
         filter["estimation"] = selected_estimation
 
 else:
-    date_range = compute_date_range(selected_key)
+    local_tz = get_setting("local_tz", LOCAL_TZ)
+    date_range = compute_date_range(selected_key, tz_name=local_tz)
 
 if date_range:
     if len(date_range) < 2:

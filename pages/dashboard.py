@@ -5,10 +5,11 @@ import streamlit as st
 from typing import Dict, Any, Optional, Tuple
 from datetime import date, timedelta
 from utils.date_periods import compute_date_range
+from config import LOCAL_TZ
 from helpers import (
     to_option_format,
     custom_selectbox,
-    get_excerpt
+    get_excerpt,
 )
 from db import (
     list_trades,
@@ -17,7 +18,7 @@ from db import (
     list_notes,
     count_notes_by_trade,
 )
-from utils.auth import get_current_user_id
+from utils.auth import get_current_user_id, get_setting
 from utils.metrics import (
     compute_overview_metrics,
     compute_risk_metrics,
@@ -273,7 +274,8 @@ if selected_key == "custom":
         format="DD.MM.YYYY",
     )
 else:
-    date_range = compute_date_range(selected_key)
+    local_tz = get_setting("local_tz", LOCAL_TZ)
+    date_range = compute_date_range(selected_key, tz_name=local_tz)
 
 if data_df.empty:
     st.warning("No reviewed trades found.")
