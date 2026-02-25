@@ -7,3 +7,4 @@ altair==5.5.0
 authlib>=1.0
 pytest>=7.0
 pytest-cov>=4.0
+libsql-experimental>=0.0.11

@@ -3,7 +3,7 @@ import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 # =====================================================================
 # Paths & helpers
@@ -12,12 +12,110 @@ from typing import Any, Dict, List, Optional
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.environ.get("TRADE_JOURNAL_DB_PATH", os.path.join(BASE_DIR, "journal.db"))
 
+TURSO_URL = os.environ.get("TURSO_DATABASE_URL", "")
+TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")
+_USE_TURSO = bool(TURSO_URL and TURSO_TOKEN)
+
+if _USE_TURSO:
+    try:
+        import libsql_experimental as libsql  # type: ignore[import]
+    except ImportError:
+        raise ImportError(
+            "libsql-experimental is required when TURSO_DATABASE_URL is set. "
+            "Run: pip install libsql-experimental"
+        )
+
+
+# =====================================================================
+# Turso compatibility wrappers
+# =====================================================================
+
+class _TursoRow(dict):
+    """Dict-compatible row wrapper that converts libsql tuple rows to named dicts.
+
+    Inheriting from dict makes dict(row) work exactly like sqlite3.Row,
+    and lets all existing dict(r) / row['col'] patterns work unchanged.
+    """
+
+    def __init__(self, description, values):
+        super().__init__(zip((d[0] for d in description), values))
+
+
+class _TursoCursor:
+    """Wraps a libsql cursor to match the sqlite3 cursor interface used in this codebase."""
+
+    __slots__ = ("_cur",)
+
+    def __init__(self, cur):
+        self._cur = cur
+
+    def execute(self, sql: str, params=None):
+        if params is not None:
+            self._cur.execute(sql, params)
+        else:
+            self._cur.execute(sql)
+        return self
+
+    def fetchone(self):
+        row = self._cur.fetchone()
+        if row is None:
+            return None
+        return _TursoRow(self._cur.description, row)
+
+    def fetchall(self):
+        rows = self._cur.fetchall()
+        desc = self._cur.description
+        return [_TursoRow(desc, r) for r in rows]
+
+    @property
+    def lastrowid(self):
+        return self._cur.lastrowid
+
+    @property
+    def rowcount(self):
+        return self._cur.rowcount
+
+    @property
+    def description(self):
+        return self._cur.description
+
+
+class _TursoConnection:
+    """Wraps a libsql connection to match the sqlite3 connection interface used in this codebase."""
+
+    __slots__ = ("_conn",)
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql: str, params=None):
+        cur = _TursoCursor(self._conn.cursor())
+        return cur.execute(sql, params)
+
+    def cursor(self):
+        return _TursoCursor(self._conn.cursor())
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
+
+
+# =====================================================================
+# Connection factory
+# =====================================================================
 
 def _ensure_dirs() -> None:
     os.makedirs(BASE_DIR, exist_ok=True)
 
 
-def get_conn() -> sqlite3.Connection:
+def get_conn():
+    if _USE_TURSO:
+        return _TursoConnection(libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN))
     _ensure_dirs()
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -25,9 +123,7 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
-def _managed_conn(
-    conn: Optional[sqlite3.Connection],
-) -> tuple[sqlite3.Connection, bool]:
+def _managed_conn(conn) -> tuple:
     """Returns connection and ownership flag (whether to close/commit)."""
     if conn is None:
         return get_conn(), True
@@ -35,7 +131,7 @@ def _managed_conn(
 
 
 @contextmanager
-def transaction(conn: Optional[sqlite3.Connection] = None):
+def transaction(conn=None):
     """Context for atomic operations: BEGIN/COMMIT/ROLLBACK + connection management."""
     connection, own = _managed_conn(conn)
     try:
@@ -55,7 +151,7 @@ def _now_iso_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
 
-def _rows_to_dicts(rows: List[sqlite3.Row]) -> List[Dict[str, Any]]:
+def _rows_to_dicts(rows: List) -> List[Dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
@@ -243,17 +339,37 @@ CREATE INDEX IF NOT EXISTS idx_analysis_notes_note_id      ON analysis_notes(not
 """
 
 
+def _execute_schema(conn) -> None:
+    """Execute schema statements one by one (Turso doesn't support executescript)."""
+    for raw_stmt in SCHEMA_SQL.split(";"):
+        stmt = raw_stmt.strip()
+        if not stmt:
+            continue
+        # Skip fragments that contain only whitespace and comment lines
+        meaningful = "\n".join(
+            line for line in stmt.split("\n")
+            if line.strip() and not line.strip().startswith("--")
+        ).strip()
+        if meaningful:
+            conn.execute(stmt)
+    conn.commit()
+
+
 def init_db() -> None:
     """Create DB schema if not exists."""
-    _ensure_dirs()
+    if not _USE_TURSO:
+        _ensure_dirs()
     conn = get_conn()
     try:
-        conn.executescript(SCHEMA_SQL)
-        conn.commit()
+        if _USE_TURSO:
+            _execute_schema(conn)
+        else:
+            conn.executescript(SCHEMA_SQL)
+            conn.commit()
     finally:
         conn.close()
 
 
 if __name__ == "__main__":
     init_db()
-    print("DB initialized at:", DB_PATH)
+    print("DB initialized at:", TURSO_URL if _USE_TURSO else DB_PATH)
