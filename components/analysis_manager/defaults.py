@@ -18,10 +18,11 @@ def build_analysis_defaults(
     """Формирует словарь полей анализа вместе с данными этапов."""
 
     analysis_id = analysis.get("id")
+    user_id = analysis.get("user_id")
     stage_map: Dict[str, Dict[str, Any]] = {}
     plan_stages: List[Dict[str, Any]] = []
     if analysis_id:
-        for stage in list_analysis_stages({"analysis_id": analysis_id}):
+        for stage in list_analysis_stages(user_id, {"analysis_id": analysis_id}):
             if stage["type"] == "plan":
                 plan_stages.append(stage)
             else:
