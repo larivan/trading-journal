@@ -1,6 +1,7 @@
 # db/connection.py — Connection management and helpers
 import os
 import sqlite3
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, List
@@ -24,6 +25,11 @@ if _USE_TURSO:
             "libsql-experimental is required when TURSO_DATABASE_URL is set. "
             "Run: pip install libsql-experimental"
         )
+
+# Thread-local storage: one persistent Turso connection per thread.
+# Streamlit reuses threads across requests, so each thread connects once
+# instead of on every get_conn() call, eliminating repeated TCP/TLS overhead.
+_turso_local = threading.local()
 
 
 # =====================================================================
@@ -102,7 +108,7 @@ class _TursoConnection:
         self._conn.rollback()
 
     def close(self):
-        self._conn.close()
+        pass  # Persistent per-thread connection; closing is a no-op
 
 
 # =====================================================================
@@ -113,9 +119,17 @@ def _ensure_dirs() -> None:
     os.makedirs(BASE_DIR, exist_ok=True)
 
 
+def _get_turso_conn() -> "_TursoConnection":
+    """Return a cached Turso connection for the current thread, creating it if needed."""
+    conn = getattr(_turso_local, "conn", None)
+    if conn is None:
+        _turso_local.conn = _TursoConnection(libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN))
+    return _turso_local.conn
+
+
 def get_conn():
     if _USE_TURSO:
-        return _TursoConnection(libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN))
+        return _get_turso_conn()
     _ensure_dirs()
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
