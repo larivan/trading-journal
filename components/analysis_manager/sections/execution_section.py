@@ -54,12 +54,14 @@ def render_execution_stage(
             set_previous_dialog(ANALYSIS_DIALOG_NAME)
             open_dialog(TRADE_DIALOG_NAME)
 
+        user_id = st.session_state["user_id"]
+
         def _delete_trades(ids: List[Any]) -> None:
             if not ids:
                 return
             for trade_id in ids:
                 try:
-                    delete_trade(trade_id)
+                    delete_trade(trade_id, user_id)
                 except Exception as exc:
                     st.toast(
                         f"Failed to delete trade #{trade_id}: {exc}", icon="❌")
@@ -68,7 +70,7 @@ def render_execution_stage(
         render_entity_table(
             entity_name="trade",
             key=f"{state_key}_execution_trades",
-            rows=list_trades({"analysis_id": analysis_id}),
+            rows=list_trades(user_id, {"analysis_id": analysis_id}),
             columns=[
                 {
                     "field": "date_local",

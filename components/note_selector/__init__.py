@@ -151,7 +151,7 @@ def render_note_selector(
                 remove_ids = set(int(x) for x in ids)
                 for nid in remove_ids:
                     try:
-                        delete_note(int(nid))
+                        delete_note(int(nid), get_current_user_id())
                     except Exception:
                         continue
                 staged_ids = [

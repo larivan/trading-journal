@@ -261,12 +261,17 @@ def list_trade_notes(trade_id: int) -> List[Dict[str, Any]]:
         conn.close()
 
 
-def count_notes_by_trade() -> Dict[int, int]:
-    """Count how many trades each note is linked to (single query, no N+1)."""
+def count_notes_by_trade(user_id: int) -> Dict[int, int]:
+    """Count how many trades each note is linked to, filtered by user (no N+1)."""
     conn = get_conn()
     try:
         rows = conn.execute(
-            "SELECT note_id, COUNT(*) as cnt FROM trade_notes GROUP BY note_id"
+            "SELECT tn.note_id, COUNT(*) as cnt "
+            "FROM trade_notes tn "
+            "JOIN notes n ON n.id = tn.note_id "
+            "WHERE n.user_id = ? "
+            "GROUP BY tn.note_id",
+            (user_id,),
         ).fetchall()
         return {row["note_id"]: row["cnt"] for row in rows}
     finally:

@@ -179,7 +179,7 @@ class TestTradeNotes:
         n2 = create_note(user_id, {"body": "B"})
         attach_note_to_trade(trade_id, n1)
         attach_note_to_trade(trade_id, n2)
-        counts = count_notes_by_trade()
+        counts = count_notes_by_trade(user_id)
         assert counts[n1] == 1
         assert counts[n2] == 1
 

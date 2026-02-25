@@ -90,7 +90,7 @@ def prepare_observations_df() -> pd.DataFrame:
     obs_df["excerpt"] = obs_df["body"].apply(
         lambda x: get_excerpt(x, 60)
     )
-    linked_counts = count_notes_by_trade() if trades else {}
+    linked_counts = count_notes_by_trade(user_id) if trades else {}
 
     obs_df["linked_trades"] = (
         obs_df["id"].map(linked_counts).fillna(0).astype(int)
