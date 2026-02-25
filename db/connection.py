@@ -51,7 +51,7 @@ class _TursoCursor:
 
     def execute(self, sql: str, params=None):
         if params is not None:
-            self._cur.execute(sql, params)
+            self._cur.execute(sql, tuple(params))
         else:
             self._cur.execute(sql)
         return self
