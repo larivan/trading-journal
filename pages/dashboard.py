@@ -11,13 +11,8 @@ from helpers import (
     custom_selectbox,
     get_excerpt,
 )
-from db import (
-    list_trades,
-    list_analysis,
-    list_accounts,
-    list_notes,
-    count_notes_by_trade,
-)
+from db import count_notes_by_trade
+from utils.cached_data import cached_trades, cached_analysis, cached_accounts, cached_notes
 from utils.auth import get_current_user_id, get_setting
 from utils.metrics import (
     compute_overview_metrics,
@@ -51,9 +46,10 @@ RISK_EXPECTANCY_KPIS = {
 user_id = get_current_user_id()
 
 
-def prepare_trades_df() -> pd.DataFrame:
-    trades = list_trades(user_id)
-    analyses = list_analysis(user_id)
+@st.cache_data(ttl=3600)
+def prepare_trades_df(user_id: int) -> pd.DataFrame:
+    trades = cached_trades(user_id)
+    analyses = cached_analysis(user_id)
 
     if not trades:
         return pd.DataFrame()
@@ -79,9 +75,10 @@ def prepare_trades_df() -> pd.DataFrame:
     return t_df
 
 
-def prepare_observations_df() -> pd.DataFrame:
-    obs = list_notes(user_id)
-    trades = list_trades(user_id)
+@st.cache_data(ttl=3600)
+def prepare_observations_df(user_id: int) -> pd.DataFrame:
+    obs = cached_notes(user_id)
+    trades = cached_trades(user_id)
 
     if not obs:
         return pd.DataFrame()
@@ -213,8 +210,8 @@ st.set_page_config(
 # ---------------------------
 # Load data
 # ----------------------------
-data_df = prepare_trades_df()
-obs_df = prepare_observations_df()
+data_df = prepare_trades_df(user_id)
+obs_df = prepare_observations_df(user_id)
 
 # ----------------------------
 # Header
@@ -229,7 +226,7 @@ alt.data_transformers.disable_max_rows()
 # Filters
 # ----------------------------
 accounts = to_option_format(
-    list_accounts(user_id, include_archived=True),
+    cached_accounts(user_id, True),
     formatter=lambda acc: f"{acc['name']}",
 )
 

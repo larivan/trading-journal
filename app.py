@@ -84,8 +84,10 @@ else:
             unsafe_allow_html=True,
         )
         user_id = get_current_user_id()
-        from db import get_user_by_id
-        user = get_user_by_id(user_id) if user_id else None
+        if "sidebar_user" not in st.session_state:
+            from db import get_user_by_id
+            st.session_state["sidebar_user"] = get_user_by_id(user_id) if user_id else None
+        user = st.session_state["sidebar_user"]
         if user:
             name = user.get("username") or user.get("email", "")
             st.write(f"👤 {name}")

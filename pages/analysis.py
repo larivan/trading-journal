@@ -16,7 +16,8 @@ from config import (
     ANALYSIS_ID_STATE,
     LOCAL_TZ,
 )
-from db import delete_analysis, list_analysis
+from db import delete_analysis
+from utils.cached_data import cached_analysis, filter_analysis
 from helpers import apply_page_config_from_file, format_local_date
 from utils.auth import get_current_user_id, get_setting
 from utils.session_state import (
@@ -104,7 +105,7 @@ if date_range:
     filters["date_from"] = date_range[0].isoformat()
     filters["date_to"] = date_range[1].isoformat()
 
-rows = list_analysis(user_id, filters)
+rows = filter_analysis(cached_analysis(user_id), filters)
 
 analysis_columns: List[Dict[str, Any]] = [
     {
@@ -155,6 +156,7 @@ def _confirm_delete_analyses(ids: List[Any]) -> None:
         except Exception as exc:
             st.toast(f"Delete failed: {exc}", icon="❌")
         st.session_state.pop("_pending_delete_analysis_ids", None)
+        st.cache_data.clear()
         st.rerun()
     if col2.button("Cancel", width="stretch"):
         st.session_state.pop("_pending_delete_analysis_ids", None)

@@ -266,6 +266,7 @@ def render_analysis_manager() -> None:
             message_col.error(f"Failed to save analysis: {exc}")
             return
 
+        st.cache_data.clear()
         st.rerun()
 
     if dialog_is_active(ANALYSIS_DIALOG_NAME):

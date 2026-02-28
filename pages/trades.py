@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import streamlit as st
 from components.entity_table import render_entity_table
 from components.trade_manager import render_trade_manager
-from db import delete_trade, list_accounts, list_trades
+from db import delete_trade
+from utils.cached_data import cached_accounts, cached_trades, filter_trades
 from helpers import (
     parse_date,
     to_option_format,
@@ -49,7 +50,7 @@ ESTIMATION_VARS = {
 
 # --- Загружаем список счетов ---
 accounts = to_option_format(
-    list_accounts(user_id),
+    cached_accounts(user_id),
     formatter=lambda acc: f"{acc['name']}",
 )
 
@@ -158,7 +159,7 @@ if date_range:
     filter["date_to"] = date_range[1].isoformat()
 
 # === ЗАГРУЗКА ДАННЫХ И ОПРЕДЕЛЕНИЕ КОЛОНОК ===
-rows = list_trades(user_id, filter)
+rows = filter_trades(cached_trades(user_id), filter)
 
 
 # --- Настройка отображаемых колонок таблицы ---
@@ -217,6 +218,7 @@ def _confirm_delete_trades(ids: List[Any]) -> None:
         except Exception as exc:
             st.toast(f"Delete failed: {exc}", icon="❌")
         st.session_state.pop("_pending_delete_trade_ids", None)
+        st.cache_data.clear()
         st.rerun()
     if col2.button("Cancel", width="stretch"):
         st.session_state.pop("_pending_delete_trade_ids", None)

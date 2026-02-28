@@ -36,10 +36,7 @@ from db import (
     create_trade,
     delete_trade,
     get_trade_by_id,
-    list_accounts,
-    list_analysis,
     list_trade_notes,
-    list_setups,
     list_charts,
     attach_chart_to_trade,
     attach_note_to_trade,
@@ -47,6 +44,7 @@ from db import (
     update_trade,
     transaction,
 )
+from utils.cached_data import cached_accounts, cached_analysis, cached_setups
 
 
 def render_trade_manager() -> None:
@@ -95,17 +93,17 @@ def render_trade_manager() -> None:
         assets = get_setting("assets", ASSETS_VALUES)
 
         # Подготовка данных
-        account_rows = list_accounts(user_id, include_archived=True)
+        account_rows = cached_accounts(user_id, True)
         accounts = to_option_format(
             account_rows,
             formatter=lambda acc: f"{acc['name']}",
         )
         setups = to_option_format(
-            list_setups(user_id),
+            cached_setups(user_id),
             formatter=lambda setup: f"{setup['name']}",
         )
         analyses = to_option_format(
-            list_analysis(user_id),
+            cached_analysis(user_id),
             formatter=lambda analysis: f"{analysis.get('date_local')} · {analysis.get('asset')}",
         )
         defaults = get_trade_defaults(trade, accounts)
@@ -300,6 +298,7 @@ def render_trade_manager() -> None:
         except Exception as exc:  # pragma: no cover - UI feedback
             message_col.error(f"Failed to save the trade: {exc}")
             return
+        st.cache_data.clear()
         st.rerun()
 
     if dialog_is_active(TRADE_DIALOG_NAME):
@@ -331,7 +330,7 @@ def _handle_dialog_dismiss() -> None:
 def _get_account_id_by_label(label: str) -> Optional[int]:
     """Возвращает ID счёта по его названию."""
     user_id = get_current_user_id()
-    account_rows = list_accounts(user_id, include_archived=True)
+    account_rows = cached_accounts(user_id, True)
     for acc in account_rows:
         if acc.get("name") == label:
             return acc.get("id")
@@ -383,7 +382,7 @@ def _calculate_rewards() -> None:
 def _get_account_balance(account_id: Optional[int]) -> Optional[float]:
     """Возвращает стартовый баланс счёта по его ID."""
     user_id = get_current_user_id()
-    accounts = list_accounts(user_id, include_archived=True)
+    accounts = cached_accounts(user_id, True)
     if account_id is None:
         return None
     for acc in accounts:

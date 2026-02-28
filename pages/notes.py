@@ -4,7 +4,8 @@ from typing import Any, Dict, List
 import streamlit as st
 from components.entity_gallery import render_entity_gallery
 from components.note_manager import render_note_manager
-from db import delete_note, list_notes
+from db import delete_note
+from utils.cached_data import cached_notes, filter_notes
 from helpers import (
     apply_page_config_from_file,
     format_local_date,
@@ -60,8 +61,8 @@ if date_range:
 if query:
     filters["query"] = query
 
-rows = list_notes(
-    user_id,
+rows = filter_notes(
+    cached_notes(user_id),
     filters,
     order_by="date_local",
     ascending=False,
@@ -109,6 +110,7 @@ def _delete_notes(ids: List[Any]) -> None:
             delete_note(int(note_id), user_id)
         except (ValueError, sqlite3.Error) as exc:
             st.toast(f"Failed to delete note #{note_id}: {exc}", icon="❌")
+    st.cache_data.clear()
     st.rerun()
 
 

@@ -156,6 +156,7 @@ def render_note_manager() -> None:
                 message_col.error(f"Failed to save note: {exc}")
                 return
 
+            st.cache_data.clear()
             st.rerun()
 
     if dialog_is_active(NOTE_DIALOG_NAME):
