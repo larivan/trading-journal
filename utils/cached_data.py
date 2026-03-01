@@ -24,6 +24,29 @@ from db import (
 
 _log = logging.getLogger("cache")
 
+_page_timers: dict = {}
+
+
+def page_mark(page: str, step: str) -> None:
+    """Ставит временну́ю метку и пишет в лог.
+
+    Использование в странице:
+        from utils.cached_data import page_mark
+        page_mark("trades", "start")
+        ...
+        page_mark("trades", "data_loaded")
+        ...
+        page_mark("trades", "done")
+    """
+    now = time.perf_counter()
+    key = f"{page}:start"
+    if step == "start":
+        _page_timers[key] = now
+        _log.warning("[PAGE] %-12s %-20s", page, step)
+    else:
+        t0 = _page_timers.get(key, now)
+        _log.warning("[PAGE] %-12s %-20s +%.0f ms", page, step, (now - t0) * 1000)
+
 
 def _timed(label: str, fn, *args, **kwargs):
     t0 = time.perf_counter()

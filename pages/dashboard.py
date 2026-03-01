@@ -43,6 +43,7 @@ RISK_EXPECTANCY_KPIS = {
     "profit_factor": (1.0, None),
 }
 
+from utils.cached_data import page_mark
 user_id = get_current_user_id()
 
 
@@ -210,8 +211,10 @@ st.set_page_config(
 # ---------------------------
 # Load data
 # ----------------------------
+page_mark("dashboard", "start")
 data_df = prepare_trades_df(user_id)
 obs_df = prepare_observations_df(user_id)
+page_mark("dashboard", "data_loaded")
 
 # ----------------------------
 # Header
@@ -598,3 +601,5 @@ with st.container(border=True):
         )
     else:
         st.info("No trades.")
+
+page_mark("dashboard", "done")

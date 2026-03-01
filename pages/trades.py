@@ -29,6 +29,8 @@ from config import (
 )
 
 # === БАЗОВАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ ===
+from utils.cached_data import page_mark
+page_mark("trades", "start")
 apply_page_config_from_file(__file__)
 
 user_id = get_current_user_id()
@@ -160,6 +162,7 @@ if date_range:
 
 # === ЗАГРУЗКА ДАННЫХ И ОПРЕДЕЛЕНИЕ КОЛОНОК ===
 rows = filter_trades(cached_trades(user_id), filter)
+page_mark("trades", "data_loaded")
 
 
 # --- Настройка отображаемых колонок таблицы ---
@@ -243,3 +246,4 @@ if pending_delete_ids:
     _confirm_delete_trades(pending_delete_ids)
 
 render_trade_manager()
+page_mark("trades", "done")
