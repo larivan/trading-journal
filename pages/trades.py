@@ -2,20 +2,15 @@ import sqlite3
 from datetime import date, timedelta
 from utils.date_periods import compute_date_range
 from typing import Any, Dict, List, Optional, Tuple
+import pandas as pd
 import streamlit as st
-from components.entity_table import render_entity_table
-from components.trade_manager import render_trade_manager
 from db import delete_trade
-from utils.cached_data import cached_accounts, cached_trades, filter_trades
+from utils.cached_data import cached_accounts, cached_trades, filter_trades, page_mark
 from helpers import (
     parse_date,
     to_option_format,
-    apply_page_config_from_file,
     custom_selectbox,
     calculate_trade_result,
-)
-from utils.session_state import (
-    open_dialog,
 )
 from utils.auth import get_current_user_id, get_setting
 from config import (
@@ -24,14 +19,12 @@ from config import (
     TRADE_RESULT_VALUES,
     TRADE_SESSION_VALUES,
     TRADE_STATE_VALUES,
-    TRADE_ID_STATE,
-    TRADE_DIALOG_NAME
 )
 
 # === БАЗОВАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ ===
-from utils.cached_data import page_mark
+st.set_page_config(page_title="Trades Database", page_icon=":material/view_list:", layout="wide")
+st.title(":material/view_list: Trades Database")
 page_mark("trades", "start")
-apply_page_config_from_file(__file__)
 
 user_id = get_current_user_id()
 
@@ -57,9 +50,7 @@ accounts = to_option_format(
 )
 
 # === ВЕРХНЯЯ ПАНЕЛЬ С ФИЛЬТРАМИ ПЕРИОДОВ ===
-period_col, _, actions_col = st.columns(
-    [0.5, 0.3, 0.2], vertical_alignment="bottom"
-)
+period_col, _ = st.columns([0.7, 0.3], vertical_alignment="bottom")
 with period_col:
     period_key = "trade_current_period_label"
     if not st.session_state.get(period_key):
@@ -70,14 +61,6 @@ with period_col:
         key=period_key,
         width="stretch",
     )
-
-with actions_col:
-    if st.button(
-        "Create",
-        type="primary",
-        width="stretch",
-    ):
-        open_dialog(TRADE_DIALOG_NAME)
 
 # === ПРИМЕНЕНИЕ ПЕРИОДОВ И КАСТОМНЫХ ФИЛЬТРОВ ===
 filter: Dict[str, Any] = {}
@@ -160,48 +143,56 @@ if date_range:
     filter["date_from"] = date_range[0].isoformat()
     filter["date_to"] = date_range[1].isoformat()
 
-# === ЗАГРУЗКА ДАННЫХ И ОПРЕДЕЛЕНИЕ КОЛОНОК ===
+# === ЗАГРУЗКА ДАННЫХ ===
 rows = filter_trades(cached_trades(user_id), filter)
 page_mark("trades", "data_loaded")
 
 
-# --- Настройка отображаемых колонок таблицы ---
-trade_table_columns: List[Dict[str, Any]] = [
-    {
-        "field": "date_local",
-        "label": "Date",
-        "compute": lambda row: row.get("date_local"),
-        "format": parse_date,
-        "id": "date_local",
-    },
-    {"field": "session", "label": "Session", "id": "session"},
-    {"field": "asset", "label": "Asset", "id": "asset"},
-    {"field": "state", "label": "State", "id": "state"},
-    {
-        "field": "result",
-        "label": "Result",
-        "compute": lambda row: calculate_trade_result(row.get("risk_reward"), row.get("is_missed")),
-        "id": "result"
-    },
-    {"field": "net_pnl", "label": "PnL", "id": "net_pnl"},
-    {"field": "risk_reward", "label": "R:R", "id": "risk_reward"},
-]
+# === ТАБЛИЦА ===
+if not rows:
+    st.info("No trades for the selected period.")
+else:
+    df = pd.DataFrame(rows)
+    df["result"] = df.apply(
+        lambda r: calculate_trade_result(r.get("risk_reward"), r.get("is_missed")),
+        axis=1,
+    )
+    df["_link"] = "/trade_editor?id=" + df["id"].astype(str)
 
+    display_cols = ["_link", "date_local", "session", "asset", "state", "result", "net_pnl", "risk_reward"]
+    for col in display_cols:
+        if col not in df.columns:
+            df[col] = None
 
-# === ДЕЙСТВИЯ ПРИ ВЗАИМОДЕЙСТВИИ С ТАБЛИЦЕЙ ===
-def _handle_open_trade(row: Dict[str, Any]) -> None:
-    trade_id = row.get("id")
-    if not trade_id:
-        return
-    st.session_state[TRADE_ID_STATE] = trade_id
-    open_dialog(TRADE_DIALOG_NAME)
+    event = st.dataframe(
+        df[display_cols],
+        column_config={
+            "date_local": st.column_config.TextColumn("Date"),
+            "session": st.column_config.TextColumn("Session"),
+            "asset": st.column_config.TextColumn("Asset"),
+            "state": st.column_config.TextColumn("State"),
+            "result": st.column_config.TextColumn("Result"),
+            "net_pnl": st.column_config.NumberColumn("PnL"),
+            "risk_reward": st.column_config.NumberColumn("R:R"),
+            "_link": st.column_config.LinkColumn("Open", display_text="Open"),
+        },
+        selection_mode="multi-row",
+        on_select="rerun",
+        use_container_width=True,
+        hide_index=True,
+        key=f"trades_dataframe_{selected_key}",
+    )
 
+    selected_rows = event.selection.rows
 
-def _handle_delete_trades(ids: List[Any]) -> None:
-    if not ids:
-        return
-    st.session_state["_pending_delete_trade_ids"] = ids
-    st.rerun()
+    btn_create, btn_delete, _ = st.columns([0.12, 0.15, 0.73])
+    if btn_create.button("Create", type="primary", width="stretch"):
+        st.switch_page("pages/trade_editor.py")
+    if selected_rows:
+        selected_ids = [rows[i]["id"] for i in selected_rows]
+        if btn_delete.button(f"Delete ({len(selected_ids)})", type="secondary", width="stretch"):
+            st.session_state["_pending_delete_trade_ids"] = selected_ids
+            st.rerun()
 
 
 @st.dialog("Delete trades")
@@ -228,22 +219,8 @@ def _confirm_delete_trades(ids: List[Any]) -> None:
         st.rerun()
 
 
-# --- Создаём таблицу с обработкой выделений и действий ---
-table_key = f"trades_table_{selected_key}"
-render_entity_table(
-    entity_name="trade",
-    key=table_key,
-    rows=rows,
-    columns=trade_table_columns,
-    empty_message="No trades for the selected period.",
-    page_size=100,
-    on_open=_handle_open_trade,
-    on_delete=_handle_delete_trades,
-)
-
 pending_delete_ids = st.session_state.get("_pending_delete_trade_ids")
 if pending_delete_ids:
     _confirm_delete_trades(pending_delete_ids)
 
-render_trade_manager()
 page_mark("trades", "done")

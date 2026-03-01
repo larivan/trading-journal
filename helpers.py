@@ -1,7 +1,6 @@
 from datetime import date, datetime, time
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
-from config import BE_THRESHOLD, PAGES
+from config import BE_THRESHOLD
 import streamlit as st
 import uuid
 
@@ -45,20 +44,6 @@ def calculate_trade_result(risk_reward: Optional[float], is_missed: int) -> str:
     if is_loss_rr(risk_reward):
         return "Loss"
     return "BE"
-
-
-def apply_page_config(page_key: str):
-    options = PAGES.get(page_key)
-    st.set_page_config(
-        page_title=options['title'],
-        page_icon=options["icon"],
-        layout=options["layout"]
-    )
-    st.title(f"{options['icon']} {options['title']}")
-
-
-def apply_page_config_from_file(file):
-    return apply_page_config(Path(file).stem)
 
 
 # --- Trade helpers (можно переиспользовать в различных компонентах) ---

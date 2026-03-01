@@ -3,7 +3,7 @@ import streamlit as st
 from db import init_db
 
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(message)s")
-from config import PAGES, SETTINGS_PAGES
+from config import PAGES, EDITOR_PAGES
 from utils.auth import (
     require_auth,
     get_current_user_id,
@@ -54,20 +54,19 @@ else:
             )
         )
 
-    settings_pages = []
-    for name, options in SETTINGS_PAGES.items():
-        settings_pages.append(
-            st.Page(
-                f"pages/{name}.py",
-                title=options["title"],
-                icon=options["icon"],
-                url_path=name,
-                default=options["default"],
-            )
+    editor_pages = [
+        st.Page(
+            f"pages/{name}.py",
+            title=opts["title"],
+            icon=opts["icon"],
+            url_path=name,
+            default=opts["default"],
         )
+        for name, opts in EDITOR_PAGES.items()
+    ]
 
     # Регистрируем навигацию первой — ссылки окажутся вверху сайдбара
-    nav = st.navigation({"": main_pages, "Settings": settings_pages})
+    nav = st.navigation({"": main_pages, " ": editor_pages})
 
     # Никнейм и Logout — прижаты к низу через CSS
     with st.sidebar:
@@ -81,6 +80,10 @@ else:
             }
             [data-testid="stSidebarUserContent"] {
                 margin-top: auto !important;
+            }
+            /* Скрыть секцию редакторов из навигации (последний div-раздел внутри nav items) */
+            [data-testid="stSidebarNavItems"] > div:last-of-type {
+                display: none !important;
             }
             </style>
             """,

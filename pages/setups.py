@@ -8,11 +8,12 @@ from components.setup_manager import render_setup_manager
 from config import SETUP_DIALOG_NAME, SETUP_ID_STATE
 from db import delete_setup
 from utils.cached_data import cached_setups, filter_setups
-from helpers import apply_page_config_from_file, get_excerpt
+from helpers import get_excerpt
 from utils.auth import get_current_user_id
 from utils.session_state import open_dialog
 
-apply_page_config_from_file(__file__)
+st.set_page_config(page_title="Setups", page_icon=":material/grid_view:", layout="wide")
+st.title(":material/grid_view: Setups")
 
 user_id = get_current_user_id()
 

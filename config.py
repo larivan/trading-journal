@@ -30,39 +30,25 @@ PAGES = {
         'default': False,
         'layout': 'wide',
     },
-}
-
-SETTINGS_PAGES = {
     'settings_accounts': {
         'title': 'Accounts',
         'icon': ':material/account_balance_wallet:',
         'default': False,
         'layout': 'wide',
     },
-    'settings_profile': {
-        'title': 'Profile',
-        'icon': ':material/person:',
+    'settings': {
+        'title': 'Settings',
+        'icon': ':material/settings:',
         'default': False,
         'layout': 'wide',
     },
-    'settings_journal_setup': {
-        'title': 'Journal Setup',
-        'icon': ':material/tune:',
-        'default': False,
-        'layout': 'wide',
-    },
-    'settings_preferences': {
-        'title': 'Preferences',
-        'icon': ':material/language:',
-        'default': False,
-        'layout': 'wide',
-    },
-    'settings_backup': {
-        'title': 'Backup',
-        'icon': ':material/backup:',
-        'default': False,
-        'layout': 'wide',
-    },
+}
+
+SETTINGS_PAGES = {}
+
+EDITOR_PAGES = {
+    "trade_editor": {"title": "Trade Editor", "icon": ":material/edit:", "default": False},
+    "analysis_editor": {"title": "Analysis Editor", "icon": ":material/edit:", "default": False},
 }
 
 LOCAL_TZ = 'Europe/Moscow'

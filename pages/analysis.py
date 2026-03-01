@@ -3,29 +3,23 @@ from datetime import date, timedelta
 from utils.date_periods import compute_date_range
 from typing import Any, Dict, List, Optional, Tuple
 
+import pandas as pd
 import streamlit as st
 
-from components.analysis_manager import render_analysis_manager
-from components.entity_table import render_entity_table
 from config import (
     ASSETS_VALUES,
     DAILY_BIAS_VALUES,
     DAY_RESULT_VALUES,
     ANALYSIS_STATE_VALUES,
-    ANALYSIS_DIALOG_NAME,
-    ANALYSIS_ID_STATE,
     LOCAL_TZ,
 )
 from db import delete_analysis
 from utils.cached_data import cached_analysis, filter_analysis
-from helpers import apply_page_config_from_file, format_local_date
+from helpers import format_local_date
 from utils.auth import get_current_user_id, get_setting
-from utils.session_state import (
-    open_dialog,
-    set_selected_entity,
-)
 
-apply_page_config_from_file(__file__)
+st.set_page_config(page_title="Analysis Database", page_icon=":material/insights:", layout="wide")
+st.title(":material/insights: Analysis Database")
 
 user_id = get_current_user_id()
 
@@ -39,14 +33,7 @@ TAB_DEFINITIONS: Dict[str, str] = {
 }
 
 
-def _open_new_analysis() -> None:
-    st.session_state.pop(ANALYSIS_ID_STATE, None)
-    open_dialog(ANALYSIS_DIALOG_NAME)
-
-
-period_col, _, actions_col = st.columns(
-    [0.5, 0.3, 0.2], vertical_alignment="bottom"
-)
+period_col, _ = st.columns([0.7, 0.3], vertical_alignment="bottom")
 with period_col:
     period_key = "analysis_current_period_label"
     if not st.session_state.get(period_key):
@@ -57,10 +44,6 @@ with period_col:
         key=period_key,
         width="stretch",
     )
-
-with actions_col:
-    if st.button("Create", type="primary", width="stretch"):
-        _open_new_analysis()
 
 filters: Dict[str, Any] = {}
 date_range: Optional[Tuple[date, date]] = None
@@ -107,36 +90,47 @@ if date_range:
 
 rows = filter_analysis(cached_analysis(user_id), filters)
 
-analysis_columns: List[Dict[str, Any]] = [
-    {
-        "field": "date_local",
-        "label": "Date",
-        "compute": lambda row: row.get("date_local"),
-        "format": format_local_date,
-        "id": "date_local",
-    },
-    {"field": "asset", "label": "Asset", "id": "asset"},
-    {"field": "daily_bias", "label": "Daily bias", "id": "daily_bias"},
-    {"field": "fact_bias", "label": "Fact bias", "id": "fact_bias"},
-    {"field": "day_result", "label": "Result", "id": "day_result"},
-    {"field": "state", "label": "State", "id": "state"},
-]
+# === ТАБЛИЦА ===
+if not rows:
+    st.info("No analysis found for the selected period.")
+else:
+    df = pd.DataFrame(rows)
+    df["date_display"] = df["date_local"].apply(format_local_date)
+    df["_link"] = "/analysis_editor?id=" + df["id"].astype(str)
 
+    display_cols = ["_link", "date_display", "asset", "daily_bias", "fact_bias", "day_result", "state"]
+    for col in display_cols:
+        if col not in df.columns:
+            df[col] = None
 
-def _handle_open_analysis(row: Dict[str, Any]) -> None:
-    analysis_id = row.get("id")
-    if not analysis_id:
-        return
-    set_selected_entity("analysis", analysis_id)
-    st.session_state[ANALYSIS_ID_STATE] = analysis_id
-    open_dialog(ANALYSIS_DIALOG_NAME)
+    event = st.dataframe(
+        df[display_cols],
+        column_config={
+            "date_display": st.column_config.TextColumn("Date"),
+            "asset": st.column_config.TextColumn("Asset"),
+            "daily_bias": st.column_config.TextColumn("Daily bias"),
+            "fact_bias": st.column_config.TextColumn("Fact bias"),
+            "day_result": st.column_config.TextColumn("Result"),
+            "state": st.column_config.TextColumn("State"),
+            "_link": st.column_config.LinkColumn("Open", display_text="Open"),
+        },
+        selection_mode="multi-row",
+        on_select="rerun",
+        use_container_width=True,
+        hide_index=True,
+        key=f"analysis_dataframe_{selected_key}",
+    )
 
+    selected_rows = event.selection.rows
 
-def _handle_delete_analyses(ids: List[Any]) -> None:
-    if not ids:
-        return
-    st.session_state["_pending_delete_analysis_ids"] = ids
-    st.rerun()
+    btn_create, btn_delete, _ = st.columns([0.12, 0.15, 0.73])
+    if btn_create.button("Create", type="primary", width="stretch"):
+        st.switch_page("pages/analysis_editor.py")
+    if selected_rows:
+        selected_ids = [rows[i]["id"] for i in selected_rows]
+        if btn_delete.button(f"Delete ({len(selected_ids)})", type="secondary", width="stretch"):
+            st.session_state["_pending_delete_analysis_ids"] = selected_ids
+            st.rerun()
 
 
 @st.dialog("Delete analyses")
@@ -163,20 +157,6 @@ def _confirm_delete_analyses(ids: List[Any]) -> None:
         st.rerun()
 
 
-table_key = f"analysis_table_{selected_key}"
-render_entity_table(
-    entity_name="analysis",
-    key=table_key,
-    rows=rows,
-    columns=analysis_columns,
-    empty_message="No analysis found for the selected period.",
-    page_size=100,
-    on_open=_handle_open_analysis,
-    on_delete=_handle_delete_analyses,
-)
-
 pending_delete_ids = st.session_state.get("_pending_delete_analysis_ids")
 if pending_delete_ids:
     _confirm_delete_analyses(pending_delete_ids)
-
-render_analysis_manager()

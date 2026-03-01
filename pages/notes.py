@@ -7,7 +7,6 @@ from components.note_manager import render_note_manager
 from db import delete_note
 from utils.cached_data import cached_notes, filter_notes
 from helpers import (
-    apply_page_config_from_file,
     format_local_date,
     format_local_time,
     get_excerpt
@@ -19,7 +18,8 @@ from config import (
     NOTE_ID_STATE,
 )
 
-apply_page_config_from_file(__file__)
+st.set_page_config(page_title="Observations", page_icon=":material/sticky_note_2:", layout="wide")
+st.title(":material/sticky_note_2: Observations")
 
 user_id = get_current_user_id()
 
