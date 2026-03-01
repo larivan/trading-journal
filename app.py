@@ -1,5 +1,8 @@
+import logging
 import streamlit as st
 from db import init_db
+
+logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(message)s")
 from config import PAGES, SETTINGS_PAGES
 from utils.auth import (
     require_auth,

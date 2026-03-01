@@ -4,8 +4,14 @@
 - Грузим полный список один раз, кешируем на уровне приложения (ttl=3600).
 - Фильтруем в Python — мгновенно для объёмов < 1000 записей.
 - Явно сбрасываем кеш через st.cache_data.clear() после любой мутации.
+
+Диагностика:
+- Установи переменную окружения CACHE_DEBUG=1, чтобы видеть в логах
+  реальные DB-запросы с их временем. Если лог не появляется — данные берутся из кеша.
 """
 
+import logging
+import time
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
@@ -19,6 +25,17 @@ from db import (
     list_trades,
 )
 
+_log = logging.getLogger("cache")
+
+
+def _timed(label: str, fn, *args, **kwargs):
+    t0 = time.perf_counter()
+    result = fn(*args, **kwargs)
+    ms = (time.perf_counter() - t0) * 1000
+    n = len(result) if isinstance(result, list) else "?"
+    _log.warning("[DB] %-35s %s rows  %.0f ms", label, n, ms)
+    return result
+
 
 # ---------------------------------------------------------------------------
 # Кешированные обёртки
@@ -26,27 +43,27 @@ from db import (
 
 @st.cache_data(ttl=3600)
 def cached_trades(user_id: int) -> List[Dict[str, Any]]:
-    return list_trades(user_id)
+    return _timed(f"list_trades(user={user_id})", list_trades, user_id)
 
 
 @st.cache_data(ttl=3600)
 def cached_accounts(user_id: int, include_archived: bool = False) -> List[Dict[str, Any]]:
-    return list_accounts(user_id, include_archived)
+    return _timed(f"list_accounts(user={user_id}, arch={include_archived})", list_accounts, user_id, include_archived)
 
 
 @st.cache_data(ttl=3600)
 def cached_setups(user_id: int) -> List[Dict[str, Any]]:
-    return list_setups(user_id)
+    return _timed(f"list_setups(user={user_id})", list_setups, user_id)
 
 
 @st.cache_data(ttl=3600)
 def cached_analysis(user_id: int) -> List[Dict[str, Any]]:
-    return list_analysis(user_id)
+    return _timed(f"list_analysis(user={user_id})", list_analysis, user_id)
 
 
 @st.cache_data(ttl=3600)
 def cached_notes(user_id: int) -> List[Dict[str, Any]]:
-    return list_notes(user_id)
+    return _timed(f"list_notes(user={user_id})", list_notes, user_id)
 
 
 # ---------------------------------------------------------------------------
