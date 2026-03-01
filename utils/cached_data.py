@@ -1,15 +1,14 @@
 """Кешированные обёртки над db/ и вспомогательные функции Python-фильтрации.
 
 Стратегия:
-- prefetch_user_data() грузит ВСЕ данные пользователя ПАРАЛЛЕЛЬНО за один раз.
-  Вместо 4-5 последовательных запросов × 300 мс ≈ 1.5 с получаем ~350 мс (max одного запроса).
-- cached_*() — тонкие обёртки, берут данные из prefetch-кеша (без лишних DB-вызовов).
-- st.cache_data.clear() сбрасывает всё после любой мутации.
+- Грузим полный список один раз, кешируем на уровне приложения (ttl=3600).
+- Фильтруем в Python — мгновенно для объёмов < 1000 записей.
+- Явно сбрасываем кеш через st.cache_data.clear() после любой мутации.
+- user_id=None → пустой список без DB-запроса (защита от раннего рендера).
 """
 
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
@@ -26,71 +25,52 @@ from db import (
 _log = logging.getLogger("cache")
 
 
-# ---------------------------------------------------------------------------
-# Параллельный prefetch — единственное место с реальными DB-вызовами
-# ---------------------------------------------------------------------------
-
-@st.cache_data(ttl=3600)
-def prefetch_user_data(user_id: int) -> Dict[str, List[Dict[str, Any]]]:
-    """Загружает все коллекции пользователя параллельно.
-
-    При user_id=None возвращает пустые списки без обращения к БД.
-    Кешируется на уровне процесса — повторные вызовы с тем же user_id
-    мгновенны.
-    """
-    if user_id is None:
-        return {
-            "trades": [], "analysis": [], "notes": [],
-            "accounts": [], "accounts_archived": [], "setups": [],
-        }
-
-    tasks = {
-        "trades":            (list_trades,    user_id),
-        "analysis":          (list_analysis,  user_id),
-        "notes":             (list_notes,     user_id),
-        "accounts":          (list_accounts,  user_id, False),
-        "accounts_archived": (list_accounts,  user_id, True),
-        "setups":            (list_setups,    user_id),
-    }
-
+def _timed(label: str, fn, *args, **kwargs):
     t0 = time.perf_counter()
-    result: Dict[str, List] = {}
-
-    with ThreadPoolExecutor(max_workers=len(tasks)) as ex:
-        futures = {ex.submit(fn, *args): key for key, (fn, *args) in tasks.items()}
-        for future in as_completed(futures):
-            key = futures[future]
-            result[key] = future.result()
-
+    result = fn(*args, **kwargs)
     ms = (time.perf_counter() - t0) * 1000
-    sizes = " ".join(f"{k}={len(v)}" for k, v in result.items())
-    _log.warning("[DB PARALLEL] user=%s  %s  total=%.0f ms", user_id, sizes, ms)
+    n = len(result) if isinstance(result, list) else "?"
+    _log.warning("[DB] %-35s %s rows  %.0f ms", label, n, ms)
     return result
 
 
 # ---------------------------------------------------------------------------
-# Публичные обёртки — берут данные из prefetch-кеша
+# Кешированные обёртки
 # ---------------------------------------------------------------------------
 
+@st.cache_data(ttl=3600)
 def cached_trades(user_id: int) -> List[Dict[str, Any]]:
-    return prefetch_user_data(user_id)["trades"]
+    if user_id is None:
+        return []
+    return _timed(f"list_trades(user={user_id})", list_trades, user_id)
 
 
+@st.cache_data(ttl=3600)
 def cached_accounts(user_id: int, include_archived: bool = False) -> List[Dict[str, Any]]:
-    key = "accounts_archived" if include_archived else "accounts"
-    return prefetch_user_data(user_id)[key]
+    if user_id is None:
+        return []
+    return _timed(f"list_accounts(user={user_id}, arch={include_archived})", list_accounts, user_id, include_archived)
 
 
+@st.cache_data(ttl=3600)
 def cached_setups(user_id: int) -> List[Dict[str, Any]]:
-    return prefetch_user_data(user_id)["setups"]
+    if user_id is None:
+        return []
+    return _timed(f"list_setups(user={user_id})", list_setups, user_id)
 
 
+@st.cache_data(ttl=3600)
 def cached_analysis(user_id: int) -> List[Dict[str, Any]]:
-    return prefetch_user_data(user_id)["analysis"]
+    if user_id is None:
+        return []
+    return _timed(f"list_analysis(user={user_id})", list_analysis, user_id)
 
 
+@st.cache_data(ttl=3600)
 def cached_notes(user_id: int) -> List[Dict[str, Any]]:
-    return prefetch_user_data(user_id)["notes"]
+    if user_id is None:
+        return []
+    return _timed(f"list_notes(user={user_id})", list_notes, user_id)
 
 
 # ---------------------------------------------------------------------------
