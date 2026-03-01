@@ -60,19 +60,16 @@ if not is_new_analysis:
             st.switch_page("pages/analysis.py")
         st.stop()
 
-# --- Кнопка "назад" + заголовок ---
-back_col, title_col = st.columns([0.15, 0.85], vertical_alignment="center")
-with back_col:
-    if st.button("← Analysis", width="stretch"):
-        st.switch_page("pages/analysis.py")
+# --- Заголовок ---
+if is_new_analysis:
+    st.title("New analysis")
+else:
+    asset = (analysis.get("asset") or "Analysis").strip() or "Analysis"
+    date_value = (analysis.get("date_local") or "").strip() or ""
+    st.title(f"{asset} · {date_value}" if date_value else asset)
 
-with title_col:
-    if is_new_analysis:
-        st.title("New analysis")
-    else:
-        asset = (analysis.get("asset") or "Analysis").strip() or "Analysis"
-        date_value = (analysis.get("date_local") or "").strip() or ""
-        st.title(f"{asset} · {date_value}" if date_value else asset)
+# Placeholder для ошибок — невидим когда пуст
+message_placeholder = st.empty()
 
 # --- Ключ состояния виджетов ---
 state_key = f"{ANALYSIS_MANAGER_KEY_PREFIX}{analysis_id or 'new'}"
@@ -87,28 +84,28 @@ def _visible_stage_types(current_stage: str) -> List[str]:
     return ANALYSIS_STATE_VALUES[: idx + 1]
 
 
-# --- Хедер: выбор стадии + кнопки действий ---
-with st.container(border=True):
-    status_col, message_col, actions_col = st.columns(
-        [0.2, 0.6, 0.2],
-        gap="large",
-        vertical_alignment="bottom",
+# Analysis stage selectbox with navigation: кнопки ← selectbox →
+_stage_nav_key = f"{state_key}_stage_idx"
+current_stage = analysis.get("state") or ANALYSIS_STATE_VALUES[0]
+allowed_stages = get_allowed_analysis_stages(current_stage)
+if _stage_nav_key not in st.session_state:
+    st.session_state[_stage_nav_key] = (
+        allowed_stages.index(current_stage) if current_stage in allowed_stages else 0
     )
-    with status_col:
-        current_stage = analysis.get("state") or ANALYSIS_STATE_VALUES[0]
-        allowed_stages = get_allowed_analysis_stages(current_stage)
-        selected_stage = st.selectbox(
-            "Analysis stage",
-            allowed_stages,
-            index=allowed_stages.index(current_stage) if current_stage in allowed_stages else 0,
-        )
-    with actions_col:
-        delete_col, save_col = st.columns(2)
-        if not is_new_analysis:
-            if delete_col.button("Delete", type="secondary", width="stretch"):
-                st.session_state["_ae_pending_delete"] = analysis_id
-                st.rerun()
-        submitted = save_col.button("Save", type="primary", width="stretch")
+_stage_idx = max(0, min(st.session_state[_stage_nav_key], len(allowed_stages) - 1))
+_prev_col, _sel_col, _next_col = st.columns([1, 6, 1], vertical_alignment="bottom")
+if _prev_col.button("←", disabled=(_stage_idx == 0), key=f"{state_key}_stage_prev"):
+    st.session_state[_stage_nav_key] = _stage_idx - 1
+    st.rerun()
+if _next_col.button("→", disabled=(_stage_idx == len(allowed_stages) - 1), key=f"{state_key}_stage_next"):
+    st.session_state[_stage_nav_key] = _stage_idx + 1
+    st.rerun()
+selected_stage = _sel_col.selectbox(
+    "Analysis stage",
+    allowed_stages,
+    index=_stage_idx,
+)
+st.session_state[_stage_nav_key] = allowed_stages.index(selected_stage)
 
 # Диалог подтверждения удаления
 if st.session_state.get("_ae_pending_delete"):
@@ -118,7 +115,8 @@ if st.session_state.get("_ae_pending_delete"):
         c1, c2 = st.columns(2)
         if c1.button("Delete", type="primary", width="stretch"):
             try:
-                delete_analysis(st.session_state["_ae_pending_delete"], user_id)
+                delete_analysis(
+                    st.session_state["_ae_pending_delete"], user_id)
             except Exception as exc:
                 st.toast(f"Failed to delete: {exc}", icon="❌")
             st.session_state.pop("_ae_pending_delete", None)
@@ -159,14 +157,16 @@ if "execution" in visible:
                 key=f"{state_key}_create_trade",
             ):
                 st.session_state[f"{TM_DEFAULT_PREFIX}analysis"] = analysis_id
-                st.session_state[f"{TM_DEFAULT_PREFIX}asset"] = analysis.get("asset")
+                st.session_state[f"{TM_DEFAULT_PREFIX}asset"] = analysis.get(
+                    "asset")
                 st.switch_page("pages/trade_editor.py")
 
             trade_rows = list_trades(user_id, {"analysis_id": analysis_id})
             if trade_rows:
                 df_exec = pd.DataFrame(trade_rows)
-                df_exec["_link"] = "/trade_editor?id=" + df_exec["id"].astype(str)
-                display_cols = ["date_local", "session", "asset", "state", "net_pnl", "risk_reward", "_link"]
+                df_exec["_link"] = "/trade_editor?id=" + \
+                    df_exec["id"].astype(str)
+                display_cols = ["_link", "date_local", "session", "asset", "state", "net_pnl", "risk_reward"]
                 for col in display_cols:
                     if col not in df_exec.columns:
                         df_exec[col] = None
@@ -195,19 +195,29 @@ post_analysis_values, post_values = render_post_stage(
     state_key=f"{state_key}_post",
 )
 
+# --- Нижняя панель actions ---
+btn_back, btn_save, btn_delete, _ = st.columns([0.1, 0.1, 0.12, 0.68])
+if btn_back.button("← Analysis", width="stretch"):
+    st.switch_page("pages/analysis.py")
+submitted = btn_save.button("Save", type="primary", width="stretch")
+if not is_new_analysis:
+    if btn_delete.button("Delete", type="secondary", width="stretch"):
+        st.session_state["_ae_pending_delete"] = analysis_id
+        st.rerun()
+
 # --- Сохранение ---
 if submitted:
     if pre_analysis_values and not pre_analysis_values.get("asset"):
-        message_col.error("Select an asset.")
+        message_placeholder.error("Select an asset.")
         st.stop()
     if pre_analysis_values and not pre_analysis_values.get("daily_bias"):
-        message_col.error("Select a daily bias.")
+        message_placeholder.error("Select a daily bias.")
         st.stop()
     if post_analysis_values and not post_analysis_values.get("fact_bias"):
-        message_col.error("Select a fact bias.")
+        message_placeholder.error("Select a fact bias.")
         st.stop()
     if post_analysis_values and not post_analysis_values.get("day_result"):
-        message_col.error("Select a day result.")
+        message_placeholder.error("Select a day result.")
         st.stop()
 
     analysis_payload: Dict[str, Any] = {"state": selected_stage}
@@ -221,9 +231,11 @@ if submitted:
         with st.spinner("Saving..."):
             with transaction() as conn:
                 if is_new_analysis:
-                    current_analysis_id = add_analysis(user_id, analysis_payload, conn=conn)
+                    current_analysis_id = add_analysis(
+                        user_id, analysis_payload, conn=conn)
                 else:
-                    update_analysis(current_analysis_id, user_id, analysis_payload, conn=conn)
+                    update_analysis(current_analysis_id, user_id,
+                                    analysis_payload, conn=conn)
 
                 if pre_values:
                     pre_stage_id = pre_values["stage_id"]
@@ -234,9 +246,11 @@ if submitted:
                         }
                     )
                     if pre_stage_id:
-                        update_analysis_stage(pre_stage_id, pre_values, conn=conn)
+                        update_analysis_stage(
+                            pre_stage_id, pre_values, conn=conn)
                     else:
-                        pre_stage_id = add_analysis_stage(pre_values, conn=conn)
+                        pre_stage_id = add_analysis_stage(
+                            pre_values, conn=conn)
 
                     persist_chart_editor(
                         attached_charts=pre_values["charts"]["rows_source"],
@@ -262,15 +276,18 @@ if submitted:
                         "summary": plan_form.get("summary") or "",
                     }
                     if plan_stage_id:
-                        update_analysis_stage(plan_stage_id, plan_payload, conn=conn)
+                        update_analysis_stage(
+                            plan_stage_id, plan_payload, conn=conn)
                     else:
                         plan_payload["time_local"] = (
                             plan_form.get("time_local") or datetime.now()
                         )
-                        plan_stage_id = add_analysis_stage(plan_payload, conn=conn)
+                        plan_stage_id = add_analysis_stage(
+                            plan_payload, conn=conn)
 
                     persist_chart_editor(
-                        attached_charts=charts_payload.get("rows_source") or [],
+                        attached_charts=charts_payload.get(
+                            "rows_source") or [],
                         editor_rows=charts_payload.get("editor_value") or [],
                         conn=conn,
                         attach_chart=lambda chart_id, sid=plan_stage_id: attach_chart_to_analysis_stage(
@@ -287,10 +304,12 @@ if submitted:
                         }
                     )
                     if post_stage_id:
-                        update_analysis_stage(post_stage_id, post_values, conn=conn)
+                        update_analysis_stage(
+                            post_stage_id, post_values, conn=conn)
                     else:
                         post_values.update({"time_local": datetime.now()})
-                        post_stage_id = add_analysis_stage(post_values, conn=conn)
+                        post_stage_id = add_analysis_stage(
+                            post_values, conn=conn)
 
                     persist_chart_editor(
                         attached_charts=post_values["charts"]["rows_source"],
@@ -309,17 +328,20 @@ if submitted:
                         int(nid) for nid in (post_values["notes"]["staged_note_ids"] or []) if nid is not None
                     }
                     for note_id in base_note_ids - staged_note_ids:
-                        detach_note_from_analysis_stage(post_stage_id, note_id, conn=conn)
+                        detach_note_from_analysis_stage(
+                            post_stage_id, note_id, conn=conn)
                     for note_id in staged_note_ids - base_note_ids:
-                        attach_note_to_analysis_stage(post_stage_id, note_id, conn=conn)
+                        attach_note_to_analysis_stage(
+                            post_stage_id, note_id, conn=conn)
 
         st.cache_data.clear()
-        st.toast("Analysis saved." if not is_new_analysis else "Analysis created.", icon="🔥")
+        st.toast(
+            "Analysis saved." if not is_new_analysis else "Analysis created.", icon="🔥")
         if is_new_analysis:
             st.query_params["id"] = str(current_analysis_id)
         st.rerun()
     except Exception as exc:
-        message_col.error(f"Failed to save analysis: {exc}")
+        message_placeholder.error(f"Failed to save analysis: {exc}")
 
 # --- Диалог заметок (одиночный уровень — допустимо на странице) ---
 render_note_manager()

@@ -59,25 +59,19 @@ if not is_new_trade:
 
 loaded_state = trade.get("state") if trade else None
 
-# --- Кнопка "назад" + заголовок ---
-back_col, title_col = st.columns([0.15, 0.85], vertical_alignment="center")
-with back_col:
-    if st.button("← Trades", width="stretch"):
-        st.switch_page("pages/trades.py")
+# --- Заголовок ---
+if is_new_trade:
+    st.title("New trade")
+else:
+    asset = (trade.get("asset") or "Trade").strip()
+    d = parse_date(trade.get("date_local"))
+    t = parse_time(trade.get("time_local"))
+    date_str = d.strftime("%d.%m.%Y") if d else ""
+    time_str = t.strftime("%H:%M") if t else ""
+    st.title(f"{asset} · {date_str} - {time_str}")
 
-with title_col:
-    if is_new_trade:
-        st.title("New trade")
-    else:
-        asset = (trade.get("asset") or "Trade").strip()
-        d = parse_date(trade.get("date_local"))
-        t = parse_time(trade.get("time_local"))
-        date_str = d.strftime("%d.%m.%Y") if d else ""
-        time_str = t.strftime("%H:%M") if t else ""
-        st.title(f"{asset} · {date_str} - {time_str}")
-
-if loaded_state == "Reviewed":
-    st.warning("⚠️ This trade is already reviewed. Changes will overwrite the final record.")
+# Placeholder для ошибок — невидим когда пуст
+message_placeholder = st.empty()
 
 # --- Ключ состояния виджетов ---
 state_key = f"{TM_KEY_PREFIX}{trade_id or 'new'}"
@@ -85,8 +79,10 @@ state_key = f"{TM_KEY_PREFIX}{trade_id or 'new'}"
 # --- Загружаем данные ---
 assets = get_setting("assets", ASSETS_VALUES)
 account_rows = cached_accounts(user_id, True)
-accounts = to_option_format(account_rows, formatter=lambda acc: f"{acc['name']}")
-setups = to_option_format(cached_setups(user_id), formatter=lambda s: f"{s['name']}")
+accounts = to_option_format(
+    account_rows, formatter=lambda acc: f"{acc['name']}")
+setups = to_option_format(cached_setups(
+    user_id), formatter=lambda s: f"{s['name']}")
 analyses = to_option_format(
     cached_analysis(user_id),
     formatter=lambda a: f"{a.get('date_local')} · {a.get('asset')}",
@@ -139,7 +135,8 @@ def _calculate_rewards() -> None:
         if risk_reward is None:
             return
         st.session_state[widget_keys["net_pnl"]] = float(0)
-        st.session_state[widget_keys["reward_percent"]] = round(risk_pct * risk_reward, 2)
+        st.session_state[widget_keys["reward_percent"]
+                         ] = round(risk_pct * risk_reward, 2)
     else:
         if net_pnl is None:
             return
@@ -150,29 +147,6 @@ def _calculate_rewards() -> None:
             (net_pnl / account_balance) * 100, 2
         )
 
-
-# --- Хедер: выбор состояния + кнопка Save ---
-with st.container(border=True):
-    state_col, message_col, actions_col = st.columns(
-        [0.2, 0.5, 0.3],
-        gap="large",
-        vertical_alignment="bottom",
-    )
-    with state_col:
-        current_state = trade.get("state")
-        allowed_states = get_allowed_states(current_state)
-        selected_state = st.selectbox(
-            "Trade state",
-            allowed_states,
-            index=allowed_states.index(current_state) if current_state in allowed_states else 0,
-        )
-    with actions_col:
-        delete_col, save_col = st.columns(2)
-        if not is_new_trade:
-            if delete_col.button("Delete", type="secondary", width="stretch"):
-                st.session_state["_te_pending_delete"] = trade_id
-                st.rerun()
-        submitted = save_col.button("Save", type="primary", width="stretch")
 
 # Диалог подтверждения удаления
 if st.session_state.get("_te_pending_delete"):
@@ -195,13 +169,56 @@ if st.session_state.get("_te_pending_delete"):
 
     _confirm_delete()
 
-# --- Форма: секции + боковая панель ---
-stages_col, side_col = st.columns([1, 2])
+# --- Форма: чарты (слева) + секции (справа) ---
+side_col, stages_col = st.columns([2, 1])
+
+with side_col:
+    st.markdown("#### Charts")
+    current_charts = render_chart_editor(
+        key=f"{state_key}_chart_editor",
+        base_rows=charts,
+        layout_columns=2,
+    )
+    st.markdown("#### Observations")
+    staged_note_ids = render_note_selector(
+        entity_type="trade",
+        entity_id=trade_id,
+        state_key=f"{state_key}_note_selector",
+        previous_dialog_name=None,
+        excerpt_limit=120,
+    )
 
 with stages_col:
+    # State navigation: кнопки ← selectbox →
+    _state_nav_key = f"{state_key}_state_idx"
+    _current_state = trade.get("state")
+    allowed_states = get_allowed_states(_current_state)
+    if _state_nav_key not in st.session_state:
+        st.session_state[_state_nav_key] = (
+            allowed_states.index(
+                _current_state) if _current_state in allowed_states else 0
+        )
+    _state_idx = max(
+        0, min(st.session_state[_state_nav_key], len(allowed_states) - 1))
+    _prev_col, _sel_col, _next_col = st.columns(
+        [1, 6, 1], vertical_alignment="bottom")
+    if _prev_col.button("←", disabled=(_state_idx == 0), key=f"{state_key}_state_prev", width="stretch"):
+        st.session_state[_state_nav_key] = _state_idx - 1
+        st.rerun()
+    if _next_col.button("→", disabled=(_state_idx == len(allowed_states) - 1), key=f"{state_key}_state_next", width="stretch"):
+        st.session_state[_state_nav_key] = _state_idx + 1
+        st.rerun()
+    selected_state = _sel_col.selectbox(
+        "Trade state",
+        allowed_states,
+        index=_state_idx,
+    )
+    st.session_state[_state_nav_key] = allowed_states.index(selected_state)
+
     visible = visible_stages(selected_state)
     outcome_visible = "outcome" in visible
-    locked_from_analysis = st.session_state.get(f"{TM_DEFAULT_PREFIX}analysis") is not None
+    locked_from_analysis = st.session_state.get(
+        f"{TM_DEFAULT_PREFIX}analysis") is not None
 
     main_values = render_main_stage(
         expanded=(selected_state == "Open"),
@@ -232,40 +249,35 @@ with stages_col:
         state_key=f"{state_key}_review",
     )
 
-with side_col:
-    st.markdown("#### Charts")
-    current_charts = render_chart_editor(
-        key=f"{state_key}_chart_editor",
-        base_rows=charts,
-        layout_columns=2,
-    )
-    st.markdown("#### Observations")
-    staged_note_ids = render_note_selector(
-        entity_type="trade",
-        entity_id=trade_id,
-        state_key=f"{state_key}_note_selector",
-        previous_dialog_name=None,
-        excerpt_limit=120,
-    )
+# --- Нижняя панель actions ---
+btn_back, btn_save, btn_delete, _ = st.columns([0.1, 0.1, 0.12, 0.68])
+if btn_back.button("← Trades", width="stretch"):
+    st.switch_page("pages/trades.py")
+submitted = btn_save.button("Save", type="primary", width="stretch")
+if not is_new_trade:
+    if btn_delete.button("Delete", type="secondary", width="stretch"):
+        st.session_state["_te_pending_delete"] = trade_id
+        st.rerun()
 
 # --- Сохранение ---
 if submitted:
     if not main_values["asset"]:
-        message_col.error("Select an asset.")
+        message_placeholder.error("Select an asset.")
         st.stop()
     if not main_values["account"]:
-        message_col.error("Select an account.")
+        message_placeholder.error("Select an account.")
         st.stop()
     if selected_state == "Outcome":
         if not outcome_values:
-            message_col.error('Fill in the "Outcome" block.')
+            message_placeholder.error('Fill in the "Outcome" block.')
             st.stop()
         if outcome_values["net_pnl"] is None:
-            message_col.error("Provide Net PnL.")
+            message_placeholder.error("Provide Net PnL.")
             st.stop()
     if selected_state == "Reviewed":
         if review_values and review_values["estimation"] == 0 and not (review_values.get("cold_thoughts") or "").strip():
-            message_col.error("Fill in Cold thoughts when trade has mistake.")
+            message_placeholder.error(
+                "Fill in Cold thoughts when trade has mistake.")
             st.stop()
 
     local_tz = trade.get("local_tz") or get_setting("local_tz", LOCAL_TZ)
@@ -315,7 +327,8 @@ if submitted:
                 current_trade_id = trade_id
                 if is_new_trade:
                     payload["local_tz"] = local_tz
-                    current_trade_id = create_trade(user_id, payload, conn=conn)
+                    current_trade_id = create_trade(
+                        user_id, payload, conn=conn)
                 else:
                     update_trade(current_trade_id, user_id, payload, conn=conn)
 
@@ -328,7 +341,8 @@ if submitted:
                     ),
                 )
                 for note_id in base_note_ids - staged_note_ids_set:
-                    detach_note_from_trade(current_trade_id, note_id, conn=conn)
+                    detach_note_from_trade(
+                        current_trade_id, note_id, conn=conn)
                 for note_id in staged_note_ids_set - base_note_ids:
                     attach_note_to_trade(current_trade_id, note_id, conn=conn)
 
@@ -342,7 +356,7 @@ if submitted:
             st.query_params["id"] = str(current_trade_id)
         st.rerun()
     except Exception as exc:
-        message_col.error(f"Failed to save the trade: {exc}")
+        message_placeholder.error(f"Failed to save the trade: {exc}")
 
 # --- Диалог заметок (одиночный уровень — допустимо на странице) ---
 render_note_manager()
