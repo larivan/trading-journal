@@ -9,6 +9,7 @@ from db.connection import get_conn, _managed_conn, _rows_to_dicts
 
 NOTE_WRITABLE_FIELDS = [
     "body",
+    "category",
     "date_local",
     "time_local",
 ]
@@ -17,6 +18,7 @@ NOTE_SELECT_COLUMNS = [
     "id",
     "user_id",
     "body",
+    "category",
     "date_local",
     "time_local",
 ]

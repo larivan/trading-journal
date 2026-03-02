@@ -233,6 +233,7 @@ CREATE TABLE IF NOT EXISTS notes (
     body        TEXT NOT NULL,
     date_local  TEXT NOT NULL,
     time_local  TEXT NOT NULL,
+    category    TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 

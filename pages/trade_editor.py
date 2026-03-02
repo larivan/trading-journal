@@ -1,12 +1,12 @@
 """Страница редактирования/создания трейда."""
 
+from datetime import date, datetime as _dt
 from typing import Any, Dict, Optional
 
 import streamlit as st
+from streamlit_chat_prompt import prompt as chat_prompt
 
 from components.chart_editor import persist_chart_editor, render_chart_editor
-from components.note_manager import render_note_manager
-from components.note_selector import render_note_selector, clear_note_selector_state
 from components.trade_manager.defaults import get_trade_defaults
 from components.trade_manager.sections import (
     render_main_stage,
@@ -21,11 +21,14 @@ from config import (
     TM_DEFAULT_PREFIX,
 )
 from db import (
+    add_chart,
+    attach_chart_to_note,
     attach_chart_to_trade,
     attach_note_to_trade,
+    create_note,
     create_trade,
+    delete_note,
     delete_trade,
-    detach_note_from_trade,
     get_trade_by_id,
     list_charts,
     list_trade_notes,
@@ -89,7 +92,6 @@ analyses = to_option_format(
 )
 defaults = get_trade_defaults(trade, accounts)
 charts = list_charts(trade_id=trade_id) if trade_id else []
-base_trade_notes = list_trade_notes(trade_id) if trade_id else []
 
 
 def _get_account_id_by_label(label: str) -> Optional[int]:
@@ -157,7 +159,6 @@ if st.session_state.get("_te_pending_delete"):
         if c1.button("Delete", type="primary", width="stretch"):
             try:
                 delete_trade(st.session_state["_te_pending_delete"], user_id)
-                clear_note_selector_state(f"{state_key}_note_selector")
             except Exception as exc:
                 st.toast(f"Failed to delete: {exc}", icon="❌")
             st.session_state.pop("_te_pending_delete", None)
@@ -169,7 +170,20 @@ if st.session_state.get("_te_pending_delete"):
 
     _confirm_delete()
 
-# --- Форма: чарты (слева) + секции (справа) ---
+# --- Вычисляем selected_state ДО колонок, чтобы использовать в side_col ---
+_state_nav_key = f"{state_key}_state_idx"
+_current_state = trade.get("state")
+allowed_states = get_allowed_states(_current_state)
+if _state_nav_key not in st.session_state:
+    st.session_state[_state_nav_key] = (
+        allowed_states.index(_current_state) if _current_state in allowed_states else 0
+    )
+_state_idx = max(0, min(st.session_state[_state_nav_key], len(allowed_states) - 1))
+selected_state = allowed_states[_state_idx]
+
+_NOTE_CATEGORIES = ["Observation", "Hot thought", "Cold thought"]
+
+# --- Форма: чарты/комментарии (слева) + секции (справа) ---
 side_col, stages_col = st.columns([2, 1])
 
 with side_col:
@@ -179,27 +193,76 @@ with side_col:
         base_rows=charts,
         layout_columns=2,
     )
-    st.markdown("#### Observations")
-    staged_note_ids = render_note_selector(
-        entity_type="trade",
-        entity_id=trade_id,
-        state_key=f"{state_key}_note_selector",
-        previous_dialog_name=None,
-        excerpt_limit=120,
-    )
+
+    st.markdown("#### Comments")
+    trade_notes = list_trade_notes(trade_id) if trade_id else []
+
+    if not trade_notes:
+        st.caption("No comments yet. Send your first one below.")
+    else:
+        for note in reversed(trade_notes):
+            with st.chat_message("user"):
+                hdr_col, del_col = st.columns([0.85, 0.15])
+                time_display = (note.get("time_local") or "")[:5]
+                category = note.get("category") or "—"
+                hdr_col.caption(f"{note.get('date_local', '')}  {time_display}  ·  {category}")
+                if del_col.button("✕", key=f"_del_note_{note['id']}", help="Delete"):
+                    delete_note(note["id"], user_id)
+                    st.cache_data.clear()
+                    st.rerun()
+                body = note.get("body") or ""
+                if body and body != "(image)":
+                    st.markdown(body)
+                note_charts = list_charts(note_id=note["id"])
+                if note_charts:
+                    img_cols = st.columns(min(len(note_charts), 2))
+                    for i, ch in enumerate(note_charts):
+                        img_cols[i % 2].image(ch["chart_url"], use_container_width=True)
+
+    if trade_id is None:
+        st.info("Save the trade first to add comments.")
+    else:
+        # Авто-выбор категории по стейту; сброс при смене стейта
+        _cat_key = f"_note_cat_{state_key}"
+        _cat_prev_state_key = f"_note_cat_prev_{state_key}"
+        auto_cat = "Hot thought" if selected_state in ("Open", "Outcome") else "Cold thought"
+        if st.session_state.get(_cat_prev_state_key) != selected_state:
+            st.session_state[_cat_key] = auto_cat
+            st.session_state[_cat_prev_state_key] = selected_state
+
+        selected_category = st.pills(
+            "Category",
+            _NOTE_CATEGORIES,
+            key=_cat_key,
+            label_visibility="collapsed",
+        )
+
+        response = chat_prompt(
+            name=f"obs_{state_key}",
+            key=f"obs_{state_key}",
+            placeholder="Write a comment...",
+            main_bottom=False,
+        )
+        if response and (response.text or response.images):
+            body = (response.text or "").strip() or "(image)"
+            note_payload = {
+                "body": body,
+                "category": selected_category or "Observation",
+                "date_local": date.today().isoformat(),
+                "time_local": _dt.now().strftime("%H:%M:%S"),
+            }
+            with transaction() as conn:
+                new_note_id = create_note(user_id, note_payload, conn=conn)
+                attach_note_to_trade(trade_id, new_note_id, conn=conn)
+                for img in (response.images or []):
+                    data_uri = f"data:{img.type};{img.format},{img.data}"
+                    chart_id = add_chart(data_uri, conn=conn)
+                    attach_chart_to_note(new_note_id, chart_id, conn=conn)
+            st.cache_data.clear()
+            st.rerun()
 
 with stages_col:
     # State navigation: кнопки ← selectbox →
-    _state_nav_key = f"{state_key}_state_idx"
-    _current_state = trade.get("state")
-    allowed_states = get_allowed_states(_current_state)
-    if _state_nav_key not in st.session_state:
-        st.session_state[_state_nav_key] = (
-            allowed_states.index(
-                _current_state) if _current_state in allowed_states else 0
-        )
-    _state_idx = max(
-        0, min(st.session_state[_state_nav_key], len(allowed_states) - 1))
     _prev_col, _sel_col, _next_col = st.columns(
         [1, 6, 1], vertical_alignment="bottom")
     if _prev_col.button("←", disabled=(_state_idx == 0), key=f"{state_key}_state_prev", width="stretch"):
@@ -208,12 +271,12 @@ with stages_col:
     if _next_col.button("→", disabled=(_state_idx == len(allowed_states) - 1), key=f"{state_key}_state_next", width="stretch"):
         st.session_state[_state_nav_key] = _state_idx + 1
         st.rerun()
-    selected_state = _sel_col.selectbox(
+    _widget_selected = _sel_col.selectbox(
         "Trade state",
         allowed_states,
         index=_state_idx,
     )
-    st.session_state[_state_nav_key] = allowed_states.index(selected_state)
+    st.session_state[_state_nav_key] = allowed_states.index(_widget_selected)
 
     visible = visible_stages(selected_state)
     outcome_visible = "outcome" in visible
@@ -314,13 +377,6 @@ if submitted:
             "estimation": review_values["estimation"],
         })
 
-    base_note_ids = {
-        note.get("id") for note in base_trade_notes if note.get("id") is not None
-    }
-    staged_note_ids_set = {
-        int(nid) for nid in (staged_note_ids or []) if nid is not None
-    }
-
     try:
         with st.spinner("Saving..."):
             with transaction() as conn:
@@ -340,16 +396,10 @@ if submitted:
                         tid, chart_id, conn=conn
                     ),
                 )
-                for note_id in base_note_ids - staged_note_ids_set:
-                    detach_note_from_trade(
-                        current_trade_id, note_id, conn=conn)
-                for note_id in staged_note_ids_set - base_note_ids:
-                    attach_note_to_trade(current_trade_id, note_id, conn=conn)
 
         # Очистка состояния дефолтов
         st.session_state.pop(f"{TM_DEFAULT_PREFIX}analysis", None)
         st.session_state.pop(f"{TM_DEFAULT_PREFIX}asset", None)
-        clear_note_selector_state(f"{state_key}_note_selector")
         st.cache_data.clear()
         st.toast("Trade saved." if not is_new_trade else "Trade created.", icon="🔥")
         if is_new_trade:
@@ -357,6 +407,3 @@ if submitted:
         st.rerun()
     except Exception as exc:
         message_placeholder.error(f"Failed to save the trade: {exc}")
-
-# --- Диалог заметок (одиночный уровень — допустимо на странице) ---
-render_note_manager()

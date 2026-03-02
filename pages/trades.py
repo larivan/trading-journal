@@ -149,6 +149,7 @@ page_mark("trades", "data_loaded")
 
 
 # === ТАБЛИЦА ===
+selected_rows: List[int] = []
 if not rows:
     st.info("No trades for the selected period.")
 else:
@@ -185,14 +186,14 @@ else:
 
     selected_rows = event.selection.rows
 
-    btn_create, btn_delete, _ = st.columns([0.12, 0.15, 0.73])
-    if btn_create.button("Create", type="primary", width="stretch"):
-        st.switch_page("pages/trade_editor.py")
-    if selected_rows:
-        selected_ids = [rows[i]["id"] for i in selected_rows]
-        if btn_delete.button(f"Delete ({len(selected_ids)})", type="secondary", width="stretch"):
-            st.session_state["_pending_delete_trade_ids"] = selected_ids
-            st.rerun()
+btn_create, btn_delete, _ = st.columns([0.12, 0.15, 0.73])
+if btn_create.button("Create", type="primary", width="stretch"):
+    st.switch_page("pages/trade_editor.py")
+if selected_rows:
+    selected_ids = [rows[i]["id"] for i in selected_rows]
+    if btn_delete.button(f"Delete ({len(selected_ids)})", type="secondary", width="stretch"):
+        st.session_state["_pending_delete_trade_ids"] = selected_ids
+        st.rerun()
 
 
 @st.dialog("Delete trades")
