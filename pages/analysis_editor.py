@@ -46,6 +46,9 @@ user_id = get_current_user_id()
 
 # --- Читаем analysis_id из URL-параметров ---
 params = st.query_params
+if "_new_analysis_id" in st.session_state:
+    st.query_params["id"] = str(st.session_state.pop("_new_analysis_id"))
+    st.rerun()
 analysis_id_str = params.get("id")
 analysis_id: Optional[int] = int(analysis_id_str) if analysis_id_str else None
 is_new_analysis = analysis_id is None
@@ -148,44 +151,40 @@ plan_forms, removed_plan_ids = render_plan_section(
 # --- Execution секция (inline, без entity_table) ---
 if "execution" in visible:
     with st.expander("Execution", expanded=(selected_stage == "execution")):
-        if not analysis_id:
-            st.info("Save the analysis to create and link trades.")
-        else:
-            if st.button(
-                "Create trade",
-                width=200,
-                key=f"{state_key}_create_trade",
-            ):
-                st.session_state[f"{TM_DEFAULT_PREFIX}analysis"] = analysis_id
-                st.session_state[f"{TM_DEFAULT_PREFIX}asset"] = analysis.get(
-                    "asset")
-                st.switch_page("pages/trade_editor.py")
+        if st.button(
+            "Create trade",
+            width=200,
+            key=f"{state_key}_create_trade",
+        ):
+            st.session_state[f"{TM_DEFAULT_PREFIX}analysis"] = analysis_id
+            st.session_state[f"{TM_DEFAULT_PREFIX}asset"] = analysis.get("asset")
+            st.switch_page("pages/trade_editor.py")
 
-            trade_rows = list_trades(user_id, {"analysis_id": analysis_id})
-            if trade_rows:
-                df_exec = pd.DataFrame(trade_rows)
-                df_exec["_link"] = "/trade_editor?id=" + \
-                    df_exec["id"].astype(str)
-                display_cols = ["_link", "date_local", "session", "asset", "state", "net_pnl", "risk_reward"]
-                for col in display_cols:
-                    if col not in df_exec.columns:
-                        df_exec[col] = None
-                st.dataframe(
-                    df_exec[display_cols],
-                    column_config={
-                        "date_local": st.column_config.TextColumn("Date"),
-                        "session": st.column_config.TextColumn("Session"),
-                        "asset": st.column_config.TextColumn("Asset"),
-                        "state": st.column_config.TextColumn("State"),
-                        "net_pnl": st.column_config.NumberColumn("PnL"),
-                        "risk_reward": st.column_config.NumberColumn("R:R"),
-                        "_link": st.column_config.LinkColumn("Open", display_text="Open"),
-                    },
-                    use_container_width=True,
-                    hide_index=True,
-                )
-            else:
-                st.info("No trades for this analysis.")
+        trade_rows = list_trades(user_id, {"analysis_id": analysis_id})
+        if trade_rows:
+            df_exec = pd.DataFrame(trade_rows)
+            df_exec["_link"] = "/trade_editor?id=" + \
+                df_exec["id"].astype(str)
+            display_cols = ["_link", "date_local", "session", "asset", "state", "net_pnl", "risk_reward"]
+            for col in display_cols:
+                if col not in df_exec.columns:
+                    df_exec[col] = None
+            st.dataframe(
+                df_exec[display_cols],
+                column_config={
+                    "date_local": st.column_config.TextColumn("Date"),
+                    "session": st.column_config.TextColumn("Session"),
+                    "asset": st.column_config.TextColumn("Asset"),
+                    "state": st.column_config.TextColumn("State"),
+                    "net_pnl": st.column_config.NumberColumn("PnL"),
+                    "risk_reward": st.column_config.NumberColumn("R:R"),
+                    "_link": st.column_config.LinkColumn("Open", display_text="Open"),
+                },
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("No trades for this analysis.")
 
 post_analysis_values, post_values = render_post_stage(
     stage_data=defaults["stages"].get("post-market"),

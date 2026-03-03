@@ -46,6 +46,9 @@ user_id = get_current_user_id()
 
 # --- Читаем trade_id из URL-параметров ---
 params = st.query_params
+if "_new_trade_id" in st.session_state:
+    st.query_params["id"] = str(st.session_state.pop("_new_trade_id"))
+    st.rerun()
 trade_id_str = params.get("id")
 trade_id: Optional[int] = int(trade_id_str) if trade_id_str else None
 is_new_trade = trade_id is None
@@ -176,9 +179,11 @@ _current_state = trade.get("state")
 allowed_states = get_allowed_states(_current_state)
 if _state_nav_key not in st.session_state:
     st.session_state[_state_nav_key] = (
-        allowed_states.index(_current_state) if _current_state in allowed_states else 0
+        allowed_states.index(
+            _current_state) if _current_state in allowed_states else 0
     )
-_state_idx = max(0, min(st.session_state[_state_nav_key], len(allowed_states) - 1))
+_state_idx = max(
+    0, min(st.session_state[_state_nav_key], len(allowed_states) - 1))
 selected_state = allowed_states[_state_idx]
 
 _NOTE_CATEGORIES = ["Observation", "Hot thought", "Cold thought"]
@@ -198,14 +203,16 @@ with side_col:
     trade_notes = list_trade_notes(trade_id) if trade_id else []
 
     if not trade_notes:
-        st.caption("No comments yet. Send your first one below.")
+        with st.container(border=True):
+            st.caption("No comments yet. Send your first one below.")
     else:
         for note in reversed(trade_notes):
             with st.chat_message("user"):
-                hdr_col, del_col = st.columns([0.85, 0.15])
+                hdr_col, del_col = st.columns([0.9, 0.1])
                 time_display = (note.get("time_local") or "")[:5]
                 category = note.get("category") or "—"
-                hdr_col.caption(f"{note.get('date_local', '')}  {time_display}  ·  {category}")
+                hdr_col.markdown(
+                    f"**{note.get('date_local', '')}  {time_display}  ·  {category}**")
                 if del_col.button("✕", key=f"_del_note_{note['id']}", help="Delete"):
                     delete_note(note["id"], user_id)
                     st.cache_data.clear()
@@ -217,49 +224,51 @@ with side_col:
                 if note_charts:
                     img_cols = st.columns(min(len(note_charts), 2))
                     for i, ch in enumerate(note_charts):
-                        img_cols[i % 2].image(ch["chart_url"], use_container_width=True)
+                        img_cols[i % 2].image(
+                            ch["chart_url"], use_container_width=True)
+                st.markdown(
+                    "<style>.st-emotion-cache-1lq56da{flex: none;width: auto;}</style>", unsafe_allow_html=True)
 
-    if trade_id is None:
-        st.info("Save the trade first to add comments.")
-    else:
-        # Авто-выбор категории по стейту; сброс при смене стейта
-        _cat_key = f"_note_cat_{state_key}"
-        _cat_prev_state_key = f"_note_cat_prev_{state_key}"
-        auto_cat = "Hot thought" if selected_state in ("Open", "Outcome") else "Cold thought"
-        if st.session_state.get(_cat_prev_state_key) != selected_state:
-            st.session_state[_cat_key] = auto_cat
-            st.session_state[_cat_prev_state_key] = selected_state
+    st.divider()
+    # Авто-выбор категории по стейту; сброс при смене стейта
+    _cat_key = f"_note_cat_{state_key}"
+    _cat_prev_state_key = f"_note_cat_prev_{state_key}"
+    auto_cat = "Hot thought" if selected_state in (
+        "Open", "Outcome") else "Cold thought"
+    if st.session_state.get(_cat_prev_state_key) != selected_state:
+        st.session_state[_cat_key] = auto_cat
+        st.session_state[_cat_prev_state_key] = selected_state
 
-        selected_category = st.pills(
-            "Category",
-            _NOTE_CATEGORIES,
-            key=_cat_key,
-            label_visibility="collapsed",
-        )
+    selected_category = st.pills(
+        "Category",
+        _NOTE_CATEGORIES,
+        key=_cat_key,
+        label_visibility="collapsed",
+    )
 
-        response = chat_prompt(
-            name=f"obs_{state_key}",
-            key=f"obs_{state_key}",
-            placeholder="Write a comment...",
-            main_bottom=False,
-        )
-        if response and (response.text or response.images):
-            body = (response.text or "").strip() or "(image)"
-            note_payload = {
-                "body": body,
-                "category": selected_category or "Observation",
-                "date_local": date.today().isoformat(),
-                "time_local": _dt.now().strftime("%H:%M:%S"),
-            }
-            with transaction() as conn:
-                new_note_id = create_note(user_id, note_payload, conn=conn)
-                attach_note_to_trade(trade_id, new_note_id, conn=conn)
-                for img in (response.images or []):
-                    data_uri = f"data:{img.type};{img.format},{img.data}"
-                    chart_id = add_chart(data_uri, conn=conn)
-                    attach_chart_to_note(new_note_id, chart_id, conn=conn)
-            st.cache_data.clear()
-            st.rerun()
+    response = chat_prompt(
+        name=f"obs_{state_key}",
+        key=f"obs_{state_key}",
+        placeholder="Write a comment...",
+        main_bottom=False,
+    )
+    if response and (response.text or response.images):
+        body = (response.text or "").strip() or "(image)"
+        note_payload = {
+            "body": body,
+            "category": selected_category or "Observation",
+            "date_local": date.today().isoformat(),
+            "time_local": _dt.now().strftime("%H:%M:%S"),
+        }
+        with transaction() as conn:
+            new_note_id = create_note(user_id, note_payload, conn=conn)
+            attach_note_to_trade(trade_id, new_note_id, conn=conn)
+            for img in (response.images or []):
+                data_uri = f"data:{img.type};{img.format},{img.data}"
+                chart_id = add_chart(data_uri, conn=conn)
+                attach_chart_to_note(new_note_id, chart_id, conn=conn)
+        st.cache_data.clear()
+        st.rerun()
 
 with stages_col:
     # State navigation: кнопки ← selectbox →
@@ -312,8 +321,9 @@ with stages_col:
         state_key=f"{state_key}_review",
     )
 
+st.divider()
 # --- Нижняя панель actions ---
-btn_back, btn_save, btn_delete, _ = st.columns([0.1, 0.1, 0.12, 0.68])
+btn_back, btn_save, btn_delete, _ = st.columns([0.1, 0.1, 0.1, 0.68])
 if btn_back.button("← Trades", width="stretch"):
     st.switch_page("pages/trades.py")
 submitted = btn_save.button("Save", type="primary", width="stretch")

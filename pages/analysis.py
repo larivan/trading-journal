@@ -13,12 +13,13 @@ from config import (
     ANALYSIS_STATE_VALUES,
     LOCAL_TZ,
 )
-from db import delete_analysis
+from db import add_analysis, delete_analysis, transaction
 from utils.cached_data import cached_analysis, filter_analysis
 from helpers import format_local_date
 from utils.auth import get_current_user_id, get_setting
 
-st.set_page_config(page_title="Analysis Database", page_icon=":material/insights:", layout="wide")
+st.set_page_config(page_title="Analysis Database",
+                   page_icon=":material/insights:", layout="wide")
 st.title(":material/insights: Analysis Database")
 
 user_id = get_current_user_id()
@@ -47,6 +48,7 @@ with period_col:
 
 filters: Dict[str, Any] = {}
 date_range: Optional[Tuple[date, date]] = None
+asset_choice: Optional[str] = None
 
 label_to_key = {label: key for key, label in TAB_DEFINITIONS.items()}
 selected_key = label_to_key.get(selected_label, "today")
@@ -63,10 +65,14 @@ if selected_key == "custom":
             format="DD.MM.YYYY",
         )
         asset_choice = fc2.selectbox("Asset", ["All"] + ASSETS_VALUES)
-        daily_bias_choice = fc3.selectbox("Daily bias", ["All"] + DAILY_BIAS_VALUES)
-        fact_bias_choice = fc4.selectbox("Fact bias", ["All"] + DAILY_BIAS_VALUES)
-        day_result_choice = fc5.selectbox("Result", ["All"] + DAY_RESULT_VALUES)
-        state_choice = fc6.selectbox("Analysis Type", ["All"] + ANALYSIS_STATE_VALUES)
+        daily_bias_choice = fc3.selectbox(
+            "Daily bias", ["All"] + DAILY_BIAS_VALUES)
+        fact_bias_choice = fc4.selectbox(
+            "Fact bias", ["All"] + DAILY_BIAS_VALUES)
+        day_result_choice = fc5.selectbox(
+            "Result", ["All"] + DAY_RESULT_VALUES)
+        state_choice = fc6.selectbox(
+            "Analysis Type", ["All"] + ANALYSIS_STATE_VALUES)
 
     if asset_choice != "All":
         filters["asset"] = asset_choice
@@ -99,7 +105,8 @@ else:
     df["date_display"] = df["date_local"].apply(format_local_date)
     df["_link"] = "/analysis_editor?id=" + df["id"].astype(str)
 
-    display_cols = ["_link", "date_display", "asset", "daily_bias", "fact_bias", "day_result", "state"]
+    display_cols = ["_link", "date_display", "asset",
+                    "daily_bias", "fact_bias", "day_result", "state"]
     for col in display_cols:
         if col not in df.columns:
             df[col] = None
@@ -125,8 +132,30 @@ else:
     selected_rows = event.selection.rows
 
 btn_create, btn_delete, _ = st.columns([0.12, 0.15, 0.73])
-if btn_create.button("Create", type="primary", width="stretch"):
-    st.switch_page("pages/analysis_editor.py")
+assets_list = get_setting("assets", ASSETS_VALUES)
+with btn_create.popover("Create", type="primary", width="stretch"):
+    filter_asset = asset_choice if (
+        selected_key == "custom" and asset_choice not in (None, "All")) else None
+    default_ast = (
+        filter_asset
+        or (get_setting("default_asset") if get_setting("default_asset") in assets_list else None)
+        or (assets_list[0] if assets_list else "EUR/USD")
+    )
+    pop_asset = st.selectbox(
+        "Asset", assets_list,
+        index=assets_list.index(
+            default_ast) if default_ast in assets_list else 0,
+        key="_create_analysis_pop_asset",
+    )
+    if st.button("Go", type="primary", width=250, key="_create_analysis_pop_go"):
+        with transaction() as conn:
+            new_id = add_analysis(user_id, {
+                "date_local": date.today().isoformat(),
+                "asset": pop_asset,
+            }, conn=conn)
+        st.cache_data.clear()
+        st.session_state["_new_analysis_id"] = new_id
+        st.switch_page("pages/analysis_editor.py")
 if selected_rows:
     selected_ids = [rows[i]["id"] for i in selected_rows]
     if btn_delete.button(f"Delete ({len(selected_ids)})", type="secondary", width="stretch"):
@@ -137,7 +166,8 @@ if selected_rows:
 @st.dialog("Delete analyses")
 def _confirm_delete_analyses(ids: List[Any]) -> None:
     n = len(ids)
-    st.warning(f"Delete {n} {'analyses' if n > 1 else 'analysis'}? This cannot be undone.")
+    st.warning(
+        f"Delete {n} {'analyses' if n > 1 else 'analysis'}? This cannot be undone.")
     col1, col2 = st.columns(2)
     if col1.button("Delete", type="primary", width="stretch"):
         from db import transaction
@@ -147,7 +177,8 @@ def _confirm_delete_analyses(ids: List[Any]) -> None:
                     try:
                         delete_analysis(analysis_id, user_id, conn=conn)
                     except (ValueError, sqlite3.Error) as exc:
-                        st.toast(f"Failed to delete analysis {analysis_id}: {exc}", icon="❌")
+                        st.toast(
+                            f"Failed to delete analysis {analysis_id}: {exc}", icon="❌")
         except Exception as exc:
             st.toast(f"Delete failed: {exc}", icon="❌")
         st.session_state.pop("_pending_delete_analysis_ids", None)

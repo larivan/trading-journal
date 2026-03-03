@@ -189,15 +189,17 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS user_settings (
-    user_id       INTEGER PRIMARY KEY,
-    assets        TEXT    DEFAULT '["EUR/USD","GBP/USD","XAU/USD","XAG/USD"]',
-    be_threshold  REAL    DEFAULT 0.05,
-    risk_min      REAL    DEFAULT 0.5,
-    risk_max      REAL    DEFAULT 2.0,
-    local_tz      TEXT    DEFAULT 'UTC+3',
-    currency      TEXT    DEFAULT 'USD',
-    theme         TEXT    DEFAULT 'light',
-    language      TEXT    DEFAULT 'en',
+    user_id            INTEGER PRIMARY KEY,
+    assets             TEXT    DEFAULT '["EUR/USD","GBP/USD","XAU/USD","XAG/USD"]',
+    be_threshold       REAL    DEFAULT 0.05,
+    risk_min           REAL    DEFAULT 0.5,
+    risk_max           REAL    DEFAULT 2.0,
+    local_tz           TEXT    DEFAULT 'UTC+3',
+    currency           TEXT    DEFAULT 'USD',
+    theme              TEXT    DEFAULT 'light',
+    language           TEXT    DEFAULT 'en',
+    default_asset      TEXT    DEFAULT NULL,
+    default_account_id INTEGER DEFAULT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 

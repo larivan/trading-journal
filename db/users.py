@@ -15,6 +15,8 @@ WRITABLE_SETTING_FIELDS = [
     "currency",
     "theme",
     "language",
+    "default_asset",
+    "default_account_id",
 ]
 
 _DEFAULT_SETTINGS: Dict[str, Any] = {
