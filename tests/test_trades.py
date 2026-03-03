@@ -65,15 +65,12 @@ class TestCreateTrade:
             reward_percent=2.5,
             estimation=1,
             emotional_problems="None",
-            hot_thoughts="Followed plan",
-            cold_thoughts="Good execution",
         )
         trade_id = create_trade(user_id, data)
 
         trade = get_trade_by_id(trade_id, user_id)
         assert trade["risk_pct"] == 1.0
         assert trade["estimation"] == 1
-        assert trade["hot_thoughts"] == "Followed plan"
 
     def test_create_trade_empty_raises(self, trade_dependencies):
         """Create trade with empty dict raises ValueError."""
@@ -218,13 +215,11 @@ class TestUpdateTrade:
         update_trade(trade_id, user_id, {
             "state": "Open",
             "estimation": 0,
-            "cold_thoughts": "Updated thoughts",
         })
 
         trade = get_trade_by_id(trade_id, user_id)
         assert trade["state"] == "Open"
         assert trade["estimation"] == 0
-        assert trade["cold_thoughts"] == "Updated thoughts"
 
     def test_update_nonexistent_raises(self, test_user):
         """Update invalid trade ID raises ValueError."""

@@ -279,8 +279,6 @@ CREATE TABLE IF NOT EXISTS trades (
     reward_percent     REAL,
     estimation         INTEGER,
     emotional_problems TEXT,
-    hot_thoughts       TEXT,
-    cold_thoughts      TEXT,
     FOREIGN KEY (user_id)     REFERENCES users(id)    ON DELETE CASCADE,
     FOREIGN KEY (account_id)  REFERENCES accounts(id)  ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (setup_id)    REFERENCES setups(id)    ON DELETE SET NULL   ON UPDATE CASCADE,

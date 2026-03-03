@@ -220,9 +220,7 @@ def render_trade_manager() -> None:
                 message_col.error("Provide Net PnL.")
                 return
         if selected_state in ("Reviewed"):
-            if review_values["estimation"] == 0 and not (review_values.get("cold_thoughts") or "").strip():
-                message_col.error("Fill in Cold thoughts when trade has mistake.")
-                return
+            pass
 
         local_tz = trade.get("local_tz") or get_setting("local_tz", LOCAL_TZ)
         session_value = detect_trade_session(
@@ -249,12 +247,10 @@ def render_trade_manager() -> None:
                 "net_pnl": outcome_values["net_pnl"],
                 "risk_reward": outcome_values["risk_reward"],
                 "reward_percent": outcome_values["reward_percent"],
-                "hot_thoughts": outcome_values["hot_thoughts"].strip() or None,
             })
 
         if review_values:
             payload.update({
-                "cold_thoughts": review_values["cold_thoughts"].strip() or None,
                 "estimation": review_values["estimation"],
             })
 

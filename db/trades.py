@@ -42,8 +42,6 @@ TRADE_COLUMNS = [
     "reward_percent",
     "estimation",
     "emotional_problems",
-    "hot_thoughts",
-    "cold_thoughts",
 ]
 
 WRITABLE_TRADE_FIELDS = [
@@ -63,8 +61,6 @@ WRITABLE_TRADE_FIELDS = [
     "reward_percent",
     "estimation",
     "emotional_problems",
-    "hot_thoughts",
-    "cold_thoughts",
 ]
 
 _INT_FIELDS = {"account_id", "setup_id", "analysis_id", "is_missed", "estimation"}

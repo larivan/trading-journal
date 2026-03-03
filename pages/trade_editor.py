@@ -348,10 +348,7 @@ if submitted:
             message_placeholder.error("Provide Net PnL.")
             st.stop()
     if selected_state == "Reviewed":
-        if review_values and review_values["estimation"] == 0 and not (review_values.get("cold_thoughts") or "").strip():
-            message_placeholder.error(
-                "Fill in Cold thoughts when trade has mistake.")
-            st.stop()
+        pass
 
     local_tz = trade.get("local_tz") or get_setting("local_tz", LOCAL_TZ)
     session_value = detect_trade_session(
@@ -378,12 +375,10 @@ if submitted:
             "net_pnl": outcome_values["net_pnl"],
             "risk_reward": outcome_values["risk_reward"],
             "reward_percent": outcome_values["reward_percent"],
-            "hot_thoughts": (outcome_values["hot_thoughts"] or "").strip() or None,
         })
 
     if review_values:
         payload.update({
-            "cold_thoughts": (review_values["cold_thoughts"] or "").strip() or None,
             "estimation": review_values["estimation"],
         })
 

@@ -23,10 +23,4 @@ def render_review_stage(
             key=f"{state_key}_has_mistake",
         )
         data["estimation"] = 0 if has_mistake else 1
-        data["cold_thoughts"] = st.text_area(
-            "Cold thoughts",
-            height=120,
-            value=data["cold_thoughts"],
-            key=f"{state_key}_cold_thoughts"
-        )
         return data

@@ -54,10 +54,4 @@ def render_outcome_stage(
             format="%.2f",
             disabled=True,
         )
-        data["hot_thoughts"] = st.text_area(
-            "Hot thoughts",
-            height=120,
-            value=data["hot_thoughts"],
-            key=f"{state_key}_hot_thoughts",
-        )
     return data
