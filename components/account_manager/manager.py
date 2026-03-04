@@ -96,6 +96,7 @@ def render_account_manager() -> None:
             type="primary",
             width="stretch",
             key=f"{state_key}_save",
+            disabled=not is_new,
         )
         archive_clicked = c2.button(
             "Restore" if archived else "Archive",
@@ -162,8 +163,9 @@ def render_account_manager() -> None:
                         payload["starting_balance"],
                         payload["is_prop"],
                     )
-                    st.session_state[ACCOUNT_ID_STATE] = new_id
                     st.session_state[ACCOUNT_SUCCESS_STATE] = "Account created."
+                    _reset_account_state()
+                    close_dialog()
                 else:
                     update_account(int(account_id), user_id, payload)
                     st.session_state[ACCOUNT_SUCCESS_STATE] = "Account saved."
@@ -171,6 +173,7 @@ def render_account_manager() -> None:
                 st.error(f"Failed to save account: {exc}")
                 return
 
+            st.cache_data.clear()
             st.rerun()
 
     if dialog_is_active(ACCOUNT_DIALOG_NAME):
