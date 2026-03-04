@@ -2,7 +2,7 @@ const template = document.createElement("template");
 template.innerHTML = `
 <div class="st-chart-editor" data-root>
   <div class="st-chart-editor__body">
-    <div class="st-chart-editor__empty" data-empty>Добавьте первый чарт, чтобы увидеть превью.</div>
+    <div class="st-chart-editor__empty" data-empty>Добавьте первое изображение, чтобы увидеть превью.</div>
     <div class="st-chart-editor__cards" data-cards></div>
   </div>
   <div class="st-chart-editor__form">
@@ -91,17 +91,17 @@ const ensureLightboxPortal = () => {
   return portal;
 };
 
-const syncLightboxLinks = (galleryId, charts) => {
+const syncLightboxLinks = (galleryId, images) => {
   const portal = ensureLightboxPortal();
   const selector = `[data-chart-editor-gallery="${galleryId}"]`;
   portal.querySelectorAll(selector).forEach((node) => node.remove());
-  return charts.map((chart) => {
+  return images.map((image) => {
     const link = document.createElement("a");
-    link.href = chart.chart_url;
+    link.href = image.image_url;
     link.dataset.fslightbox = galleryId;
     link.dataset.chartEditorGallery = galleryId;
     link.dataset.type = "image";
-    link.dataset.caption = (chart.caption || "").trim();
+    link.dataset.caption = (image.caption || "").trim();
     link.setAttribute("aria-hidden", "true");
     link.tabIndex = -1;
     portal.appendChild(link);
@@ -122,31 +122,31 @@ const ensureRoot = (parentElement) => {
   return root;
 };
 
-const normalizeCharts = (charts) => {
-  if (!Array.isArray(charts)) {
+const normalizeImages = (images) => {
+  if (!Array.isArray(images)) {
     return [];
   }
-  return charts
-    .map((chart) => ({
-      id: chart?.id ?? null,
-      chart_url: typeof chart?.chart_url === "string" ? chart.chart_url : "",
-      caption: typeof chart?.caption === "string" ? chart.caption : "",
+  return images
+    .map((image) => ({
+      id: image?.id ?? null,
+      image_url: typeof image?.image_url === "string" ? image.image_url : "",
+      caption: typeof image?.caption === "string" ? image.caption : "",
     }))
-    .filter((chart) => String(chart.chart_url || "").trim() !== "");
+    .filter((image) => String(image.image_url || "").trim() !== "");
 };
 
 const CAPTION_PLACEHOLDER = "Дважды кликните, чтобы добавить подпись";
 
-const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
+const renderCards = (cardsEl, images, { onChange, onRemove }) => {
   const galleryId = ensureGalleryId(cardsEl);
-  const portalLinks = syncLightboxLinks(galleryId, charts);
+  const portalLinks = syncLightboxLinks(galleryId, images);
   cardsEl.innerHTML = "";
-  if (!charts.length) {
+  if (!images.length) {
     cardsEl.style.display = "none";
     return;
   }
   cardsEl.style.display = "grid";
-  charts.forEach((chart, index) => {
+  images.forEach((image, index) => {
     const card = document.createElement("div");
     card.className = "st-chart-card";
 
@@ -163,10 +163,10 @@ const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
 
     const imageWrapper = document.createElement("div");
     imageWrapper.className = "st-chart-card__image";
-    const image = document.createElement("img");
-    image.alt = chart.caption || "Chart";
-    image.src = chart.chart_url;
-    imageWrapper.appendChild(image);
+    const img = document.createElement("img");
+    img.alt = image.caption || "Image";
+    img.src = image.image_url;
+    imageWrapper.appendChild(img);
     imageWrapper.ondblclick = (event) => {
       event.preventDefault();
       openLightboxLink(portalLink);
@@ -195,7 +195,7 @@ const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
       caption.innerHTML = "";
       const input = document.createElement("input");
       input.type = "text";
-      input.value = chart.caption || "";
+      input.value = image.caption || "";
       input.placeholder = "Подпись";
       input.className = "st-chart-card__caption-input";
       caption.appendChild(input);
@@ -207,7 +207,7 @@ const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
           return;
         }
         caption.dataset.editing = "false";
-        const nextValue = commit ? input.value : chart.caption || "";
+        const nextValue = commit ? input.value : image.caption || "";
         caption.innerHTML = "";
         applyCaptionValue(nextValue);
         if (commit) {
@@ -234,7 +234,7 @@ const renderCards = (cardsEl, charts, { onChange, onRemove }) => {
       activateCaptionEdit();
     };
 
-    applyCaptionValue(chart.caption || "");
+    applyCaptionValue(image.caption || "");
 
     card.appendChild(remove);
     card.appendChild(imageWrapper);
@@ -257,7 +257,7 @@ export default function(component) {
   const cardsEl = root.querySelector("[data-cards]");
   const emptyEl = root.querySelector("[data-empty]");
   const errorEl = root.querySelector("[data-error]");
-  let currentCharts = normalizeCharts(data.charts);
+  let currentImages = normalizeImages(data.charts);
   const currentLayout = ["grid2", "grid3"].includes(data.layout) ? data.layout : "column";
   cardsEl.dataset.layout = currentLayout;
 
@@ -268,31 +268,31 @@ export default function(component) {
   };
 
   const refreshCards = () => {
-    renderCards(cardsEl, currentCharts, {
-      onChange: updateChart,
-      onRemove: removeChart,
+    renderCards(cardsEl, currentImages, {
+      onChange: updateImage,
+      onRemove: removeImage,
     });
-    emptyEl.style.display = currentCharts.length ? "none" : "flex";
+    emptyEl.style.display = currentImages.length ? "none" : "flex";
   };
 
-  const commitCharts = (nextCharts, emit = true) => {
-    currentCharts = nextCharts;
+  const commitImages = (nextImages, emit = true) => {
+    currentImages = nextImages;
     refreshCards();
     if (emit) {
-      setStateValue("charts", currentCharts);
+      setStateValue("charts", currentImages);
     }
   };
 
-  const updateChart = (index, payload) => {
-    const next = currentCharts.map((chart, idx) =>
-      idx === index ? { ...chart, ...payload } : chart
+  const updateImage = (index, payload) => {
+    const next = currentImages.map((image, idx) =>
+      idx === index ? { ...image, ...payload } : image
     );
-    commitCharts(next);
+    commitImages(next);
   };
 
-  const removeChart = (index) => {
-    const next = currentCharts.filter((_, idx) => idx !== index);
-    commitCharts(next);
+  const removeImage = (index) => {
+    const next = currentImages.filter((_, idx) => idx !== index);
+    commitImages(next);
   };
 
   const sanitizeUrl = () => {
@@ -304,7 +304,7 @@ export default function(component) {
 
   urlInput.oninput = sanitizeUrl;
 
-  const addChart = () => {
+  const addImage = () => {
     sanitizeUrl();
     const url = urlInput.value.trim();
     const caption = captionInput.value.trim();
@@ -312,21 +312,21 @@ export default function(component) {
       return;
     }
     const next = [
-      ...currentCharts,
+      ...currentImages,
       {
         id: null,
-        chart_url: url,
+        image_url: url,
         caption,
       },
     ];
     urlInput.value = "";
     captionInput.value = "";
-    commitCharts(next);
+    commitImages(next);
   };
 
   addButton.onclick = (event) => {
     event.preventDefault();
-    addChart();
+    addImage();
   };
 
   urlInput.onkeydown = (event) => {
@@ -334,7 +334,7 @@ export default function(component) {
     event.stopImmediatePropagation();
     if (event.key === "Enter") {
       event.preventDefault();
-      addChart();
+      addImage();
     }
   };
   captionInput.onkeydown = (event) => {
@@ -342,7 +342,7 @@ export default function(component) {
     event.stopImmediatePropagation();
     if (event.key === "Enter" && urlInput.value.trim()) {
       event.preventDefault();
-      addChart();
+      addImage();
     }
   };
 

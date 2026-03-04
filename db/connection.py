@@ -286,9 +286,9 @@ CREATE TABLE IF NOT EXISTS trades (
     FOREIGN KEY (analysis_id) REFERENCES analysis(id)  ON DELETE SET NULL   ON UPDATE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS charts (
+CREATE TABLE IF NOT EXISTS images (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    chart_url         TEXT NOT NULL,
+    image_url         TEXT NOT NULL,
     caption           TEXT,
     trade_id          INTEGER,
     analysis_stage_id INTEGER,
@@ -346,10 +346,10 @@ CREATE INDEX IF NOT EXISTS idx_trades_analysis     ON trades(analysis_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_date_local         ON analysis(date_local);
 CREATE INDEX IF NOT EXISTS idx_analysis_asset              ON analysis(asset);
 CREATE INDEX IF NOT EXISTS idx_analysis_stages_analysis_id ON analysis_stages(analysis_id);
-CREATE INDEX IF NOT EXISTS idx_charts_trade_id             ON charts(trade_id);
-CREATE INDEX IF NOT EXISTS idx_charts_analysis_stage_id    ON charts(analysis_stage_id);
-CREATE INDEX IF NOT EXISTS idx_charts_setup_id             ON charts(setup_id);
-CREATE INDEX IF NOT EXISTS idx_charts_note_id              ON charts(note_id);
+CREATE INDEX IF NOT EXISTS idx_images_trade_id             ON images(trade_id);
+CREATE INDEX IF NOT EXISTS idx_images_analysis_stage_id    ON images(analysis_stage_id);
+CREATE INDEX IF NOT EXISTS idx_images_setup_id             ON images(setup_id);
+CREATE INDEX IF NOT EXISTS idx_images_note_id              ON images(note_id);
 CREATE INDEX IF NOT EXISTS idx_trade_notes_note_id         ON trade_notes(note_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_notes_note_id      ON analysis_notes(note_id);
 """

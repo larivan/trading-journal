@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 import streamlit as st
 from streamlit_chat_prompt import prompt as chat_prompt
 
-from components.chart_editor import persist_chart_editor, render_chart_editor
+from components.image_editor import persist_image_editor, render_image_editor
 from components.trade_manager.defaults import get_trade_defaults
 from components.trade_manager.sections import (
     render_main_stage,
@@ -22,16 +22,16 @@ from config import (
     TM_DEFAULT_PREFIX,
 )
 from db import (
-    add_chart,
-    attach_chart_to_note,
-    attach_chart_to_trade,
+    add_image,
+    attach_image_to_note,
+    attach_image_to_trade,
     attach_note_to_trade,
     create_note,
     create_trade,
     delete_note,
     delete_trade,
     get_trade_by_id,
-    list_charts,
+    list_images,
     list_trade_notes,
     transaction,
     update_trade,
@@ -94,7 +94,7 @@ analyses = to_option_format(
     formatter=lambda a: f"{a.get('date_local')} · {a.get('asset')}",
 )
 defaults = get_trade_defaults(trade, accounts)
-charts = list_charts(trade_id=trade_id) if trade_id else []
+images = list_images(trade_id=trade_id) if trade_id else []
 
 
 def _get_account_id_by_label(label: str) -> Optional[int]:
@@ -191,9 +191,9 @@ side_col, stages_col = st.columns([2, 1], gap="medium")
 
 with side_col:
     st.markdown("#### Charts")
-    current_charts = render_chart_editor(
+    current_images = render_image_editor(
         key=f"{state_key}_chart_editor",
-        base_rows=charts,
+        base_rows=images,
         layout_columns=2,
     )
 
@@ -218,12 +218,12 @@ with side_col:
                 body = note.get("body") or ""
                 if body and body != "(image)":
                     st.markdown(body)
-                note_charts = list_charts(note_id=note["id"])
-                if note_charts:
-                    img_cols = st.columns(min(len(note_charts), 2))
-                    for i, ch in enumerate(note_charts):
+                note_images = list_images(note_id=note["id"])
+                if note_images:
+                    img_cols = st.columns(min(len(note_images), 2))
+                    for i, ch in enumerate(note_images):
                         img_cols[i % 2].image(
-                            ch["chart_url"], use_container_width=True)
+                            ch["image_url"], use_container_width=True)
                 st.markdown(
                     "<style>.st-emotion-cache-1lq56da{flex: none;width: auto;}</style>", unsafe_allow_html=True)
 
@@ -264,8 +264,8 @@ with side_col:
             attach_note_to_trade(trade_id, new_note_id, conn=conn)
             for img in (response.images or []):
                 data_uri = f"data:{img.type};{img.format},{img.data}"
-                chart_id = add_chart(data_uri, conn=conn)
-                attach_chart_to_note(new_note_id, chart_id, conn=conn)
+                image_id = add_image(data_uri, conn=conn)
+                attach_image_to_note(new_note_id, image_id, conn=conn)
         st.cache_data.clear()
         st.rerun()
 
@@ -402,12 +402,12 @@ if submitted:
                 else:
                     update_trade(current_trade_id, user_id, payload, conn=conn)
 
-                persist_chart_editor(
-                    attached_charts=charts,
-                    editor_rows=current_charts,
+                persist_image_editor(
+                    attached_images=images,
+                    editor_rows=current_images,
                     conn=conn,
-                    attach_chart=lambda chart_id, tid=current_trade_id: attach_chart_to_trade(
-                        tid, chart_id, conn=conn
+                    attach_image=lambda image_id, tid=current_trade_id: attach_image_to_trade(
+                        tid, image_id, conn=conn
                     ),
                 )
 

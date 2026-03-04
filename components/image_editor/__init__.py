@@ -1,4 +1,4 @@
-"""Переиспользуемые UI-хелперы для работы с чартами и их привязками."""
+"""Переиспользуемые UI-хелперы для работы с изображениями и их привязками."""
 
 from __future__ import annotations
 
@@ -7,17 +7,17 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 
 import streamlit as st
 
-from db import add_chart, delete_chart, update_chart
+from db import add_image, delete_image, update_image
 
 _DIR = Path(__file__).parent
 _COMPONENT_HTML = (_DIR / "template.html").read_text(encoding="utf-8")
 _COMPONENT_CSS = (_DIR / "styles.css").read_text(encoding="utf-8")
 _COMPONENT_JS = (_DIR / "script.js").read_text(encoding="utf-8")
 
-ChartRow = Dict[str, Any]
+ImageRow = Dict[str, Any]
 
 
-def chart_editor_value_state_key(widget_key: str) -> str:
+def image_editor_value_state_key(widget_key: str) -> str:
     """Возвращает ключ session_state для хранения данных редактора."""
     return f"{widget_key}__value"
 
@@ -30,50 +30,50 @@ def _layout_from_columns(columns: int) -> str:
     return "column"
 
 
-def _sanitize_chart_rows(
-    rows: Sequence[ChartRow],
+def _sanitize_image_rows(
+    rows: Sequence[ImageRow],
     *,
     keep_empty: bool = False,
-) -> List[ChartRow]:
-    sanitized: List[ChartRow] = []
+) -> List[ImageRow]:
+    sanitized: List[ImageRow] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
-        chart_url = str(row.get("chart_url") or "").strip()
+        image_url = str(row.get("image_url") or "").strip()
         cleaned = {
             "id": row.get("id"),
-            "chart_url": chart_url,
+            "image_url": image_url,
             "caption": (row.get("caption") or "").strip(),
         }
-        if chart_url or keep_empty:
+        if image_url or keep_empty:
             sanitized.append(cleaned)
     return sanitized
 
 
-_chart_editor_component = st.components.v2.component(
-    "chart_editor",
+_image_editor_component = st.components.v2.component(
+    "image_editor",
     html=_COMPONENT_HTML,
     css=_COMPONENT_CSS,
     js=_COMPONENT_JS,
 )
 
 
-def render_chart_editor(
+def render_image_editor(
     *,
     key: str,
-    base_rows: Sequence[ChartRow],
+    base_rows: Sequence[ImageRow],
     layout_columns: int = 1,
-) -> List[ChartRow]:
-    """Отрисовывает универсальный редактор чартов и возвращает его значение."""
-    sanitized_rows = _sanitize_chart_rows(base_rows)
+) -> List[ImageRow]:
+    """Отрисовывает универсальный редактор изображений и возвращает его значение."""
+    sanitized_rows = _sanitize_image_rows(base_rows)
     layout_mode = _layout_from_columns(layout_columns)
-    value_state_key = chart_editor_value_state_key(key)
+    value_state_key = image_editor_value_state_key(key)
 
     callbacks = {
         "on_charts_change": lambda: None,
     }
 
-    result = _chart_editor_component(
+    result = _image_editor_component(
         key=key,
         data={
             "charts": sanitized_rows,
@@ -85,13 +85,13 @@ def render_chart_editor(
 
     charts_value = result.get("charts") if isinstance(result, dict) else None
     if isinstance(charts_value, list):
-        sanitized_value = _sanitize_chart_rows(charts_value, keep_empty=True)
+        sanitized_value = _sanitize_image_rows(charts_value, keep_empty=True)
         st.session_state[value_state_key] = sanitized_value
         return sanitized_value
 
     cached_value = st.session_state.get(value_state_key)
     if isinstance(cached_value, list):
-        sanitized_cached = _sanitize_chart_rows(cached_value, keep_empty=True)
+        sanitized_cached = _sanitize_image_rows(cached_value, keep_empty=True)
         st.session_state[value_state_key] = sanitized_cached
         return sanitized_cached
 
@@ -99,19 +99,19 @@ def render_chart_editor(
     return sanitized_rows
 
 
-def chart_table_rows(charts: List[ChartRow]) -> List[ChartRow]:
-    """Готовит строки чарта для редактора."""
+def image_table_rows(images: List[ImageRow]) -> List[ImageRow]:
+    """Готовит строки изображения для редактора."""
     return [
         {
-            "id": chart.get("id"),
-            "chart_url": chart.get("chart_url") or "",
-            "caption": chart.get("caption") or "",
+            "id": image.get("id"),
+            "image_url": image.get("image_url") or "",
+            "caption": image.get("caption") or "",
         }
-        for chart in charts
+        for image in images
     ]
 
 
-def normalize_editor_rows(editor_value: Any) -> List[ChartRow]:
+def normalize_editor_rows(editor_value: Any) -> List[ImageRow]:
     """Приводит ответ data_editor к списку словарей."""
     if isinstance(editor_value, list):
         raw_rows = editor_value
@@ -120,62 +120,62 @@ def normalize_editor_rows(editor_value: Any) -> List[ChartRow]:
     else:
         raw_rows = []
 
-    normalized: List[ChartRow] = []
+    normalized: List[ImageRow] = []
     for row in raw_rows:
-        chart_url = (row.get("chart_url") or "").strip()
+        image_url = (row.get("image_url") or "").strip()
         normalized.append({
             "id": row.get("id"),
-            "chart_url": chart_url,
+            "image_url": image_url,
             "caption": row.get("caption") or "",
         })
     return normalized
 
 
-def persist_chart_editor(
+def persist_image_editor(
     *,
-    attached_charts: List[ChartRow],
-    editor_rows: List[ChartRow],
-    attach_chart: Callable[[int], None],
+    attached_images: List[ImageRow],
+    editor_rows: List[ImageRow],
+    attach_image: Callable[[int], None],
     conn: Optional[Any] = None,
 ) -> None:
-    """Синхронизирует таблицу чартов с данными из редактора."""
-    desired_rows: List[ChartRow] = []
+    """Синхронизирует таблицу изображений с данными из редактора."""
+    desired_rows: List[ImageRow] = []
     for row in editor_rows:
-        chart_url = (row.get("chart_url") or "").strip()
-        if not chart_url:
+        image_url = (row.get("image_url") or "").strip()
+        if not image_url:
             continue
         desired_rows.append({
-            "id": _clean_chart_id(row.get("id")),
-            "chart_url": chart_url,
+            "id": _clean_image_id(row.get("id")),
+            "image_url": image_url,
             "caption": (row.get("caption") or "").strip() or None,
         })
 
-    current_by_id = {chart["id"]: chart for chart in attached_charts}
+    current_by_id = {image["id"]: image for image in attached_images}
     desired_ids = {row["id"] for row in desired_rows if row["id"] is not None}
 
-    for chart_id in set(current_by_id.keys()) - desired_ids:
-        if chart_id is not None:
-            delete_chart(chart_id, conn=conn)
+    for image_id in set(current_by_id.keys()) - desired_ids:
+        if image_id is not None:
+            delete_image(image_id, conn=conn)
 
     for row in desired_rows:
-        chart_id = row.get("id")
-        if chart_id is None or chart_id not in current_by_id:
+        image_id = row.get("id")
+        if image_id is None or image_id not in current_by_id:
             continue
-        existing = current_by_id[chart_id]
-        existing_url = (existing.get("chart_url") or "").strip()
+        existing = current_by_id[image_id]
+        existing_url = (existing.get("image_url") or "").strip()
         existing_caption = (existing.get("caption") or None)
-        if row["chart_url"] != existing_url or row["caption"] != existing_caption:
-            update_chart(chart_id, row["chart_url"], row["caption"], conn=conn)
+        if row["image_url"] != existing_url or row["caption"] != existing_caption:
+            update_image(image_id, row["image_url"], row["caption"], conn=conn)
 
     for row in desired_rows:
         if row.get("id") is not None:
             continue
-        chart_id = add_chart(row["chart_url"], row["caption"], conn=conn)
-        # Внешняя функция решает, к какой сущности привязать чарт.
-        attach_chart(chart_id)
+        image_id = add_image(row["image_url"], row["caption"], conn=conn)
+        # Внешняя функция решает, к какой сущности привязать изображение.
+        attach_image(image_id)
 
 
-def _clean_chart_id(value: Any) -> Optional[int]:
+def _clean_image_id(value: Any) -> Optional[int]:
     if value is None:
         return None
     if isinstance(value, float) and value != value:

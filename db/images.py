@@ -1,11 +1,11 @@
-# db/charts.py — Charts CRUD and attachment operations
+# db/images.py — Images CRUD and attachment operations
 import sqlite3
 from typing import Any, Dict, List, Literal, Optional
 
 from db.connection import get_conn, _managed_conn, _rows_to_dicts
 
 
-# Entity types for chart attachments
+# Entity types for image attachments
 EntityType = Literal["trade", "analysis_stage", "setup", "note"]
 
 # Mapping from entity type to column name
@@ -25,21 +25,21 @@ _ENTITY_LABELS: Dict[EntityType, str] = {
 }
 
 
-def add_chart(
-    chart_url: str,
+def add_image(
+    image_url: str,
     caption: Optional[str] = None,
     *,
     conn: Optional[sqlite3.Connection] = None,
 ) -> int:
-    if not chart_url:
-        raise ValueError("chart_url is required.")
+    if not image_url:
+        raise ValueError("image_url is required.")
 
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO charts (chart_url, caption) VALUES (?, ?)",
-            (chart_url, caption),
+            "INSERT INTO images (image_url, caption) VALUES (?, ?)",
+            (image_url, caption),
         )
         if own:
             conn.commit()
@@ -49,39 +49,39 @@ def add_chart(
             conn.close()
 
 
-def get_chart(chart_id: int) -> Optional[Dict[str, Any]]:
+def get_image(image_id: int) -> Optional[Dict[str, Any]]:
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM charts WHERE id=?",
-                           (chart_id,)).fetchone()
+        row = conn.execute("SELECT * FROM images WHERE id=?",
+                           (image_id,)).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
 
 
-def update_chart(
-    chart_id: int,
-    chart_url: str,
+def update_image(
+    image_id: int,
+    image_url: str,
     caption: Optional[str] = None,
     *,
     conn: Optional[sqlite3.Connection] = None,
 ) -> None:
-    if not chart_url:
-        raise ValueError("chart_url is required.")
+    if not image_url:
+        raise ValueError("image_url is required.")
 
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
             """
-            UPDATE charts
-            SET chart_url=?, caption=?
+            UPDATE images
+            SET image_url=?, caption=?
             WHERE id=?
             """,
-            (chart_url, caption, chart_id),
+            (image_url, caption, image_id),
         )
         if cur.rowcount == 0:
-            raise ValueError(f"Chart #{chart_id} not found.")
+            raise ValueError(f"Image #{image_id} not found.")
         if own:
             conn.commit()
     finally:
@@ -89,13 +89,13 @@ def update_chart(
             conn.close()
 
 
-def delete_chart(chart_id: int, *, conn: Optional[sqlite3.Connection] = None) -> None:
+def delete_image(image_id: int, *, conn: Optional[sqlite3.Connection] = None) -> None:
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM charts WHERE id=?", (chart_id,))
+        cur.execute("DELETE FROM images WHERE id=?", (image_id,))
         if cur.rowcount == 0:
-            raise ValueError(f"Chart #{chart_id} not found.")
+            raise ValueError(f"Image #{image_id} not found.")
         if own:
             conn.commit()
     finally:
@@ -103,7 +103,7 @@ def delete_chart(chart_id: int, *, conn: Optional[sqlite3.Connection] = None) ->
             conn.close()
 
 
-def list_charts(
+def list_images(
     *,
     trade_id: Optional[int] = None,
     analysis_stage_id: Optional[int] = None,
@@ -133,7 +133,7 @@ def list_charts(
         conditions.append("note_id IS NULL")
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    query = f"SELECT * FROM charts {where_clause} ORDER BY id ASC"
+    query = f"SELECT * FROM images {where_clause} ORDER BY id ASC"
 
     conn = get_conn()
     try:
@@ -144,63 +144,63 @@ def list_charts(
 
 
 # =====================================================================
-# Universal chart attachment functions
+# Universal image attachment functions
 # =====================================================================
 
 
-def attach_chart(
+def attach_image(
     entity_type: EntityType,
     entity_id: int,
-    chart_id: int,
+    image_id: int,
     *,
     conn: Optional[sqlite3.Connection] = None,
 ) -> None:
     """
-    Attach a chart to an entity.
-    
+    Attach an image to an entity.
+
     Args:
         entity_type: One of 'trade', 'analysis_stage', 'setup', 'note'
         entity_id: ID of the entity to attach to
-        chart_id: ID of the chart to attach
+        image_id: ID of the image to attach
         conn: Optional database connection
-    
+
     Raises:
-        ValueError: If chart not found or already attached to another entity
+        ValueError: If image not found or already attached to another entity
     """
     if entity_type not in _ENTITY_COLUMNS:
         raise ValueError(f"Unknown entity type: {entity_type}")
-    
+
     target_column = _ENTITY_COLUMNS[entity_type]
     other_columns = [col for et, col in _ENTITY_COLUMNS.items() if et != entity_type]
-    
+
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
-        chart_row = cur.execute(
-            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM charts WHERE id=?",
-            (chart_id,),
+        image_row = cur.execute(
+            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM images WHERE id=?",
+            (image_id,),
         ).fetchone()
-        
-        if not chart_row:
-            raise ValueError(f"Chart #{chart_id} not found.")
-        
+
+        if not image_row:
+            raise ValueError(f"Image #{image_id} not found.")
+
         # Check if attached to another entity type
         for col in other_columns:
-            if chart_row[col]:
-                raise ValueError("Chart is already attached to another entity.")
-        
+            if image_row[col]:
+                raise ValueError("Image is already attached to another entity.")
+
         # Check if attached to different entity of same type
-        if chart_row[target_column] not in (None, entity_id):
+        if image_row[target_column] not in (None, entity_id):
             label = _ENTITY_LABELS[entity_type]
-            raise ValueError(f"Chart is already attached to another {label}.")
-        
+            raise ValueError(f"Image is already attached to another {label}.")
+
         # Build UPDATE: set target column, clear others
         set_parts = [f"{target_column}=?"]
         set_parts.extend(f"{col}=NULL" for col in other_columns)
-        
+
         cur.execute(
-            f"UPDATE charts SET {', '.join(set_parts)} WHERE id=?",
-            (entity_id, chart_id),
+            f"UPDATE images SET {', '.join(set_parts)} WHERE id=?",
+            (entity_id, image_id),
         )
         if own:
             conn.commit()
@@ -209,33 +209,33 @@ def attach_chart(
             conn.close()
 
 
-def detach_chart(
+def detach_image(
     entity_type: EntityType,
     entity_id: int,
-    chart_id: int,
+    image_id: int,
     *,
     conn: Optional[sqlite3.Connection] = None,
 ) -> None:
     """
-    Detach a chart from an entity.
-    
+    Detach an image from an entity.
+
     Args:
         entity_type: One of 'trade', 'analysis_stage', 'setup', 'note'
         entity_id: ID of the entity to detach from
-        chart_id: ID of the chart to detach
+        image_id: ID of the image to detach
         conn: Optional database connection
     """
     if entity_type not in _ENTITY_COLUMNS:
         raise ValueError(f"Unknown entity type: {entity_type}")
-    
+
     column = _ENTITY_COLUMNS[entity_type]
-    
+
     conn, own = _managed_conn(conn)
     try:
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE charts SET {column}=NULL WHERE {column}=? AND id=?",
-            (entity_id, chart_id),
+            f"UPDATE images SET {column}=NULL WHERE {column}=? AND id=?",
+            (entity_id, image_id),
         )
         if own:
             conn.commit()
@@ -245,61 +245,61 @@ def detach_chart(
 
 
 # =====================================================================
-# Backwards-compatible wrapper functions
+# Wrapper functions
 # =====================================================================
 
 
-def attach_chart_to_trade(
-    trade_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+def attach_image_to_trade(
+    trade_id: int, image_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    """Attach chart to trade. Wrapper for attach_chart()."""
-    attach_chart("trade", trade_id, chart_id, conn=conn)
+    """Attach image to trade. Wrapper for attach_image()."""
+    attach_image("trade", trade_id, image_id, conn=conn)
 
 
-def detach_chart_from_trade(
-    trade_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+def detach_image_from_trade(
+    trade_id: int, image_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    """Detach chart from trade. Wrapper for detach_chart()."""
-    detach_chart("trade", trade_id, chart_id, conn=conn)
+    """Detach image from trade. Wrapper for detach_image()."""
+    detach_image("trade", trade_id, image_id, conn=conn)
 
 
-def attach_chart_to_analysis_stage(
-    stage_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+def attach_image_to_analysis_stage(
+    stage_id: int, image_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    """Attach chart to analysis stage. Wrapper for attach_chart()."""
-    attach_chart("analysis_stage", stage_id, chart_id, conn=conn)
+    """Attach image to analysis stage. Wrapper for attach_image()."""
+    attach_image("analysis_stage", stage_id, image_id, conn=conn)
 
 
-def detach_chart_from_analysis_stage(
-    stage_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+def detach_image_from_analysis_stage(
+    stage_id: int, image_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    """Detach chart from analysis stage. Wrapper for detach_chart()."""
-    detach_chart("analysis_stage", stage_id, chart_id, conn=conn)
+    """Detach image from analysis stage. Wrapper for detach_image()."""
+    detach_image("analysis_stage", stage_id, image_id, conn=conn)
 
 
-def attach_chart_to_setup(
-    setup_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+def attach_image_to_setup(
+    setup_id: int, image_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    """Attach chart to setup. Wrapper for attach_chart()."""
-    attach_chart("setup", setup_id, chart_id, conn=conn)
+    """Attach image to setup. Wrapper for attach_image()."""
+    attach_image("setup", setup_id, image_id, conn=conn)
 
 
-def detach_chart_from_setup(
-    setup_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+def detach_image_from_setup(
+    setup_id: int, image_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    """Detach chart from setup. Wrapper for detach_chart()."""
-    detach_chart("setup", setup_id, chart_id, conn=conn)
+    """Detach image from setup. Wrapper for detach_image()."""
+    detach_image("setup", setup_id, image_id, conn=conn)
 
 
-def attach_chart_to_note(
-    note_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+def attach_image_to_note(
+    note_id: int, image_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    """Attach chart to note. Wrapper for attach_chart()."""
-    attach_chart("note", note_id, chart_id, conn=conn)
+    """Attach image to note. Wrapper for attach_image()."""
+    attach_image("note", note_id, image_id, conn=conn)
 
 
-def detach_chart_from_note(
-    note_id: int, chart_id: int, *, conn: Optional[sqlite3.Connection] = None
+def detach_image_from_note(
+    note_id: int, image_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    """Detach chart from note. Wrapper for detach_chart()."""
-    detach_chart("note", note_id, chart_id, conn=conn)
+    """Detach image from note. Wrapper for detach_image()."""
+    detach_image("note", note_id, image_id, conn=conn)

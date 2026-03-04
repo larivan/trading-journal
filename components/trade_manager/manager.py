@@ -4,7 +4,7 @@ import json
 from typing import Any, Dict, List, Optional
 import streamlit as st
 from components.note_manager import render_note_manager
-from components.chart_editor import persist_chart_editor, render_chart_editor
+from components.image_editor import persist_image_editor, render_image_editor
 from components.note_selector import render_note_selector, clear_note_selector_state
 from helpers import to_option_format, parse_date, parse_time
 from utils.trade_sessions import detect_trade_session
@@ -38,8 +38,8 @@ from db import (
     delete_trade,
     get_trade_by_id,
     list_trade_notes,
-    list_charts,
-    attach_chart_to_trade,
+    list_images,
+    attach_image_to_trade,
     attach_note_to_trade,
     detach_note_from_trade,
     update_trade,
@@ -109,7 +109,7 @@ def render_trade_manager() -> None:
             formatter=lambda analysis: f"{analysis.get('date_local')} · {analysis.get('asset')}",
         )
         defaults = get_trade_defaults(trade, accounts)
-        charts = list_charts(trade_id=trade_id) if trade_id else []
+        images = list_images(trade_id=trade_id) if trade_id else []
         base_trade_notes = list_trade_notes(trade_id) if trade_id else []
 
         # Хедер с кнопками действий
@@ -202,9 +202,9 @@ def render_trade_manager() -> None:
         # Панель с редактором графиков
         with side_col:
             st.markdown("#### Charts")
-            current_charts = render_chart_editor(
+            current_images = render_image_editor(
                 key=f"{state_key}_chart_editor",
-                base_rows=charts,
+                base_rows=images,
                 layout_columns=2,
             )
             st.markdown("#### Observations")
@@ -278,19 +278,19 @@ def render_trade_manager() -> None:
             with st.spinner("Saving..."):
               with transaction() as conn:
                 current_trade_id = trade_id
-                trade_charts = charts or []
+                trade_images = images or []
                 if is_new_trade:
                     payload["local_tz"] = local_tz
                     current_trade_id = create_trade(user_id, payload, conn=conn)
                 else:
                     update_trade(current_trade_id, user_id, payload, conn=conn)
 
-                persist_chart_editor(
-                    attached_charts=trade_charts,
-                    editor_rows=current_charts,
+                persist_image_editor(
+                    attached_images=trade_images,
+                    editor_rows=current_images,
                     conn=conn,
-                    attach_chart=lambda chart_id, trade_id=current_trade_id: attach_chart_to_trade(  # noqa: E731
-                        trade_id, chart_id, conn=conn
+                    attach_image=lambda image_id, trade_id=current_trade_id: attach_image_to_trade(  # noqa: E731
+                        trade_id, image_id, conn=conn
                     ),
                 )
                 for note_id in base_note_ids - staged_note_ids_set:

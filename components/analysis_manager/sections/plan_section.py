@@ -5,10 +5,10 @@ from typing import Any, Dict, List, Tuple
 from uuid import uuid4
 import streamlit as st
 from components.vertical_tabs import render_vertical_tabs
-from components.chart_editor import (
-    chart_editor_value_state_key,
-    chart_table_rows,
-    render_chart_editor,
+from components.image_editor import (
+    image_editor_value_state_key,
+    image_table_rows,
+    render_image_editor,
 )
 
 
@@ -73,7 +73,7 @@ def render_plan_section(
 
     forms: List[Dict[str, Any]] = []
     for entry in entries:
-        chart_rows = chart_table_rows(entry.get("charts") or [])
+        chart_rows = image_table_rows(entry.get("charts") or [])
         chart_key = _chart_editor_key(state_key, entry["key"])
         summary_key = _summary_key(state_key, entry["key"])
         forms.append(
@@ -84,7 +84,7 @@ def render_plan_section(
                 "charts": {
                     "rows_source": chart_rows,
                     "editor_value": st.session_state.get(
-                        chart_editor_value_state_key(chart_key), chart_rows
+                        image_editor_value_state_key(chart_key), chart_rows
                     ),
                 },
                 "entry_key": entry["key"],
@@ -99,7 +99,7 @@ def _render_entry(entry: PlanEntry, container: Any, state_key: str) -> None:
     chart_rows = chart_table_rows(entry.get("charts") or [])
     with container:
         st.markdown("#### Charts")
-        render_chart_editor(
+        render_image_editor(
             key=_chart_editor_key(state_key, entry["key"]),
             base_rows=chart_rows,
             layout_columns=2,
@@ -136,7 +136,7 @@ def _remove_entry(
                 removed.append(stage_id)
         st.session_state.pop(_summary_key(state_key, entry_id), None)
         st.session_state.pop(
-            chart_editor_value_state_key(
+            image_editor_value_state_key(
                 _chart_editor_key(state_key, entry_id)), None
         )
 

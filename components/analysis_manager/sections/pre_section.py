@@ -4,9 +4,9 @@ import streamlit as st
 from typing import Any, Dict, Optional
 from helpers import parse_date, safe_choice_index
 from config import DAILY_BIAS_VALUES, ASSETS_VALUES
-from components.chart_editor import (
-    chart_table_rows,
-    render_chart_editor,
+from components.image_editor import (
+    image_table_rows,
+    render_image_editor,
 )
 
 
@@ -29,7 +29,7 @@ def render_pre_stage(
         "stage_type": "pre-market",
     }
 
-    chart_rows = chart_table_rows(stage_data.get("charts"))
+    chart_rows = image_table_rows(stage_data.get("charts"))
     with st.expander("Overview & Pre-market", expanded=expanded):
         col1, col2 = st.columns([1, 3], gap="medium")
         with col1:
@@ -66,7 +66,7 @@ def render_pre_stage(
 
         with col2:
             st.markdown("#### Charts")
-            chart_editor_value = render_chart_editor(
+            chart_editor_value = render_image_editor(
                 key=f"{state_key}_chart_editor",
                 base_rows=chart_rows,
                 layout_columns=2,

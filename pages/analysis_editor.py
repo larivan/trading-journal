@@ -15,7 +15,7 @@ from components.analysis_manager.sections import (
     render_pre_stage,
 )
 from components.analysis_manager.state import get_allowed_analysis_stages
-from components.chart_editor import persist_chart_editor
+from components.image_editor import persist_image_editor
 from components.note_manager import render_note_manager
 from components.note_selector import clear_note_selector_state
 from config import (
@@ -26,7 +26,7 @@ from config import (
 from db import (
     add_analysis,
     add_analysis_stage,
-    attach_chart_to_analysis_stage,
+    attach_image_to_analysis_stage,
     attach_note_to_analysis_stage,
     delete_analysis,
     delete_analysis_stage,
@@ -251,12 +251,12 @@ if submitted:
                         pre_stage_id = add_analysis_stage(
                             pre_values, conn=conn)
 
-                    persist_chart_editor(
-                        attached_charts=pre_values["charts"]["rows_source"],
+                    persist_image_editor(
+                        attached_images=pre_values["charts"]["rows_source"],
                         editor_rows=pre_values["charts"]["editor_value"],
                         conn=conn,
-                        attach_chart=lambda chart_id, sid=pre_stage_id: attach_chart_to_analysis_stage(
-                            sid, chart_id, conn=conn
+                        attach_image=lambda image_id, sid=pre_stage_id: attach_image_to_analysis_stage(
+                            sid, image_id, conn=conn
                         ),
                     )
 
@@ -284,13 +284,13 @@ if submitted:
                         plan_stage_id = add_analysis_stage(
                             plan_payload, conn=conn)
 
-                    persist_chart_editor(
-                        attached_charts=charts_payload.get(
+                    persist_image_editor(
+                        attached_images=charts_payload.get(
                             "rows_source") or [],
                         editor_rows=charts_payload.get("editor_value") or [],
                         conn=conn,
-                        attach_chart=lambda chart_id, sid=plan_stage_id: attach_chart_to_analysis_stage(
-                            sid, chart_id, conn=conn
+                        attach_image=lambda image_id, sid=plan_stage_id: attach_image_to_analysis_stage(
+                            sid, image_id, conn=conn
                         ),
                     )
 
@@ -310,12 +310,12 @@ if submitted:
                         post_stage_id = add_analysis_stage(
                             post_values, conn=conn)
 
-                    persist_chart_editor(
-                        attached_charts=post_values["charts"]["rows_source"],
+                    persist_image_editor(
+                        attached_images=post_values["charts"]["rows_source"],
                         editor_rows=post_values["charts"]["editor_value"],
                         conn=conn,
-                        attach_chart=lambda chart_id, sid=post_stage_id: attach_chart_to_analysis_stage(
-                            sid, chart_id, conn=conn
+                        attach_image=lambda image_id, sid=post_stage_id: attach_image_to_analysis_stage(
+                            sid, image_id, conn=conn
                         ),
                     )
                     base_note_ids = {

@@ -7,10 +7,10 @@ from typing import Any, Dict, List
 
 import streamlit as st
 
-from components.chart_editor import (
-    chart_table_rows,
-    persist_chart_editor,
-    render_chart_editor,
+from components.image_editor import (
+    image_table_rows,
+    persist_image_editor,
+    render_image_editor,
 )
 from config import (
     NOTE_DIALOG_NAME,
@@ -19,10 +19,10 @@ from config import (
     NOTE_SUCCESS_STATE,
 )
 from db import (
-    attach_chart_to_note,
+    attach_image_to_note,
     create_note,
     get_note,
-    list_charts,
+    list_images,
     transaction,
     update_note,
 )
@@ -60,7 +60,7 @@ def render_note_manager() -> None:
             return
 
     state_key = f"{NOTE_MANAGER_KEY_PREFIX}{note_id or 'new'}"
-    charts: List[Dict[str, Any]] = list_charts(
+    images: List[Dict[str, Any]] = list_images(
         note_id=note_id) if note_id else []
 
     @st.dialog(
@@ -77,9 +77,9 @@ def render_note_manager() -> None:
             placeholder="Write your note…",
         )
 
-        chart_values = render_chart_editor(
+        image_values = render_image_editor(
             key=f"{state_key}_charts",
-            base_rows=chart_table_rows(charts),
+            base_rows=image_table_rows(images),
             layout_columns=2,
         )
 
@@ -137,12 +137,12 @@ def render_note_manager() -> None:
                     else:
                         update_note(current_note_id, user_id, payload, conn=conn)
 
-                    persist_chart_editor(
-                        attached_charts=charts,
-                        editor_rows=chart_values,
+                    persist_image_editor(
+                        attached_images=images,
+                        editor_rows=image_values,
                         conn=conn,
-                        attach_chart=lambda chart_id, note_id=current_note_id: attach_chart_to_note(  # noqa: E731
-                            note_id, chart_id, conn=conn
+                        attach_image=lambda image_id, note_id=current_note_id: attach_image_to_note(  # noqa: E731
+                            note_id, image_id, conn=conn
                         ),
                     )
 

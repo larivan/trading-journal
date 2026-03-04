@@ -7,10 +7,10 @@ from typing import Any, Dict, List
 
 import streamlit as st
 
-from components.chart_editor import (
-    chart_table_rows,
-    persist_chart_editor,
-    render_chart_editor,
+from components.image_editor import (
+    image_table_rows,
+    persist_image_editor,
+    render_image_editor,
 )
 from config import (
     SETUP_DIALOG_NAME,
@@ -19,11 +19,11 @@ from config import (
     SETUP_SUCCESS_STATE,
 )
 from db import (
-    attach_chart_to_setup,
+    attach_image_to_setup,
     create_setup,
     delete_setup,
     get_setup,
-    list_charts,
+    list_images,
     transaction,
     update_setup,
 )
@@ -54,7 +54,7 @@ def render_setup_manager() -> None:
             return
 
     state_key = f"{SETUP_MANAGER_KEY_PREFIX}{setup_id or 'new'}"
-    charts: List[Dict[str, Any]] = list_charts(
+    images: List[Dict[str, Any]] = list_images(
         setup_id=setup_id) if setup_id else []
 
     @st.dialog(
@@ -70,9 +70,9 @@ def render_setup_manager() -> None:
             placeholder="Setup name",
         )
         st.markdown("#### Charts")
-        chart_values = render_chart_editor(
+        image_values = render_image_editor(
             key=f"{state_key}_charts",
-            base_rows=chart_table_rows(charts),
+            base_rows=image_table_rows(images),
             layout_columns=2,
         )
         description_value = st.text_area(
@@ -125,7 +125,7 @@ def render_setup_manager() -> None:
             try:
                 with transaction() as conn:
                     current_setup_id = setup_id
-                    setup_charts = charts or []
+                    setup_images = images or []
                     if is_new:
                         current_setup_id = create_setup(
                             user_id,
@@ -136,12 +136,12 @@ def render_setup_manager() -> None:
                     else:
                         update_setup(int(setup_id), user_id, payload, conn=conn)
 
-                    persist_chart_editor(
-                        attached_charts=setup_charts,
-                        editor_rows=chart_values,
+                    persist_image_editor(
+                        attached_images=setup_images,
+                        editor_rows=image_values,
                         conn=conn,
-                        attach_chart=lambda chart_id, setup_id=current_setup_id: attach_chart_to_setup(  # noqa: E731
-                            setup_id, chart_id, conn=conn
+                        attach_image=lambda image_id, setup_id=current_setup_id: attach_image_to_setup(  # noqa: E731
+                            setup_id, image_id, conn=conn
                         ),
                     )
 

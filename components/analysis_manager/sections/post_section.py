@@ -4,9 +4,9 @@ import streamlit as st
 from typing import Any, Dict, List, Optional
 from config import DAILY_BIAS_VALUES, DAY_RESULT_VALUES
 from helpers import safe_choice_index
-from components.chart_editor import (
-    chart_table_rows,
-    render_chart_editor,
+from components.image_editor import (
+    image_table_rows,
+    render_image_editor,
 )
 from components.note_selector import render_note_selector
 
@@ -29,7 +29,7 @@ def render_post_stage(
         "stage_id": stage_data.get("stage_id"),
         "stage_type": "post-market",
     }
-    chart_rows = chart_table_rows(stage_data.get("charts"))
+    chart_rows = image_table_rows(stage_data.get("charts"))
     with st.expander("Post-market", expanded=expanded):
         col1, col2 = st.columns([1, 3], gap="medium")
 
@@ -59,7 +59,7 @@ def render_post_stage(
 
         with col2:
             st.markdown("#### Charts")
-            chart_editor_value = render_chart_editor(
+            chart_editor_value = render_image_editor(
                 key=f"{state_key}_chart_editor",
                 base_rows=chart_rows,
                 layout_columns=2

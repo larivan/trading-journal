@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List
 import streamlit as st
 from .defaults import build_analysis_defaults
-from components.chart_editor import persist_chart_editor
+from components.image_editor import persist_image_editor
 from components.trade_manager import render_trade_manager
 from components.note_selector import clear_note_selector_state
 from utils.session_state import close_dialog, dialog_is_active
@@ -20,7 +20,7 @@ from config import (
 from db import (
     add_analysis,
     add_analysis_stage,
-    attach_chart_to_analysis_stage,
+    attach_image_to_analysis_stage,
     attach_note_to_analysis_stage,
     delete_analysis_stage,
     get_analysis,
@@ -176,12 +176,12 @@ def render_analysis_manager() -> None:
                         pre_stage_id = add_analysis_stage(
                             pre_values, conn=conn)
 
-                    persist_chart_editor(
-                        attached_charts=pre_values["charts"]["rows_source"],
+                    persist_image_editor(
+                        attached_images=pre_values["charts"]["rows_source"],
                         editor_rows=pre_values["charts"]["editor_value"],
                         conn=conn,
-                        attach_chart=lambda chart_id, stage_id=pre_stage_id: attach_chart_to_analysis_stage(
-                            stage_id, chart_id, conn=conn
+                        attach_image=lambda image_id, stage_id=pre_stage_id: attach_image_to_analysis_stage(
+                            stage_id, image_id, conn=conn
                         ),
                     )
 
@@ -209,12 +209,12 @@ def render_analysis_manager() -> None:
                         plan_stage_id = add_analysis_stage(
                             plan_payload, conn=conn)
 
-                    persist_chart_editor(
-                        attached_charts=charts_payload.get("rows_source") or [],
+                    persist_image_editor(
+                        attached_images=charts_payload.get("rows_source") or [],
                         editor_rows=charts_payload.get("editor_value") or [],
                         conn=conn,
-                        attach_chart=lambda chart_id, stage_id=plan_stage_id: attach_chart_to_analysis_stage(
-                            stage_id, chart_id, conn=conn
+                        attach_image=lambda image_id, stage_id=plan_stage_id: attach_image_to_analysis_stage(
+                            stage_id, image_id, conn=conn
                         ),
                     )
 
@@ -234,12 +234,12 @@ def render_analysis_manager() -> None:
                         post_stage_id = add_analysis_stage(
                             post_values, conn=conn)
 
-                    persist_chart_editor(
-                        attached_charts=post_values["charts"]["rows_source"],
+                    persist_image_editor(
+                        attached_images=post_values["charts"]["rows_source"],
                         editor_rows=post_values["charts"]["editor_value"],
                         conn=conn,
-                        attach_chart=lambda chart_id, stage_id=post_stage_id: attach_chart_to_analysis_stage(
-                            stage_id, chart_id, conn=conn
+                        attach_image=lambda image_id, stage_id=post_stage_id: attach_image_to_analysis_stage(
+                            stage_id, image_id, conn=conn
                         ),
                     )
                     base_note_ids = {
