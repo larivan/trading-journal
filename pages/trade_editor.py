@@ -157,6 +157,13 @@ def _calculate_rewards() -> None:
         )
 
 
+def _on_status_change() -> None:
+    key = f"{state_key}_is_missed"
+    if st.session_state.get(key) is None:
+        st.session_state[key] = "Taken"
+    _calculate_rewards()
+
+
 # Диалог подтверждения удаления
 if st.session_state.get("_te_pending_delete"):
     @st.dialog("Delete trade")
@@ -259,12 +266,14 @@ with side_col:
 
 with stages_col:
     # Taken / Missed toggle — всегда вверху
+    _is_missed_key = f"{state_key}_is_missed"
+    if _is_missed_key not in st.session_state:
+        st.session_state[_is_missed_key] = "Missed" if defaults.get("is_missed") else "Taken"
     is_missed_option = st.segmented_control(
         "Trade status",
         ["Taken", "Missed"],
-        default="Missed" if defaults.get("is_missed") else "Taken",
-        key=f"{state_key}_is_missed",
-        on_change=_calculate_rewards,
+        key=_is_missed_key,
+        on_change=_on_status_change,
         width="stretch",
         label_visibility="collapsed",
     )
