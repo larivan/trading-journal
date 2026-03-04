@@ -200,6 +200,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
     language           TEXT    DEFAULT 'en',
     default_asset      TEXT    DEFAULT NULL,
     default_account_id INTEGER DEFAULT NULL,
+    mistake_types      TEXT    DEFAULT '[]',
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -261,24 +262,24 @@ CREATE TABLE IF NOT EXISTS analysis_stages (
 );
 
 CREATE TABLE IF NOT EXISTS trades (
-    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id            INTEGER NOT NULL,
-    local_tz           TEXT NOT NULL,
-    date_local         TEXT NOT NULL,
-    time_local         TEXT NOT NULL,
-    account_id         INTEGER NOT NULL,
-    setup_id           INTEGER,
-    analysis_id        INTEGER,
-    asset              TEXT NOT NULL,
-    session            TEXT NOT NULL,
-    state              TEXT NOT NULL,
-    is_missed          INTEGER DEFAULT 0,
-    net_pnl            REAL,
-    risk_pct           REAL,
-    risk_reward        REAL,
-    reward_percent     REAL,
-    estimation         INTEGER,
-    emotional_problems TEXT,
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        INTEGER NOT NULL,
+    local_tz       TEXT NOT NULL,
+    date_local     TEXT NOT NULL,
+    time_local     TEXT NOT NULL,
+    account_id     INTEGER NOT NULL,
+    setup_id       INTEGER,
+    analysis_id    INTEGER,
+    asset          TEXT NOT NULL,
+    trade_type     TEXT,
+    session        TEXT NOT NULL,
+    is_missed      INTEGER DEFAULT 0,
+    net_pnl        REAL,
+    risk_pct       REAL,
+    risk_reward    REAL,
+    reward_percent REAL,
+    is_correct     INTEGER,
+    mistake_types  TEXT,
     FOREIGN KEY (user_id)     REFERENCES users(id)    ON DELETE CASCADE,
     FOREIGN KEY (account_id)  REFERENCES accounts(id)  ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (setup_id)    REFERENCES setups(id)    ON DELETE SET NULL   ON UPDATE CASCADE,
@@ -370,6 +371,28 @@ def _execute_schema(conn) -> None:
     conn.commit()
 
 
+def _migrate_db() -> None:
+    """Apply incremental schema migrations for existing databases (idempotent)."""
+    conn = get_conn()
+    try:
+        migrations = [
+            "ALTER TABLE trades RENAME COLUMN estimation TO is_correct",
+            "ALTER TABLE trades DROP COLUMN state",
+            "ALTER TABLE trades DROP COLUMN emotional_problems",
+            "ALTER TABLE trades ADD COLUMN trade_type TEXT",
+            "ALTER TABLE trades ADD COLUMN mistake_types TEXT",
+            "ALTER TABLE user_settings ADD COLUMN mistake_types TEXT DEFAULT '[]'",
+        ]
+        for sql in migrations:
+            try:
+                conn.execute(sql)
+            except Exception:
+                pass  # already applied or not applicable
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     """Create DB schema if not exists."""
     if not _USE_TURSO:
@@ -383,6 +406,7 @@ def init_db() -> None:
             conn.commit()
     finally:
         conn.close()
+    _migrate_db()
 
 
 if __name__ == "__main__":

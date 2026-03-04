@@ -6,7 +6,7 @@ import pandas as pd
 import pytz
 import streamlit as st
 
-from config import ASSETS_VALUES, BE_THRESHOLD
+from config import ASSETS_VALUES, BE_THRESHOLD, DEFAULT_MISTAKE_TYPES
 from db import update_user_settings
 from utils.auth import get_current_user_id, get_user_settings, load_user_session
 from utils.backup import create_backup, get_backup_bytes, list_backups
@@ -35,7 +35,7 @@ with tab_profile:
 # Journal Setup
 # =====================================================================
 with tab_journal:
-    col_assets, col_thresh = st.columns([0.45, 0.55])
+    col_assets, col_mistakes, col_thresh = st.columns([0.3, 0.3, 0.4])
 
     with col_assets:
         st.markdown("##### Assets")
@@ -49,6 +49,20 @@ with tab_journal:
             num_rows="dynamic",
             use_container_width=True,
             key="settings_assets_editor",
+        )
+
+    with col_mistakes:
+        st.markdown("##### Mistake types")
+        current_mistakes = settings.get("mistake_types", DEFAULT_MISTAKE_TYPES)
+        if not isinstance(current_mistakes, list):
+            current_mistakes = DEFAULT_MISTAKE_TYPES
+
+        mistakes_df = pd.DataFrame({"Type": current_mistakes})
+        edited_mistakes_df = st.data_editor(
+            mistakes_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="settings_mistakes_editor",
         )
 
     with col_thresh:
@@ -102,6 +116,11 @@ with tab_journal:
             for a in edited_assets_df["Asset"].tolist()
             if str(a).strip()
         ]
+        new_mistake_types = [
+            str(m).strip()
+            for m in edited_mistakes_df["Type"].tolist()
+            if str(m).strip()
+        ]
         if not new_assets:
             st.error("Asset list cannot be empty.")
         elif risk_min >= risk_max:
@@ -109,6 +128,7 @@ with tab_journal:
         else:
             update_user_settings(user_id, {
                 "assets": new_assets,
+                "mistake_types": new_mistake_types,
                 "be_threshold": be_threshold,
                 "risk_min": risk_min,
                 "risk_max": risk_max,

@@ -19,7 +19,8 @@ from config import (
     LOCAL_TZ,
     TRADE_RESULT_VALUES,
     TRADE_SESSION_VALUES,
-    TRADE_STATE_VALUES,
+    TRADE_STATUS_VALUES,
+    TRADE_TYPE_VALUES,
 )
 
 # === БАЗОВАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ ===
@@ -39,9 +40,9 @@ TAB_DEFINITIONS: Dict[str, str] = {
     "custom": "Custom",
 }
 
-ESTIMATION_VARS = {
-    1: "Like",
-    0: "Dislike",
+EXECUTION_VARS = {
+    1: "Correct",
+    0: "Has mistake",
 }
 
 
@@ -75,7 +76,7 @@ selected_key = label_to_key.get(selected_label, "today")
 
 if selected_key == "custom":
     with st.container():
-        fc1, fc2, fc3, fc4, fc5, fc6, fc7 = st.columns(7)
+        fc1, fc2, fc3, fc4, fc5, fc6, fc7, fc8 = st.columns(8)
         date_range = fc1.date_input(
             "Date Range",
             value=(
@@ -102,39 +103,46 @@ if selected_key == "custom":
             placeholder="All",
             index=None,
         )
-        state = fc5.selectbox(
-            "State",
-            TRADE_STATE_VALUES,
+        trade_type = fc5.selectbox(
+            "Type",
+            TRADE_TYPE_VALUES,
             placeholder="All",
             index=None,
         )
-        result = fc6.selectbox(
+        status = fc6.selectbox(
+            "Status",
+            TRADE_STATUS_VALUES,
+            placeholder="All",
+            index=None,
+        )
+        result = fc7.selectbox(
             "Result",
             TRADE_RESULT_VALUES,
             placeholder="All",
             index=None,
         )
-        estimation = fc7.selectbox(
-            "Estimation",
-            list(ESTIMATION_VARS.values()),
+        execution = fc8.selectbox(
+            "Execution",
+            list(EXECUTION_VARS.values()),
             placeholder="All",
             index=None,
         )
 
     if account_id:
         filter["account_id"] = account_id
-    if state:
-        filter["state"] = state
+    if status:
+        filter["status"] = status
     if result:
         filter["result"] = result
     if asset:
         filter["asset"] = asset
     if session:
         filter["session"] = session
-    if estimation:
-        estimation_key = {val: key for key, val in ESTIMATION_VARS.items()}
-        selected_estimation = estimation_key.get(estimation, None)
-        filter["estimation"] = selected_estimation
+    if trade_type:
+        filter["trade_type"] = trade_type
+    if execution:
+        execution_key = {val: key for key, val in EXECUTION_VARS.items()}
+        filter["is_correct"] = execution_key.get(execution)
 
 else:
     local_tz = get_setting("local_tz", LOCAL_TZ)
@@ -165,7 +173,7 @@ else:
     df["_link"] = "/trade_editor?id=" + df["id"].astype(str)
 
     display_cols = ["_link", "date_local", "session",
-                    "asset", "state", "result", "net_pnl", "risk_reward"]
+                    "asset", "trade_type", "status", "result", "net_pnl", "risk_reward"]
     for col in display_cols:
         if col not in df.columns:
             df[col] = None
@@ -176,7 +184,8 @@ else:
             "date_local": st.column_config.TextColumn("Date"),
             "session": st.column_config.TextColumn("Session"),
             "asset": st.column_config.TextColumn("Asset"),
-            "state": st.column_config.TextColumn("State"),
+            "trade_type": st.column_config.TextColumn("Type"),
+            "status": st.column_config.TextColumn("Status"),
             "result": st.column_config.TextColumn("Result"),
             "net_pnl": st.column_config.NumberColumn("PnL"),
             "risk_reward": st.column_config.NumberColumn("R:R"),
@@ -227,7 +236,6 @@ with btn_create.popover("Create", type="primary", width="stretch"):
                     "account_id": pop_account,
                     "asset": pop_asset,
                     "session": detect_trade_session(today, now.time(), local_tz_label=local_tz),
-                    "state": "Open",
                     "local_tz": local_tz,
                     "is_missed": 0,
                 }, conn=conn)

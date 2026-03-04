@@ -60,11 +60,21 @@ TRADE_SUCCESS_STATE = "tm_success_message"
 TM_KEY_PREFIX = "tm_trade_id_"
 TM_DEFAULT_PREFIX = "tm_default_"
 TM_DEFAULT_ANALYSIS_ID_STATE = "tm_default_analysis_id"
-TRADE_STATE_VALUES = ["Open", "Outcome", "Reviewed"]
+TRADE_STATUS_VALUES = ["Open", "Outcome", "Reviewed"]  # computed, not stored
+TRADE_TYPE_VALUES = ["Intraday", "Swing"]
 TRADE_RESULT_VALUES = ["Win", "Loss", "BE", "Miss"]
 BE_THRESHOLD = 0.05
 TRADE_SESSION_VALUES = ["Frankfurt", "LOKZ",
                         "Lunch", "Pre-NY", "NYKZ", "Other"]
+DEFAULT_MISTAKE_TYPES = [
+    "Early entry",
+    "Late entry",
+    "Wrong stop placement",
+    "Broke trading plan",
+    "Emotional entry",
+    "Wrong session / time",
+    "Missed setup criteria",
+]
 
 # Accounts
 ACCOUNT_DIALOG_NAME = "account_manager"

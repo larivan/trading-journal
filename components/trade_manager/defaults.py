@@ -1,6 +1,8 @@
 """Общие дефолтные значения для трейд-менеджера"""
 
-from typing import Any, Dict
+import json
+from typing import Any, Dict, List
+
 import streamlit as st
 from helpers import parse_date, parse_time
 from config import TM_DEFAULT_PREFIX, ASSETS_VALUES
@@ -12,9 +14,9 @@ def get_trade_defaults(
 ) -> Dict[str, Dict[str, Any]]:
     """Возвращает дефолтные значения"""
     return {
-        "state": trade.get("state") or "Open",
+        "is_missed": trade.get("is_missed", 0),
         "open": {
-            "is_missed": trade.get("is_missed", 0),
+            "trade_type": trade.get("trade_type"),
             "date": parse_date(trade.get("date_local")),
             "time": parse_time(trade.get("time_local")),
             "account": trade.get("account_id") or accounts[0]["value"] if accounts else None,
@@ -29,10 +31,22 @@ def get_trade_defaults(
             "reward_percent": float(trade.get("reward_percent") or 0.0),
         },
         "review": {
-            "estimation": trade.get("estimation"),
+            "is_correct": trade.get("is_correct"),
+            "mistake_types": _parse_json_list(trade.get("mistake_types")),
         },
     }
 
 
 def _get_session_default(name) -> Any:
     return st.session_state.get(f"{TM_DEFAULT_PREFIX}{name}", None)
+
+
+def _parse_json_list(value) -> List:
+    if not value:
+        return []
+    if isinstance(value, list):
+        return value
+    try:
+        return json.loads(value)
+    except Exception:
+        return []

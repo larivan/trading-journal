@@ -1,5 +1,6 @@
 """Страница редактирования/создания трейда."""
 
+import json
 from datetime import date, datetime as _dt
 from typing import Any, Dict, Optional
 
@@ -13,9 +14,9 @@ from components.trade_manager.sections import (
     render_outcome_stage,
     render_review_stage,
 )
-from components.trade_manager.state import get_allowed_states, visible_stages
 from config import (
     ASSETS_VALUES,
+    DEFAULT_MISTAKE_TYPES,
     LOCAL_TZ,
     TM_KEY_PREFIX,
     TM_DEFAULT_PREFIX,
@@ -63,8 +64,6 @@ if not is_new_trade:
             st.switch_page("pages/trades.py")
         st.stop()
 
-loaded_state = trade.get("state") if trade else None
-
 # --- Заголовок ---
 if is_new_trade:
     st.title("New trade")
@@ -84,6 +83,7 @@ state_key = f"{TM_KEY_PREFIX}{trade_id or 'new'}"
 
 # --- Загружаем данные ---
 assets = get_setting("assets", ASSETS_VALUES)
+mistake_type_options = get_setting("mistake_types", DEFAULT_MISTAKE_TYPES)
 account_rows = cached_accounts(user_id, True)
 accounts = to_option_format(
     account_rows, formatter=lambda acc: f"{acc['name']}")
@@ -120,13 +120,15 @@ def _get_account_balance(acc_id: Optional[int]) -> Optional[float]:
 def _calculate_rewards() -> None:
     widget_keys = {
         "risk_pct": f"{state_key}_main_risk_pct",
-        "is_missed": f"{state_key}_main_is_missed",
+        "is_missed": f"{state_key}_is_missed",
         "net_pnl": f"{state_key}_outcome_net_pnl",
         "risk_reward": f"{state_key}_outcome_risk_reward",
         "reward_percent": f"{state_key}_outcome_reward_percent",
     }
     risk_pct = st.session_state.get(widget_keys["risk_pct"])
-    is_missed = st.session_state.get(widget_keys["is_missed"])
+    is_missed_raw = st.session_state.get(widget_keys["is_missed"])
+    is_missed = (is_missed_raw == "Missed") if isinstance(
+        is_missed_raw, str) else bool(is_missed_raw)
     net_pnl = st.session_state.get(widget_keys["net_pnl"])
     risk_reward = st.session_state.get(widget_keys["risk_reward"])
     account = st.session_state.get(f"{state_key}_main_account")
@@ -139,7 +141,9 @@ def _calculate_rewards() -> None:
     if is_missed:
         if risk_reward is None:
             return
-        st.session_state[widget_keys["net_pnl"]] = float(0)
+        hypothetical = round(
+            account_balance * (risk_pct / 100) * risk_reward, 2)
+        st.session_state[widget_keys["net_pnl"]] = hypothetical
         st.session_state[widget_keys["reward_percent"]
                          ] = round(risk_pct * risk_reward, 2)
     else:
@@ -173,23 +177,10 @@ if st.session_state.get("_te_pending_delete"):
 
     _confirm_delete()
 
-# --- Вычисляем selected_state ДО колонок, чтобы использовать в side_col ---
-_state_nav_key = f"{state_key}_state_idx"
-_current_state = trade.get("state")
-allowed_states = get_allowed_states(_current_state)
-if _state_nav_key not in st.session_state:
-    st.session_state[_state_nav_key] = (
-        allowed_states.index(
-            _current_state) if _current_state in allowed_states else 0
-    )
-_state_idx = max(
-    0, min(st.session_state[_state_nav_key], len(allowed_states) - 1))
-selected_state = allowed_states[_state_idx]
-
-_NOTE_CATEGORIES = ["Observation", "Hot thought", "Cold thought"]
+_NOTE_CATEGORIES = ["Hot thought", "Cold thought", "Observation"]
 
 # --- Форма: чарты/комментарии (слева) + секции (справа) ---
-side_col, stages_col = st.columns([2, 1])
+side_col, stages_col = st.columns([2, 1], gap="medium")
 
 with side_col:
     st.markdown("#### Charts")
@@ -230,14 +221,10 @@ with side_col:
                     "<style>.st-emotion-cache-1lq56da{flex: none;width: auto;}</style>", unsafe_allow_html=True)
 
     st.divider()
-    # Авто-выбор категории по стейту; сброс при смене стейта
+
     _cat_key = f"_note_cat_{state_key}"
-    _cat_prev_state_key = f"_note_cat_prev_{state_key}"
-    auto_cat = "Hot thought" if selected_state in (
-        "Open", "Outcome") else "Cold thought"
-    if st.session_state.get(_cat_prev_state_key) != selected_state:
-        st.session_state[_cat_key] = auto_cat
-        st.session_state[_cat_prev_state_key] = selected_state
+    if _cat_key not in st.session_state:
+        st.session_state[_cat_key] = "Observation"
 
     selected_category = st.pills(
         "Category",
@@ -271,29 +258,28 @@ with side_col:
         st.rerun()
 
 with stages_col:
-    # State navigation: кнопки ← selectbox →
-    _prev_col, _sel_col, _next_col = st.columns(
-        [1, 6, 1], vertical_alignment="bottom")
-    if _prev_col.button("←", disabled=(_state_idx == 0), key=f"{state_key}_state_prev", width="stretch"):
-        st.session_state[_state_nav_key] = _state_idx - 1
-        st.rerun()
-    if _next_col.button("→", disabled=(_state_idx == len(allowed_states) - 1), key=f"{state_key}_state_next", width="stretch"):
-        st.session_state[_state_nav_key] = _state_idx + 1
-        st.rerun()
-    _widget_selected = _sel_col.selectbox(
-        "Trade state",
-        allowed_states,
-        index=_state_idx,
+    # Taken / Missed toggle — всегда вверху
+    is_missed_option = st.segmented_control(
+        "Trade status",
+        ["Taken", "Missed"],
+        default="Missed" if defaults.get("is_missed") else "Taken",
+        key=f"{state_key}_is_missed",
+        on_change=_calculate_rewards,
+        width="stretch",
+        label_visibility="collapsed",
     )
-    st.session_state[_state_nav_key] = allowed_states.index(_widget_selected)
+    is_missed = int(is_missed_option == "Missed") if is_missed_option else 0
 
-    visible = visible_stages(selected_state)
-    outcome_visible = "outcome" in visible
+    st.markdown(
+        "<hr style='margin:6px 0;border:0;border-top:1px solid rgba(49,51,63,.1)'>",
+        unsafe_allow_html=True,
+    )
+    st.caption("ENTRY")
+
     locked_from_analysis = st.session_state.get(
         f"{TM_DEFAULT_PREFIX}analysis") is not None
 
     main_values = render_main_stage(
-        expanded=(selected_state == "Open"),
         defaults=defaults["open"],
         account_options=accounts,
         analysis_options=analyses,
@@ -305,20 +291,29 @@ with stages_col:
         user_tz=trade.get("local_tz") or get_setting("local_tz", LOCAL_TZ),
     )
 
+    st.markdown(
+        "<hr style='margin:6px 0;border:0;border-top:1px solid rgba(49,51,63,.1)'>",
+        unsafe_allow_html=True,
+    )
+    st.caption("OUTCOME")
+
     outcome_values = render_outcome_stage(
-        visible=outcome_visible,
-        expanded=(selected_state == "Outcome"),
         defaults=defaults["outcome"],
         state_key=f"{state_key}_outcome",
-        is_missed=main_values["is_missed"],
+        is_missed=is_missed,
         on_change=_calculate_rewards,
     )
 
+    st.markdown(
+        "<hr style='margin:6px 0;border:0;border-top:1px solid rgba(49,51,63,.1)'>",
+        unsafe_allow_html=True,
+    )
+    st.caption("REVIEW")
+
     review_values = render_review_stage(
-        visible="review" in visible,
-        expanded=(selected_state == "Reviewed"),
         defaults=defaults["review"],
         state_key=f"{state_key}_review",
+        mistake_type_options=mistake_type_options,
     )
 
 st.divider()
@@ -340,15 +335,6 @@ if submitted:
     if not main_values["account"]:
         message_placeholder.error("Select an account.")
         st.stop()
-    if selected_state == "Outcome":
-        if not outcome_values:
-            message_placeholder.error('Fill in the "Outcome" block.')
-            st.stop()
-        if outcome_values["net_pnl"] is None:
-            message_placeholder.error("Provide Net PnL.")
-            st.stop()
-    if selected_state == "Reviewed":
-        pass
 
     local_tz = trade.get("local_tz") or get_setting("local_tz", LOCAL_TZ)
     session_value = detect_trade_session(
@@ -362,25 +348,34 @@ if submitted:
         "time_local": main_values["time"].strftime("%H:%M:%S"),
         "account_id": main_values["account"],
         "asset": main_values["asset"],
+        "trade_type": main_values.get("trade_type"),
         "analysis_id": main_values["analysis"],
         "setup_id": main_values["setup"],
         "risk_pct": float(main_values["risk_pct"]),
         "session": session_value,
-        "state": selected_state,
-        "is_missed": int(main_values["is_missed"]),
+        "is_missed": is_missed,
     }
 
-    if outcome_values:
+    # Outcome: сохраняем только если явно задано
+    original_net_pnl = trade.get("net_pnl")
+    if (
+        original_net_pnl is not None
+        or (not is_missed and outcome_values["net_pnl"] != 0.0)
+        or (is_missed and outcome_values["risk_reward"] != 0.0)
+    ):
         payload.update({
             "net_pnl": outcome_values["net_pnl"],
             "risk_reward": outcome_values["risk_reward"],
             "reward_percent": outcome_values["reward_percent"],
         })
 
-    if review_values:
-        payload.update({
-            "estimation": review_values["estimation"],
-        })
+    # Review: сохраняем is_correct и mistake_types всегда (None = не ревьювирован)
+    payload["is_correct"] = review_values.get("is_correct")
+    if review_values.get("is_correct") is not None:
+        payload["mistake_types"] = json.dumps(
+            review_values.get("mistake_types") or [])
+    else:
+        payload["mistake_types"] = json.dumps([])
 
     try:
         with st.spinner("Saving..."):

@@ -12,11 +12,11 @@ from utils.metrics import (
 def sample_trades_df():
     data = [
         # Win (Fact)
-        {"is_missed": 0, "net_pnl": 100.0, "risk_reward": 2.0, "fact_bias": "Bullish", "daily_bias": "Bullish", "reward_percent": 1.0, "estimation": 1, "date_local": "2023-01-01"},
+        {"is_missed": 0, "net_pnl": 100.0, "risk_reward": 2.0, "fact_bias": "Bullish", "daily_bias": "Bullish", "reward_percent": 1.0, "is_correct": 1, "date_local": "2023-01-01"},
         # Loss (Fact)
-        {"is_missed": 0, "net_pnl": -50.0, "risk_reward": -1.0, "fact_bias": "Bearish", "daily_bias": "Bullish", "reward_percent": -1.0, "estimation": 0, "date_local": "2023-01-01"},
+        {"is_missed": 0, "net_pnl": -50.0, "risk_reward": -1.0, "fact_bias": "Bearish", "daily_bias": "Bullish", "reward_percent": -1.0, "is_correct": 0, "date_local": "2023-01-01"},
         # Missed Win
-        {"is_missed": 1, "net_pnl": 0.0, "risk_reward": 3.0, "fact_bias": "Bullish", "daily_bias": "Bullish", "reward_percent": 3.0, "estimation": 1, "date_local": "2023-01-02"},
+        {"is_missed": 1, "net_pnl": 0.0, "risk_reward": 3.0, "fact_bias": "Bullish", "daily_bias": "Bullish", "reward_percent": 3.0, "is_correct": 1, "date_local": "2023-01-02"},
     ]
     return pd.DataFrame(data)
 
@@ -50,7 +50,7 @@ def test_compute_overview_metrics_basic(sample_trades_df):
     # 2 / 3 = 0.666...
     assert metrics["potential_winrate"] == pytest.approx(2/3)
     
-    # Quality: estimation=1 count / total
+    # Quality: is_correct=1 count / total
     # 2 liked / 3 total = 0.666...
     assert metrics["quality_ratio"] == pytest.approx(2/3)
 
@@ -104,7 +104,7 @@ def test_compute_equity_curve(sample_trades_df):
 def test_overview_no_bias_columns():
     """Нет fact_bias/daily_bias → bias_winrate == 0."""
     df = pd.DataFrame([
-        {"is_missed": 0, "net_pnl": 100.0, "risk_reward": 2.0, "estimation": 1},
+        {"is_missed": 0, "net_pnl": 100.0, "risk_reward": 2.0, "is_correct": 1},
     ])
     metrics = compute_overview_metrics(df)
     assert metrics["bias_winrate"] == 0.0
@@ -113,15 +113,15 @@ def test_overview_no_bias_columns():
 def test_overview_no_risk_reward_column():
     """Нет колонки risk_reward → fact_winrate == 0."""
     df = pd.DataFrame([
-        {"is_missed": 0, "net_pnl": 100.0, "estimation": 1,
+        {"is_missed": 0, "net_pnl": 100.0, "is_correct": 1,
          "fact_bias": "B", "daily_bias": "B"},
     ])
     metrics = compute_overview_metrics(df)
     assert metrics["fact_winrate"] == 0.0
 
 
-def test_overview_no_estimation_column():
-    """Нет колонки estimation → quality_ratio == 0."""
+def test_overview_no_is_correct_column():
+    """Нет колонки is_correct → quality_ratio == 0."""
     df = pd.DataFrame([
         {"is_missed": 0, "net_pnl": 100.0, "risk_reward": 2.0,
          "fact_bias": "B", "daily_bias": "B"},
@@ -134,7 +134,7 @@ def test_overview_all_missed_no_facts():
     """Все трейды missed → fact_winrate == 0, missed_rate == 1."""
     df = pd.DataFrame([
         {"is_missed": 1, "net_pnl": 0.0, "risk_reward": 2.0,
-         "fact_bias": "B", "daily_bias": "B", "estimation": 1},
+         "fact_bias": "B", "daily_bias": "B", "is_correct": 1},
     ])
     metrics = compute_overview_metrics(df)
     assert metrics["fact_winrate"] == 0.0

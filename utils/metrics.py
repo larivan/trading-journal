@@ -19,7 +19,7 @@ def compute_overview_metrics(
     Compute overview KPI metrics from trades DataFrame.
     
     Args:
-        df: Full trades DataFrame (must have: is_missed, net_pnl, estimation, 
+        df: Full trades DataFrame (must have: is_missed, net_pnl, is_correct,
             fact_bias, daily_bias, reward_percent)
         fact_df: Optional pre-filtered executed trades (is_missed=0)
         missed_df: Optional pre-filtered missed trades (is_missed=1)
@@ -73,9 +73,9 @@ def compute_overview_metrics(
     # Missed rate
     missed_rate = missed_count / total if total else 0.0
 
-    # Quality ratio: trades with estimation=1 (liked)
-    if "estimation" in df.columns:
-        quality_ratio = len(df[df["estimation"] == 1]) / total if total else 0.0
+    # Quality ratio: trades with is_correct=1 (no mistake)
+    if "is_correct" in df.columns:
+        quality_ratio = len(df[df["is_correct"] == 1]) / total if total else 0.0
     else:
         quality_ratio = 0.0
     

@@ -1,4 +1,5 @@
 # tests/test_trades.py — Unit tests for trades module
+import json
 import pytest
 from db.trades import (
     create_trade,
@@ -37,7 +38,6 @@ def make_trade_data(deps, **overrides):
         "analysis_id": deps["analysis_id"],
         "asset": "EUR/USD",
         "session": "LOKZ",
-        "state": "Reviewed",
         "is_missed": 0,
         "net_pnl": 150.0,
         "risk_reward": 2.5,
@@ -63,20 +63,110 @@ class TestCreateTrade:
             trade_dependencies,
             risk_pct=1.0,
             reward_percent=2.5,
-            estimation=1,
-            emotional_problems="None",
+            is_correct=1,
         )
         trade_id = create_trade(user_id, data)
 
         trade = get_trade_by_id(trade_id, user_id)
         assert trade["risk_pct"] == 1.0
-        assert trade["estimation"] == 1
+        assert trade["is_correct"] == 1
 
     def test_create_trade_empty_raises(self, trade_dependencies):
         """Create trade with empty dict raises ValueError."""
         user_id = trade_dependencies["user_id"]
         with pytest.raises(ValueError, match="No data"):
             create_trade(user_id, {})
+
+
+class TestTradeType:
+    def test_trade_type(self, trade_dependencies):
+        """Test creating trade with trade_type field."""
+        user_id = trade_dependencies["user_id"]
+        trade_id = create_trade(user_id, make_trade_data(
+            trade_dependencies, trade_type="Intraday"
+        ))
+        trade = get_trade_by_id(trade_id, user_id)
+        assert trade["trade_type"] == "Intraday"
+
+    def test_trade_type_swing(self, trade_dependencies):
+        """Test creating trade with Swing type."""
+        user_id = trade_dependencies["user_id"]
+        trade_id = create_trade(user_id, make_trade_data(
+            trade_dependencies, trade_type="Swing"
+        ))
+        trade = get_trade_by_id(trade_id, user_id)
+        assert trade["trade_type"] == "Swing"
+
+
+class TestMistakeTypes:
+    def test_mistake_types_saved_as_json(self, trade_dependencies):
+        """Test that mistake_types list is serialized and deserialized correctly."""
+        user_id = trade_dependencies["user_id"]
+        mistakes = ["Early entry", "Wrong stop placement"]
+        trade_id = create_trade(user_id, make_trade_data(
+            trade_dependencies,
+            is_correct=0,
+            mistake_types=mistakes,
+        ))
+        trade = get_trade_by_id(trade_id, user_id)
+        # mistake_types is stored as JSON string in DB
+        stored = trade.get("mistake_types")
+        assert stored is not None
+        parsed = json.loads(stored) if isinstance(stored, str) else stored
+        assert parsed == mistakes
+
+    def test_mistake_types_empty_list(self, trade_dependencies):
+        """Test saving empty mistake_types."""
+        user_id = trade_dependencies["user_id"]
+        trade_id = create_trade(user_id, make_trade_data(
+            trade_dependencies, mistake_types=[]
+        ))
+        trade = get_trade_by_id(trade_id, user_id)
+        stored = trade.get("mistake_types")
+        if stored:
+            assert json.loads(stored) == []
+
+
+class TestComputedStatus:
+    def test_status_open(self, trade_dependencies):
+        """Trade with no net_pnl and no is_missed → Open."""
+        user_id = trade_dependencies["user_id"]
+        trade_id = create_trade(user_id, make_trade_data(
+            trade_dependencies, net_pnl=None, risk_reward=None, is_missed=0
+        ))
+        trades = list_trades(user_id)
+        t = next(x for x in trades if x["id"] == trade_id)
+        assert t["status"] == "Open"
+
+    def test_status_outcome(self, trade_dependencies):
+        """Trade with net_pnl set → Outcome."""
+        user_id = trade_dependencies["user_id"]
+        trade_id = create_trade(user_id, make_trade_data(
+            trade_dependencies, net_pnl=100.0, is_correct=None
+        ))
+        trades = list_trades(user_id)
+        t = next(x for x in trades if x["id"] == trade_id)
+        assert t["status"] == "Outcome"
+
+    def test_status_reviewed(self, trade_dependencies):
+        """Trade with is_correct set → Reviewed."""
+        user_id = trade_dependencies["user_id"]
+        trade_id = create_trade(user_id, make_trade_data(
+            trade_dependencies, net_pnl=100.0, is_correct=1
+        ))
+        trades = list_trades(user_id)
+        t = next(x for x in trades if x["id"] == trade_id)
+        assert t["status"] == "Reviewed"
+
+    def test_status_missed_outcome(self, trade_dependencies):
+        """Missed trade → Outcome (regardless of net_pnl)."""
+        user_id = trade_dependencies["user_id"]
+        trade_id = create_trade(user_id, make_trade_data(
+            trade_dependencies, is_missed=1, net_pnl=None, risk_reward=None
+        ))
+        trades = list_trades(user_id)
+        t = next(x for x in trades if x["id"] == trade_id)
+        assert t["status"] == "Outcome"
 
 
 class TestListTrades:
@@ -213,13 +303,13 @@ class TestUpdateTrade:
         user_id = trade_dependencies["user_id"]
         trade_id = create_trade(user_id, make_trade_data(trade_dependencies))
         update_trade(trade_id, user_id, {
-            "state": "Open",
-            "estimation": 0,
+            "is_correct": 0,
+            "trade_type": "Swing",
         })
 
         trade = get_trade_by_id(trade_id, user_id)
-        assert trade["state"] == "Open"
-        assert trade["estimation"] == 0
+        assert trade["is_correct"] == 0
+        assert trade["trade_type"] == "Swing"
 
     def test_update_nonexistent_raises(self, test_user):
         """Update invalid trade ID raises ValueError."""
@@ -238,7 +328,6 @@ class TestFKViolation:
             "account_id": 99999,
             "asset": "EUR/USD",
             "session": "LOKZ",
-            "state": "Open",
             "is_missed": 0,
         }
         with pytest.raises((sqlite3.IntegrityError, Exception)):
