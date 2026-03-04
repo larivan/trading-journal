@@ -154,6 +154,7 @@ def render_setup_manager() -> None:
                 st.error(f"Failed to save setup: {exc}")
                 return
 
+            st.cache_data.clear()
             st.rerun()
 
     if dialog_is_active(SETUP_DIALOG_NAME):
