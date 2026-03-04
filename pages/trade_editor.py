@@ -26,12 +26,15 @@ from db import (
     attach_image_to_note,
     attach_image_to_trade,
     attach_note_to_trade,
+    count_notes_by_trade,
     create_note,
     create_trade,
     delete_note,
     delete_trade,
+    detach_note_from_trade,
     get_trade_by_id,
     list_images,
+    list_notes,
     list_trade_notes,
     transaction,
     update_trade,
@@ -199,6 +202,7 @@ with side_col:
 
     st.markdown("#### Comments")
     trade_notes = list_trade_notes(trade_id) if trade_id else []
+    note_counts = count_notes_by_trade(user_id) if trade_id else {}
 
     if not trade_notes:
         with st.container(border=True):
@@ -209,10 +213,17 @@ with side_col:
                 hdr_col, del_col = st.columns([0.9, 0.1])
                 time_display = (note.get("time_local") or "")[:5]
                 category = note.get("category") or "—"
+                count = note_counts.get(note["id"], 1)
+                is_shared = count > 1
+                badge = f"  ·  🔗 {count} trades" if is_shared else ""
                 hdr_col.markdown(
-                    f"**{note.get('date_local', '')}  {time_display}  ·  {category}**")
-                if del_col.button("✕", key=f"_del_note_{note['id']}", help="Delete"):
-                    delete_note(note["id"], user_id)
+                    f"**{note.get('date_local', '')}  {time_display}  ·  {category}{badge}**")
+                if del_col.button("✕", key=f"_del_note_{note['id']}",
+                                  help="Remove from this trade" if is_shared else "Delete"):
+                    if is_shared:
+                        detach_note_from_trade(trade_id, note["id"])
+                    else:
+                        delete_note(note["id"], user_id)
                     st.cache_data.clear()
                     st.rerun()
                 body = note.get("body") or ""
@@ -226,6 +237,33 @@ with side_col:
                             ch["image_url"], use_container_width=True)
                 st.markdown(
                     "<style>.st-emotion-cache-1lq56da{flex: none;width: auto;}</style>", unsafe_allow_html=True)
+
+    if trade_id:
+        _all_notes = list_notes(user_id)
+        _attached_ids = {n["id"] for n in trade_notes}
+        _linkable = [n for n in _all_notes if n["id"] not in _attached_ids]
+        if _linkable:
+            with st.expander("Link existing observation"):
+                _search_key = f"_link_search_{state_key}"
+                _search = st.text_input("", key=_search_key,
+                                        placeholder="Search...",
+                                        label_visibility="collapsed")
+                _visible = [
+                    n for n in _linkable
+                    if not _search or _search.lower() in (n.get("body") or "").lower()
+                ][:15]
+                for ln in _visible:
+                    c_text, c_btn = st.columns([0.9, 0.1])
+                    _ln_count = note_counts.get(ln["id"], 0)
+                    _meta = f"{ln.get('date_local') or ''}  ·  {ln.get('category') or '—'}"
+                    if _ln_count > 0:
+                        _meta += f"  ·  🔗 {_ln_count} {'trade' if _ln_count == 1 else 'trades'}"
+                    c_text.caption(_meta)
+                    c_text.markdown((ln.get("body") or "")[:80])
+                    if c_btn.button("🔗", key=f"_link_note_{ln['id']}", use_container_width=True):
+                        attach_note_to_trade(trade_id, ln["id"])
+                        st.cache_data.clear()
+                        st.rerun()
 
     st.divider()
 
@@ -273,7 +311,8 @@ with stages_col:
     # Taken / Missed toggle — всегда вверху
     _is_missed_key = f"{state_key}_is_missed"
     if _is_missed_key not in st.session_state:
-        st.session_state[_is_missed_key] = "Missed" if defaults.get("is_missed") else "Taken"
+        st.session_state[_is_missed_key] = "Missed" if defaults.get(
+            "is_missed") else "Taken"
     is_missed_option = st.segmented_control(
         "Trade status",
         ["Taken", "Missed"],
