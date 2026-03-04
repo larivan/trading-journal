@@ -231,12 +231,17 @@ with side_col:
 
     _cat_key = f"_note_cat_{state_key}"
     if _cat_key not in st.session_state:
-        st.session_state[_cat_key] = "Observation"
+        st.session_state[_cat_key] = "Hot thought"
+
+    def _on_category_change() -> None:
+        if st.session_state[_cat_key] is None:
+            st.session_state[_cat_key] = "Hot thought"
 
     selected_category = st.pills(
         "Category",
         _NOTE_CATEGORIES,
         key=_cat_key,
+        on_change=_on_category_change,
         label_visibility="collapsed",
     )
 
