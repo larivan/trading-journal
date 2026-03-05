@@ -155,6 +155,8 @@ with btn_create.popover("Create", type="primary", width="stretch"):
             }, conn=conn)
         st.cache_data.clear()
         st.session_state["_new_analysis_id"] = new_id
+        st.session_state["_back_page"] = "pages/analysis.py"
+        st.session_state.pop("_back_params", None)
         st.switch_page("pages/analysis_editor.py")
 if selected_rows:
     selected_ids = [rows[i]["id"] for i in selected_rows]

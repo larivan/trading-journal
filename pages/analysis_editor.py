@@ -47,6 +47,10 @@ user_id = get_current_user_id()
 
 # --- Читаем analysis_id из URL-параметров ---
 params = st.query_params
+if "_returning_params" in st.session_state:
+    for k, v in st.session_state.pop("_returning_params").items():
+        st.query_params[k] = v
+    st.rerun()
 if "_new_analysis_id" in st.session_state:
     st.query_params["id"] = str(st.session_state.pop("_new_analysis_id"))
     st.rerun()
@@ -60,8 +64,12 @@ if not is_new_analysis:
     analysis = get_analysis(analysis_id, user_id) or {}
     if not analysis:
         st.error("Analysis not found.")
-        if st.button("← Back to Analysis"):
-            st.switch_page("pages/analysis.py")
+        if st.button("← Back"):
+            back_page = st.session_state.pop("_back_page", "pages/analysis.py")
+            back_params = st.session_state.pop("_back_params", {})
+            if back_params:
+                st.session_state["_returning_params"] = back_params
+            st.switch_page(back_page)
         st.stop()
 
 # --- Заголовок ---
@@ -331,8 +339,12 @@ with meta_col:
 # --- Нижняя панель actions ---
 st.divider()
 btn_back, btn_save, btn_delete, _ = st.columns([0.1, 0.1, 0.1, 0.7])
-if btn_back.button("← Analysis", width="stretch"):
-    st.switch_page("pages/analysis.py")
+if btn_back.button("← Back", width="stretch"):
+    back_page = st.session_state.pop("_back_page", "pages/analysis.py")
+    back_params = st.session_state.pop("_back_params", {})
+    if back_params:
+        st.session_state["_returning_params"] = back_params
+    st.switch_page(back_page)
 submitted = btn_save.button("Save", type="primary", width="stretch")
 if not is_new_analysis:
     if btn_delete.button("Delete", type="secondary", width="stretch"):
@@ -423,6 +435,8 @@ if not is_new_analysis:
                     }, conn=conn)
                 st.cache_data.clear()
                 st.session_state["_new_trade_id"] = new_id
+                st.session_state["_back_page"] = "pages/analysis_editor.py"
+                st.session_state["_back_params"] = {"id": str(analysis_id)}
                 st.switch_page("pages/trade_editor.py")
 
 # --- Сохранение ---

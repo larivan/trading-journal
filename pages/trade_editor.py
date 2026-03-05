@@ -63,8 +63,12 @@ if not is_new_trade:
     trade = get_trade_by_id(trade_id, user_id) or {}
     if not trade:
         st.error("Trade not found.")
-        if st.button("← Back to Trades"):
-            st.switch_page("pages/trades.py")
+        if st.button("← Back"):
+            back_page = st.session_state.pop("_back_page", "pages/trades.py")
+            back_params = st.session_state.pop("_back_params", {})
+            if back_params:
+                st.session_state["_returning_params"] = back_params
+            st.switch_page(back_page)
         st.stop()
 
 # --- Заголовок ---
@@ -372,8 +376,12 @@ with stages_col:
 st.divider()
 # --- Нижняя панель actions ---
 btn_back, btn_save, btn_delete, _ = st.columns([0.1, 0.1, 0.1, 0.68])
-if btn_back.button("← Trades", width="stretch"):
-    st.switch_page("pages/trades.py")
+if btn_back.button("← Back", width="stretch"):
+    back_page = st.session_state.pop("_back_page", "pages/trades.py")
+    back_params = st.session_state.pop("_back_params", {})
+    if back_params:
+        st.session_state["_returning_params"] = back_params
+    st.switch_page(back_page)
 submitted = btn_save.button("Save", type="primary", width="stretch")
 if not is_new_trade:
     if btn_delete.button("Delete", type="secondary", width="stretch"):
