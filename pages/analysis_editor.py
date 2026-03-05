@@ -1,44 +1,45 @@
 """Страница редактирования/создания дневного анализа."""
 
-from __future__ import annotations
-
-from datetime import datetime
+from datetime import date, datetime as _dt
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import streamlit as st
+from streamlit_chat_prompt import prompt as chat_prompt
 
-from components.analysis_manager.defaults import build_analysis_defaults
-from components.analysis_manager.sections import (
-    render_plan_section,
-    render_post_stage,
-    render_pre_stage,
-)
-from components.analysis_manager.state import get_allowed_analysis_stages
-from components.image_editor import persist_image_editor
-from components.note_manager import render_note_manager
-from components.note_selector import clear_note_selector_state
 from config import (
-    ANALYSIS_STATE_VALUES,
     ANALYSIS_MANAGER_KEY_PREFIX,
-    TM_DEFAULT_PREFIX,
+    ASSETS_VALUES,
+    DAILY_BIAS_VALUES,
+    LOCAL_TZ,
 )
 from db import (
     add_analysis,
     add_analysis_stage,
+    add_image,
     attach_image_to_analysis_stage,
-    attach_note_to_analysis_stage,
+    attach_image_to_note,
+    attach_note_to_analysis,
+    count_notes_by_analysis,
+    create_note,
+    create_trade,
     delete_analysis,
     delete_analysis_stage,
-    detach_note_from_analysis_stage,
+    delete_note,
+    detach_note_from_analysis,
     get_analysis,
+    list_analysis_notes,
+    list_analysis_stages,
+    list_images,
+    list_notes,
     list_trades,
     transaction,
     update_analysis,
-    update_analysis_stage,
 )
-from helpers import parse_date
-from utils.auth import get_current_user_id
+from helpers import calculate_trade_result, custom_selectbox, parse_date, to_option_format
+from utils.auth import get_current_user_id, get_setting
+from utils.cached_data import cached_accounts, cached_setups
+from utils.trade_sessions import detect_trade_session
 
 st.set_page_config(layout="wide")
 
@@ -71,46 +72,22 @@ else:
     date_value = (analysis.get("date_local") or "").strip() or ""
     st.title(f"{asset} · {date_value}" if date_value else asset)
 
-# Placeholder для ошибок — невидим когда пуст
 message_placeholder = st.empty()
+sk = f"{ANALYSIS_MANAGER_KEY_PREFIX}{analysis_id or 'new'}"
 
-# --- Ключ состояния виджетов ---
-state_key = f"{ANALYSIS_MANAGER_KEY_PREFIX}{analysis_id or 'new'}"
+# --- Загрузка данных ---
+assets = get_setting("assets", ASSETS_VALUES)
+local_tz = get_setting("local_tz", LOCAL_TZ)
+analysis_stages: List[Dict[str, Any]] = []
+analysis_notes: List[Dict[str, Any]] = []
+note_counts: Dict[int, int] = {}
 
-defaults = build_analysis_defaults(analysis)
+if not is_new_analysis:
+    analysis_stages = list_analysis_stages(user_id, {"analysis_id": analysis_id})
+    analysis_notes = list_analysis_notes(analysis_id)
+    note_counts = count_notes_by_analysis(user_id)
 
-
-def _visible_stage_types(current_stage: str) -> List[str]:
-    if current_stage not in ANALYSIS_STATE_VALUES:
-        return [ANALYSIS_STATE_VALUES[0]]
-    idx = ANALYSIS_STATE_VALUES.index(current_stage)
-    return ANALYSIS_STATE_VALUES[: idx + 1]
-
-
-# Analysis stage selectbox with navigation: кнопки ← selectbox →
-_stage_nav_key = f"{state_key}_stage_idx"
-current_stage = analysis.get("state") or ANALYSIS_STATE_VALUES[0]
-allowed_stages = get_allowed_analysis_stages(current_stage)
-if _stage_nav_key not in st.session_state:
-    st.session_state[_stage_nav_key] = (
-        allowed_stages.index(current_stage) if current_stage in allowed_stages else 0
-    )
-_stage_idx = max(0, min(st.session_state[_stage_nav_key], len(allowed_stages) - 1))
-_prev_col, _sel_col, _next_col = st.columns([1, 6, 1], vertical_alignment="bottom")
-if _prev_col.button("←", disabled=(_stage_idx == 0), key=f"{state_key}_stage_prev"):
-    st.session_state[_stage_nav_key] = _stage_idx - 1
-    st.rerun()
-if _next_col.button("→", disabled=(_stage_idx == len(allowed_stages) - 1), key=f"{state_key}_stage_next"):
-    st.session_state[_stage_nav_key] = _stage_idx + 1
-    st.rerun()
-selected_stage = _sel_col.selectbox(
-    "Analysis stage",
-    allowed_stages,
-    index=_stage_idx,
-)
-st.session_state[_stage_nav_key] = allowed_stages.index(selected_stage)
-
-# Диалог подтверждения удаления
+# --- Диалог подтверждения удаления ---
 if st.session_state.get("_ae_pending_delete"):
     @st.dialog("Delete analysis")
     def _confirm_delete() -> None:
@@ -118,8 +95,7 @@ if st.session_state.get("_ae_pending_delete"):
         c1, c2 = st.columns(2)
         if c1.button("Delete", type="primary", width="stretch"):
             try:
-                delete_analysis(
-                    st.session_state["_ae_pending_delete"], user_id)
+                delete_analysis(st.session_state["_ae_pending_delete"], user_id)
             except Exception as exc:
                 st.toast(f"Failed to delete: {exc}", icon="❌")
             st.session_state.pop("_ae_pending_delete", None)
@@ -131,71 +107,230 @@ if st.session_state.get("_ae_pending_delete"):
 
     _confirm_delete()
 
-visible = _visible_stage_types(selected_stage)
 
-pre_analysis_values, pre_values = render_pre_stage(
-    stage_data=defaults["stages"].get("pre-market"),
-    analysis_defaults=defaults["analysis"],
-    visible="pre-market" in visible,
-    expanded=(selected_stage == "pre-market"),
-    state_key=f"{state_key}_pre",
-)
+# =====================================================================
+# Макет: левая колонка (Journal) | правая (мета + трейды)
+# =====================================================================
 
-plan_forms, removed_plan_ids = render_plan_section(
-    plan_entries=defaults["plans"],
-    visible="plan" in visible,
-    expanded=(selected_stage == "plan"),
-    state_key=f"{state_key}_plan",
-)
+side_col, meta_col = st.columns([2, 1], gap="medium")
 
-# --- Execution секция (inline, без entity_table) ---
-if "execution" in visible:
-    with st.expander("Execution", expanded=(selected_stage == "execution")):
-        if st.button(
-            "Create trade",
-            width=200,
-            key=f"{state_key}_create_trade",
-        ):
-            st.session_state[f"{TM_DEFAULT_PREFIX}analysis"] = analysis_id
-            st.session_state[f"{TM_DEFAULT_PREFIX}asset"] = analysis.get("asset")
-            st.switch_page("pages/trade_editor.py")
+with side_col:
+    st.markdown("#### Journal")
 
-        trade_rows = list_trades(user_id, {"analysis_id": analysis_id})
-        if trade_rows:
-            df_exec = pd.DataFrame(trade_rows)
-            df_exec["_link"] = "/trade_editor?id=" + \
-                df_exec["id"].astype(str)
-            display_cols = ["_link", "date_local", "session", "asset", "state", "net_pnl", "risk_reward"]
-            for col in display_cols:
-                if col not in df_exec.columns:
-                    df_exec[col] = None
-            st.dataframe(
-                df_exec[display_cols],
-                column_config={
-                    "date_local": st.column_config.TextColumn("Date"),
-                    "session": st.column_config.TextColumn("Session"),
-                    "asset": st.column_config.TextColumn("Asset"),
-                    "state": st.column_config.TextColumn("State"),
-                    "net_pnl": st.column_config.NumberColumn("PnL"),
-                    "risk_reward": st.column_config.NumberColumn("R:R"),
-                    "_link": st.column_config.LinkColumn("Open", display_text="Open"),
-                },
-                use_container_width=True,
-                hide_index=True,
-            )
+    # --- Объединённая лента: stages + notes, сортировка по времени ---
+    entries: List[Dict[str, Any]] = []
+    for s in analysis_stages:
+        entries.append({"_kind": "stage", **s})
+    for n in analysis_notes:
+        entries.append({"_kind": "note", **n})
+    entries.sort(key=lambda e: (e.get("time_local") or ""))
+
+    if not entries:
+        with st.container(border=True):
+            st.caption("No entries yet.")
+    else:
+        _STAGE_LABEL = {
+            "pre-market": "Pre-Market",
+            "plan": "Plan",
+            "post-market": "Post-Market",
+        }
+        for entry in entries:
+            kind = entry["_kind"]
+            with st.chat_message("user"):
+                hdr_col, del_col = st.columns([0.9, 0.1])
+
+                if kind == "stage":
+                    badge = _STAGE_LABEL.get(entry.get("type", ""), entry.get("type", ""))
+                    time_display = (entry.get("time_local") or "")[:5]
+                    hdr_col.markdown(f"**[{badge}]** {time_display}")
+
+                    body = entry.get("summary") or ""
+                    if body and body != "(image)":
+                        st.markdown(body)
+
+                    stage_images = list_images(analysis_stage_id=entry["id"])
+                    if stage_images:
+                        img_cols = st.columns(min(len(stage_images), 2))
+                        for i, img in enumerate(stage_images):
+                            img_cols[i % 2].image(img["image_url"], use_container_width=True)
+
+                    if del_col.button("✕", key=f"_del_stage_{entry['id']}"):
+                        delete_analysis_stage(entry["id"])
+                        st.cache_data.clear()
+                        st.rerun()
+
+                else:  # note
+                    count = note_counts.get(entry["id"], 1)
+                    is_shared = count > 1
+                    badge_extra = f"  ·  🔗 {count} analyses" if is_shared else ""
+                    time_display = (entry.get("time_local") or "")[:5]
+                    hdr_col.markdown(f"**[Note]** {time_display}{badge_extra}")
+
+                    body = entry.get("body") or ""
+                    if body and body != "(image)":
+                        st.markdown(body)
+
+                    note_images = list_images(note_id=entry["id"])
+                    if note_images:
+                        img_cols = st.columns(min(len(note_images), 2))
+                        for i, img in enumerate(note_images):
+                            img_cols[i % 2].image(img["image_url"], use_container_width=True)
+
+                    if del_col.button(
+                        "✕",
+                        key=f"_del_anote_{entry['id']}",
+                        help="Remove from this analysis" if is_shared else "Delete",
+                    ):
+                        if is_shared:
+                            detach_note_from_analysis(analysis_id, entry["id"])
+                        else:
+                            delete_note(entry["id"], user_id)
+                        st.cache_data.clear()
+                        st.rerun()
+
+    # --- Link existing observation ---
+    if not is_new_analysis:
+        _all_notes = list_notes(user_id)
+        _attached_ids = {n["id"] for n in analysis_notes}
+        _linkable = [n for n in _all_notes if n["id"] not in _attached_ids]
+        if _linkable:
+            with st.expander("Link existing observation"):
+                _search_key = f"_link_asearch_{sk}"
+                _search = st.text_input(
+                    "", key=_search_key, placeholder="Search...", label_visibility="collapsed"
+                )
+                _visible = [
+                    n for n in _linkable
+                    if not _search or _search.lower() in (n.get("body") or "").lower()
+                ][:15]
+                for ln in _visible:
+                    c_text, c_btn = st.columns([0.9, 0.1])
+                    _ln_count = note_counts.get(ln["id"], 0)
+                    _meta = f"{ln.get('date_local') or ''}  ·  {ln.get('category') or '—'}"
+                    if _ln_count > 0:
+                        _meta += f"  ·  🔗 {_ln_count} {'analysis' if _ln_count == 1 else 'analyses'}"
+                    c_text.caption(_meta)
+                    c_text.markdown((ln.get("body") or "")[:80])
+                    if c_btn.button("🔗", key=f"_link_anote_{ln['id']}", use_container_width=True):
+                        attach_note_to_analysis(analysis_id, ln["id"])
+                        st.cache_data.clear()
+                        st.rerun()
+
+    # --- Один chat_prompt с pills выбора типа ---
+    _type_key = f"{sk}_entry_type"
+    if _type_key not in st.session_state:
+        st.session_state[_type_key] = "Pre-Market"
+
+    st.pills(
+        "Type",
+        ["Pre-Market", "Plan", "Post-Market", "Note"],
+        key=_type_key,
+        label_visibility="collapsed",
+    )
+
+    resp = chat_prompt(
+        name=f"journal_{sk}",
+        key=f"journal_{sk}",
+        placeholder="Add entry...",
+        main_bottom=False,
+    )
+
+    if resp and (resp.text or resp.images):
+        if is_new_analysis:
+            st.warning("Save the analysis first to add entries.")
         else:
-            st.info("No trades for this analysis.")
+            entry_type = st.session_state.get(_type_key, "Pre-Market")
+            if entry_type == "Note":
+                note_payload = {
+                    "body": (resp.text or "").strip() or "(image)",
+                    "category": "Observation",
+                    "date_local": date.today().isoformat(),
+                    "time_local": _dt.now().strftime("%H:%M:%S"),
+                }
+                with transaction() as conn:
+                    new_note_id = create_note(user_id, note_payload, conn=conn)
+                    attach_note_to_analysis(analysis_id, new_note_id, conn=conn)
+                    for img in (resp.images or []):
+                        data_uri = f"data:{img.type};{img.format},{img.data}"
+                        image_id = add_image(data_uri, conn=conn)
+                        attach_image_to_note(new_note_id, image_id, conn=conn)
+            else:
+                _type_map = {
+                    "Pre-Market": "pre-market",
+                    "Plan": "plan",
+                    "Post-Market": "post-market",
+                }
+                with transaction() as conn:
+                    stage_id = add_analysis_stage(
+                        {
+                            "analysis_id": analysis_id,
+                            "type": _type_map[entry_type],
+                            "summary": (resp.text or "").strip() or "(image)",
+                            "time_local": _dt.now().strftime("%H:%M:%S"),
+                        },
+                        conn=conn,
+                    )
+                    for img in (resp.images or []):
+                        data_uri = f"data:{img.type};{img.format},{img.data}"
+                        image_id = add_image(data_uri, conn=conn)
+                        attach_image_to_analysis_stage(stage_id, image_id, conn=conn)
+            st.cache_data.clear()
+            st.rerun()
 
-post_analysis_values, post_values = render_post_stage(
-    stage_data=defaults["stages"].get("post-market"),
-    defaults=defaults["analysis"],
-    visible="post-market" in visible,
-    expanded=(selected_stage == "post-market"),
-    state_key=f"{state_key}_post",
-)
+# --- Мета-колонка ---
+with meta_col:
+    # Дата
+    _default_date = parse_date(analysis.get("date_local")) or date.today()
+    date_val = st.date_input("Date", value=_default_date, key=f"{sk}_date", format="DD.MM.YYYY")
+
+    # Актив
+    _asset_val = analysis.get("asset") or ""
+    _asset_idx = assets.index(_asset_val) if _asset_val in assets else None
+    asset_val = st.selectbox(
+        "Asset",
+        assets,
+        index=_asset_idx,
+        placeholder="Select asset...",
+        key=f"{sk}_asset",
+    )
+
+    st.markdown(
+        "<hr style='margin:6px 0;border:0;border-top:1px solid rgba(49,51,63,.1)'>",
+        unsafe_allow_html=True,
+    )
+    st.caption("PRE-MARKET")
+
+    _daily_key = f"{sk}_daily_bias"
+    if _daily_key not in st.session_state:
+        st.session_state[_daily_key] = analysis.get("daily_bias")
+
+    daily_bias = st.pills(
+        "Daily bias",
+        DAILY_BIAS_VALUES,
+        key=_daily_key,
+        label_visibility="collapsed",
+    )
+
+    st.markdown(
+        "<hr style='margin:6px 0;border:0;border-top:1px solid rgba(49,51,63,.1)'>",
+        unsafe_allow_html=True,
+    )
+    st.caption("POST-MARKET")
+
+    _fact_key = f"{sk}_fact_bias"
+    if _fact_key not in st.session_state:
+        st.session_state[_fact_key] = analysis.get("fact_bias")
+
+    fact_bias = st.pills(
+        "Fact bias",
+        DAILY_BIAS_VALUES,
+        key=_fact_key,
+        label_visibility="collapsed",
+    )
 
 # --- Нижняя панель actions ---
-btn_back, btn_save, btn_delete, _ = st.columns([0.1, 0.1, 0.12, 0.68])
+st.divider()
+btn_back, btn_save, btn_delete, _ = st.columns([0.1, 0.1, 0.1, 0.7])
 if btn_back.button("← Analysis", width="stretch"):
     st.switch_page("pages/analysis.py")
 submitted = btn_save.button("Save", type="primary", width="stretch")
@@ -204,143 +339,142 @@ if not is_new_analysis:
         st.session_state["_ae_pending_delete"] = analysis_id
         st.rerun()
 
+# --- Секция трейдов (под actions, отдельный раздел) ---
+if not is_new_analysis:
+    st.divider()
+    st.caption("TRADES")
+
+    account_rows_all = cached_accounts(user_id)
+    setup_rows_all = cached_setups(user_id)
+    accounts_options = to_option_format(account_rows_all, formatter=lambda a: a.get("name", ""))
+    account_map = {a["id"]: a["name"] for a in account_rows_all}
+    setup_map = {s["id"]: s["name"] for s in setup_rows_all}
+    _default_acc_row = next((a for a in account_rows_all if not a.get("is_archived")), None)
+    _default_acc = _default_acc_row["id"] if _default_acc_row else None
+
+    trade_rows = list_trades(user_id, {"analysis_id": analysis_id})
+    if trade_rows:
+        df_exec = pd.DataFrame(trade_rows)
+        df_exec["result"] = df_exec.apply(
+            lambda r: calculate_trade_result(r.get("risk_reward"), r.get("is_missed")), axis=1
+        )
+        df_exec["_link"] = "/trade_editor?id=" + df_exec["id"].astype(str)
+        df_exec["account_name"] = df_exec["account_id"].map(account_map)
+        df_exec["setup_name"] = df_exec["setup_id"].map(setup_map)
+        df_exec["execution"] = df_exec["is_correct"].map({1: "✓", 0: "✗"})
+        display_cols = [
+            "_link", "date_local", "session", "asset", "trade_type",
+            "account_name", "setup_name", "status", "result",
+            "net_pnl", "risk_reward", "reward_percent", "execution",
+        ]
+        for col in display_cols:
+            if col not in df_exec.columns:
+                df_exec[col] = None
+        st.dataframe(
+            df_exec[display_cols],
+            column_config={
+                "_link": st.column_config.LinkColumn("", display_text="Open →"),
+                "date_local": st.column_config.TextColumn("Date"),
+                "session": st.column_config.TextColumn("Session"),
+                "asset": st.column_config.TextColumn("Asset"),
+                "trade_type": st.column_config.TextColumn("Type"),
+                "account_name": st.column_config.TextColumn("Account"),
+                "setup_name": st.column_config.TextColumn("Setup"),
+                "status": st.column_config.TextColumn("Status"),
+                "result": st.column_config.TextColumn("Result"),
+                "net_pnl": st.column_config.NumberColumn("PnL"),
+                "risk_reward": st.column_config.NumberColumn("R:R"),
+                "reward_percent": st.column_config.NumberColumn("R%", format="%.2f%%"),
+                "execution": st.column_config.TextColumn("Exec"),
+            },
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.caption("No trades yet.")
+
+    btn_create_trade, _ = st.columns([0.12, 0.88])
+    with btn_create_trade.popover("Create trade", type="primary", width="stretch"):
+        if not account_rows_all:
+            st.error("Create an account first.")
+        else:
+            pop_account = custom_selectbox(
+                "Account",
+                accounts_options,
+                value=_default_acc,
+                key=f"{sk}_pop_account",
+            )
+            if st.button("Go", type="primary", width=250, key=f"{sk}_pop_go"):
+                _now = _dt.now()
+                with transaction() as conn:
+                    new_id = create_trade(user_id, {
+                        "date_local": _now.date().isoformat(),
+                        "time_local": _now.strftime("%H:%M:%S"),
+                        "account_id": pop_account,
+                        "asset": asset_val or "",
+                        "analysis_id": analysis_id,
+                        "session": detect_trade_session(
+                            _now.date(),
+                            _now.time(),
+                            local_tz_label=local_tz,
+                        ),
+                        "local_tz": local_tz,
+                        "is_missed": 0,
+                    }, conn=conn)
+                st.cache_data.clear()
+                st.session_state["_new_trade_id"] = new_id
+                st.switch_page("pages/trade_editor.py")
+
 # --- Сохранение ---
 if submitted:
-    if pre_analysis_values and not pre_analysis_values.get("asset"):
+    if not asset_val:
         message_placeholder.error("Select an asset.")
         st.stop()
-    if pre_analysis_values and not pre_analysis_values.get("daily_bias"):
-        message_placeholder.error("Select a daily bias.")
-        st.stop()
-    if post_analysis_values and not post_analysis_values.get("fact_bias"):
-        message_placeholder.error("Select a fact bias.")
-        st.stop()
-    if post_analysis_values and not post_analysis_values.get("day_result"):
-        message_placeholder.error("Select a day result.")
-        st.stop()
 
-    analysis_payload: Dict[str, Any] = {"state": selected_stage}
-    if pre_analysis_values:
-        analysis_payload.update(pre_analysis_values)
-    if post_analysis_values:
-        analysis_payload.update(post_analysis_values)
+    # Авто-вычисление state
+    all_stages = list_analysis_stages(user_id, {"analysis_id": analysis_id}) if not is_new_analysis else []
+    stage_types = {s["type"] for s in all_stages}
+    trade_rows_for_state = list_trades(user_id, {"analysis_id": analysis_id}) if not is_new_analysis else []
+    trade_count = len(trade_rows_for_state)
+    computed_state = (
+        "post-market" if "post-market" in stage_types else
+        "execution" if trade_count > 0 else
+        "plan" if "plan" in stage_types else
+        "pre-market"
+    )
 
-    current_analysis_id = analysis_id
+    # Авто-вычисление day_result из net_pnl трейдов
+    completed = [
+        t for t in trade_rows_for_state
+        if t.get("net_pnl") is not None and not t.get("is_missed")
+    ]
+    if completed:
+        total_pnl = sum(t["net_pnl"] for t in completed)
+        computed_day_result = "profit" if total_pnl > 0 else "loss" if total_pnl < 0 else "null"
+    else:
+        computed_day_result = None
+
+    payload: Dict[str, Any] = {
+        "date_local": date_val.isoformat(),
+        "asset": asset_val,
+        "daily_bias": daily_bias,
+        "fact_bias": fact_bias,
+        "day_result": computed_day_result,
+        "state": computed_state,
+    }
+
     try:
-        with st.spinner("Saving..."):
-            with transaction() as conn:
-                if is_new_analysis:
-                    current_analysis_id = add_analysis(
-                        user_id, analysis_payload, conn=conn)
-                else:
-                    update_analysis(current_analysis_id, user_id,
-                                    analysis_payload, conn=conn)
-
-                if pre_values:
-                    pre_stage_id = pre_values["stage_id"]
-                    pre_values.update(
-                        {
-                            "analysis_id": current_analysis_id,
-                            "type": "pre-market",
-                        }
-                    )
-                    if pre_stage_id:
-                        update_analysis_stage(
-                            pre_stage_id, pre_values, conn=conn)
-                    else:
-                        pre_stage_id = add_analysis_stage(
-                            pre_values, conn=conn)
-
-                    persist_image_editor(
-                        attached_images=pre_values["charts"]["rows_source"],
-                        editor_rows=pre_values["charts"]["editor_value"],
-                        conn=conn,
-                        attach_image=lambda image_id, sid=pre_stage_id: attach_image_to_analysis_stage(
-                            sid, image_id, conn=conn
-                        ),
-                    )
-
-                if removed_plan_ids:
-                    for stage_id in removed_plan_ids:
-                        if not stage_id:
-                            continue
-                        delete_analysis_stage(stage_id, conn=conn)
-
-                for plan_form in plan_forms:
-                    charts_payload = plan_form.get("charts") or {}
-                    plan_stage_id = plan_form.get("stage_id")
-                    plan_payload = {
-                        "analysis_id": current_analysis_id,
-                        "type": "plan",
-                        "summary": plan_form.get("summary") or "",
-                    }
-                    if plan_stage_id:
-                        update_analysis_stage(
-                            plan_stage_id, plan_payload, conn=conn)
-                    else:
-                        plan_payload["time_local"] = (
-                            plan_form.get("time_local") or datetime.now()
-                        )
-                        plan_stage_id = add_analysis_stage(
-                            plan_payload, conn=conn)
-
-                    persist_image_editor(
-                        attached_images=charts_payload.get(
-                            "rows_source") or [],
-                        editor_rows=charts_payload.get("editor_value") or [],
-                        conn=conn,
-                        attach_image=lambda image_id, sid=plan_stage_id: attach_image_to_analysis_stage(
-                            sid, image_id, conn=conn
-                        ),
-                    )
-
-                if post_values:
-                    post_stage_id = post_values["stage_id"]
-                    post_values.update(
-                        {
-                            "analysis_id": current_analysis_id,
-                            "type": "post-market",
-                        }
-                    )
-                    if post_stage_id:
-                        update_analysis_stage(
-                            post_stage_id, post_values, conn=conn)
-                    else:
-                        post_values.update({"time_local": datetime.now()})
-                        post_stage_id = add_analysis_stage(
-                            post_values, conn=conn)
-
-                    persist_image_editor(
-                        attached_images=post_values["charts"]["rows_source"],
-                        editor_rows=post_values["charts"]["editor_value"],
-                        conn=conn,
-                        attach_image=lambda image_id, sid=post_stage_id: attach_image_to_analysis_stage(
-                            sid, image_id, conn=conn
-                        ),
-                    )
-                    base_note_ids = {
-                        note.get("id")
-                        for note in (post_values["notes"]["base_notes"] or [])
-                        if note.get("id") is not None
-                    }
-                    staged_note_ids = {
-                        int(nid) for nid in (post_values["notes"]["staged_note_ids"] or []) if nid is not None
-                    }
-                    for note_id in base_note_ids - staged_note_ids:
-                        detach_note_from_analysis_stage(
-                            post_stage_id, note_id, conn=conn)
-                    for note_id in staged_note_ids - base_note_ids:
-                        attach_note_to_analysis_stage(
-                            post_stage_id, note_id, conn=conn)
+        with transaction() as conn:
+            if is_new_analysis:
+                current_analysis_id = add_analysis(user_id, payload, conn=conn)
+            else:
+                update_analysis(analysis_id, user_id, payload, conn=conn)
+                current_analysis_id = analysis_id
 
         st.cache_data.clear()
-        st.toast(
-            "Analysis saved." if not is_new_analysis else "Analysis created.", icon="🔥")
+        st.toast("Analysis saved." if not is_new_analysis else "Analysis created.", icon="🔥")
         if is_new_analysis:
             st.query_params["id"] = str(current_analysis_id)
         st.rerun()
     except Exception as exc:
         message_placeholder.error(f"Failed to save analysis: {exc}")
-
-# --- Диалог заметок (одиночный уровень — допустимо на странице) ---
-render_note_manager()

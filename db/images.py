@@ -107,6 +107,7 @@ def list_images(
     *,
     trade_id: Optional[int] = None,
     analysis_stage_id: Optional[int] = None,
+    analysis_id: Optional[int] = None,
     setup_id: Optional[int] = None,
     note_id: Optional[int] = None,
     unattached: bool = False,
@@ -120,6 +121,9 @@ def list_images(
     if analysis_stage_id is not None:
         conditions.append("analysis_stage_id=?")
         params.append(analysis_stage_id)
+    if analysis_id is not None:
+        conditions.append("analysis_id=?")
+        params.append(analysis_id)
     if setup_id is not None:
         conditions.append("setup_id=?")
         params.append(setup_id)
@@ -129,6 +133,7 @@ def list_images(
     if unattached:
         conditions.append("trade_id IS NULL")
         conditions.append("analysis_stage_id IS NULL")
+        conditions.append("analysis_id IS NULL")
         conditions.append("setup_id IS NULL")
         conditions.append("note_id IS NULL")
 

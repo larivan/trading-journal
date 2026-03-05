@@ -292,17 +292,20 @@ CREATE TABLE IF NOT EXISTS images (
     caption           TEXT,
     trade_id          INTEGER,
     analysis_stage_id INTEGER,
+    analysis_id       INTEGER,
     setup_id          INTEGER,
     note_id           INTEGER,
     CHECK (
         (CASE WHEN trade_id IS NOT NULL THEN 1 ELSE 0 END) +
         (CASE WHEN analysis_stage_id IS NOT NULL THEN 1 ELSE 0 END) +
+        (CASE WHEN analysis_id IS NOT NULL THEN 1 ELSE 0 END) +
         (CASE WHEN setup_id IS NOT NULL THEN 1 ELSE 0 END) +
         (CASE WHEN note_id IS NOT NULL THEN 1 ELSE 0 END)
         <= 1
     ),
     FOREIGN KEY (trade_id)          REFERENCES trades(id)           ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (analysis_stage_id) REFERENCES analysis_stages(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (analysis_id)       REFERENCES analysis(id)        ON DELETE CASCADE,
     FOREIGN KEY (setup_id)          REFERENCES setups(id)          ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (note_id)           REFERENCES notes(id)           ON DELETE CASCADE ON UPDATE CASCADE
 );
@@ -310,6 +313,16 @@ CREATE TABLE IF NOT EXISTS images (
 -- =========================
 -- СВЯЗИ (отношения многие-ко-многим)
 -- =========================
+
+CREATE TABLE IF NOT EXISTS analysis_note_links (
+    analysis_id INTEGER NOT NULL,
+    note_id     INTEGER NOT NULL,
+    PRIMARY KEY (analysis_id, note_id),
+    FOREIGN KEY (analysis_id) REFERENCES analysis(id) ON DELETE CASCADE,
+    FOREIGN KEY (note_id)     REFERENCES notes(id)    ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_analysis_note_links_analysis ON analysis_note_links(analysis_id);
 
 CREATE TABLE IF NOT EXISTS analysis_notes (
     analysis_stage_id INTEGER,
@@ -350,6 +363,7 @@ CREATE INDEX IF NOT EXISTS idx_images_trade_id             ON images(trade_id);
 CREATE INDEX IF NOT EXISTS idx_images_analysis_stage_id    ON images(analysis_stage_id);
 CREATE INDEX IF NOT EXISTS idx_images_setup_id             ON images(setup_id);
 CREATE INDEX IF NOT EXISTS idx_images_note_id              ON images(note_id);
+CREATE INDEX IF NOT EXISTS idx_images_analysis_id          ON images(analysis_id);
 CREATE INDEX IF NOT EXISTS idx_trade_notes_note_id         ON trade_notes(note_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_notes_note_id      ON analysis_notes(note_id);
 """
@@ -371,28 +385,6 @@ def _execute_schema(conn) -> None:
     conn.commit()
 
 
-def _migrate_db() -> None:
-    """Apply incremental schema migrations for existing databases (idempotent)."""
-    conn = get_conn()
-    try:
-        migrations = [
-            "ALTER TABLE trades RENAME COLUMN estimation TO is_correct",
-            "ALTER TABLE trades DROP COLUMN state",
-            "ALTER TABLE trades DROP COLUMN emotional_problems",
-            "ALTER TABLE trades ADD COLUMN trade_type TEXT",
-            "ALTER TABLE trades ADD COLUMN mistake_types TEXT",
-            "ALTER TABLE user_settings ADD COLUMN mistake_types TEXT DEFAULT '[]'",
-        ]
-        for sql in migrations:
-            try:
-                conn.execute(sql)
-            except Exception:
-                pass  # already applied or not applicable
-        conn.commit()
-    finally:
-        conn.close()
-
-
 def init_db() -> None:
     """Create DB schema if not exists."""
     if not _USE_TURSO:
@@ -406,7 +398,6 @@ def init_db() -> None:
             conn.commit()
     finally:
         conn.close()
-    _migrate_db()
 
 
 if __name__ == "__main__":
