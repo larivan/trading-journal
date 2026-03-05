@@ -31,7 +31,6 @@ from db import (
     list_analysis_notes,
     list_analysis_stages,
     list_images,
-    list_notes,
     list_trades,
     transaction,
     update_analysis,
@@ -193,34 +192,6 @@ with side_col:
                             detach_note_from_analysis(analysis_id, entry["id"])
                         else:
                             delete_note(entry["id"], user_id)
-                        st.cache_data.clear()
-                        st.rerun()
-
-    # --- Link existing observation ---
-    if not is_new_analysis:
-        _all_notes = list_notes(user_id)
-        _attached_ids = {n["id"] for n in analysis_notes}
-        _linkable = [n for n in _all_notes if n["id"] not in _attached_ids]
-        if _linkable:
-            with st.expander("Link existing observation"):
-                _search_key = f"_link_asearch_{sk}"
-                _search = st.text_input(
-                    "", key=_search_key, placeholder="Search...", label_visibility="collapsed"
-                )
-                _visible = [
-                    n for n in _linkable
-                    if not _search or _search.lower() in (n.get("body") or "").lower()
-                ][:15]
-                for ln in _visible:
-                    c_text, c_btn = st.columns([0.9, 0.1])
-                    _ln_count = note_counts.get(ln["id"], 0)
-                    _meta = f"{ln.get('date_local') or ''}  ·  {ln.get('category') or '—'}"
-                    if _ln_count > 0:
-                        _meta += f"  ·  🔗 {_ln_count} {'analysis' if _ln_count == 1 else 'analyses'}"
-                    c_text.caption(_meta)
-                    c_text.markdown((ln.get("body") or "")[:80])
-                    if c_btn.button("🔗", key=f"_link_anote_{ln['id']}", use_container_width=True):
-                        attach_note_to_analysis(analysis_id, ln["id"])
                         st.cache_data.clear()
                         st.rerun()
 
