@@ -27,6 +27,7 @@ from db import (
     delete_analysis_stage,
     delete_note,
     detach_note_from_analysis,
+    update_analysis_stage,
     update_note,
     get_analysis,
     list_analysis_notes,
@@ -91,7 +92,8 @@ analysis_notes: List[Dict[str, Any]] = []
 note_counts: Dict[int, int] = {}
 
 if not is_new_analysis:
-    analysis_stages = list_analysis_stages(user_id, {"analysis_id": analysis_id})
+    analysis_stages = list_analysis_stages(
+        user_id, {"analysis_id": analysis_id})
     analysis_notes = list_analysis_notes(analysis_id)
     note_counts = count_notes_by_analysis(user_id)
 
@@ -103,7 +105,8 @@ if st.session_state.get("_ae_pending_delete"):
         c1, c2 = st.columns(2)
         if c1.button("Delete", type="primary", width="stretch"):
             try:
-                delete_analysis(st.session_state["_ae_pending_delete"], user_id)
+                delete_analysis(
+                    st.session_state["_ae_pending_delete"], user_id)
             except Exception as exc:
                 st.toast(f"Failed to delete: {exc}", icon="❌")
             st.session_state.pop("_ae_pending_delete", None)
@@ -148,24 +151,48 @@ with side_col:
                 hdr_col, edit_col, del_col = st.columns([0.8, 0.1, 0.1])
 
                 if kind == "stage":
-                    badge = _STAGE_LABEL.get(entry.get("type", ""), entry.get("type", ""))
+                    badge = _STAGE_LABEL.get(
+                        entry.get("type", ""), entry.get("type", ""))
                     time_display = (entry.get("time_local") or "")[:5]
                     hdr_col.markdown(f"**[{badge}]** {time_display}")
 
+                    _edit_skey = f"_editing_stage_{entry['id']}"
+                    if edit_col.button("✎", key=f"_edit_sbtn_{entry['id']}", help="Edit"):
+                        st.session_state[_edit_skey] = not st.session_state.get(
+                            _edit_skey, False)
+                        st.rerun()
+                    if del_col.button("✕", key=f"_del_stage_{entry['id']}"):
+                        delete_analysis_stage(entry["id"])
+                        st.cache_data.clear()
+                        st.rerun()
+
                     body = entry.get("summary") or ""
-                    if body and body != "(image)":
-                        st.markdown(body)
+                    if st.session_state.get(_edit_skey):
+                        new_body = st.text_area(
+                            "", value=body, key=f"_edit_sarea_{entry['id']}",
+                            label_visibility="collapsed",
+                        )
+                        save_col, cancel_col, _ = st.columns(
+                            [0.12, 0.12, 0.76])
+                        if save_col.button("Save", key=f"_edit_ssave_{entry['id']}", type="primary", width="stretch"):
+                            update_analysis_stage(
+                                entry["id"], {"summary": new_body})
+                            st.session_state.pop(_edit_skey, None)
+                            st.cache_data.clear()
+                            st.rerun()
+                        if cancel_col.button("Cancel", key=f"_edit_scancel_{entry['id']}", width="stretch"):
+                            st.session_state.pop(_edit_skey, None)
+                            st.rerun()
+                    else:
+                        if body and body != "(image)":
+                            st.markdown(body)
 
                     stage_images = list_images(analysis_stage_id=entry["id"])
                     if stage_images:
                         img_cols = st.columns(min(len(stage_images), 2))
                         for i, img in enumerate(stage_images):
-                            img_cols[i % 2].image(img["image_url"], use_container_width=True)
-
-                    if del_col.button("✕", key=f"_del_stage_{entry['id']}"):
-                        delete_analysis_stage(entry["id"])
-                        st.cache_data.clear()
-                        st.rerun()
+                            img_cols[i % 2].image(
+                                img["image_url"], use_container_width=True)
 
                 else:  # note
                     count = note_counts.get(entry["id"], 1)
@@ -176,7 +203,8 @@ with side_col:
 
                     _edit_key = f"_editing_anote_{entry['id']}"
                     if edit_col.button("✎", key=f"_edit_abtn_{entry['id']}", help="Edit"):
-                        st.session_state[_edit_key] = not st.session_state.get(_edit_key, False)
+                        st.session_state[_edit_key] = not st.session_state.get(
+                            _edit_key, False)
                         st.rerun()
                     if del_col.button(
                         "✕",
@@ -196,9 +224,11 @@ with side_col:
                             "", value=body, key=f"_edit_aarea_{entry['id']}",
                             label_visibility="collapsed",
                         )
-                        save_col, cancel_col, _ = st.columns([0.12, 0.12, 0.76])
+                        save_col, cancel_col, _ = st.columns(
+                            [0.12, 0.12, 0.76])
                         if save_col.button("Save", key=f"_edit_asave_{entry['id']}", type="primary"):
-                            update_note(entry["id"], user_id, {"body": new_body})
+                            update_note(entry["id"], user_id,
+                                        {"body": new_body})
                             st.session_state.pop(_edit_key, None)
                             st.cache_data.clear()
                             st.rerun()
@@ -213,7 +243,11 @@ with side_col:
                     if note_images:
                         img_cols = st.columns(min(len(note_images), 2))
                         for i, img in enumerate(note_images):
-                            img_cols[i % 2].image(img["image_url"], use_container_width=True)
+                            img_cols[i % 2].image(
+                                img["image_url"], use_container_width=True)
+
+                    st.markdown(
+                        "<style>.st-emotion-cache-1lq56da{flex: none;width: auto;}</style>", unsafe_allow_html=True)
 
     # --- Один chat_prompt с pills выбора типа ---
     _type_key = f"{sk}_entry_type"
@@ -248,7 +282,8 @@ with side_col:
                 }
                 with transaction() as conn:
                     new_note_id = create_note(user_id, note_payload, conn=conn)
-                    attach_note_to_analysis(analysis_id, new_note_id, conn=conn)
+                    attach_note_to_analysis(
+                        analysis_id, new_note_id, conn=conn)
                     for img in (resp.images or []):
                         data_uri = f"data:{img.type};{img.format},{img.data}"
                         image_id = add_image(data_uri, conn=conn)
@@ -272,7 +307,8 @@ with side_col:
                     for img in (resp.images or []):
                         data_uri = f"data:{img.type};{img.format},{img.data}"
                         image_id = add_image(data_uri, conn=conn)
-                        attach_image_to_analysis_stage(stage_id, image_id, conn=conn)
+                        attach_image_to_analysis_stage(
+                            stage_id, image_id, conn=conn)
             st.cache_data.clear()
             st.rerun()
 
@@ -280,7 +316,8 @@ with side_col:
 with meta_col:
     # Дата
     _default_date = parse_date(analysis.get("date_local")) or date.today()
-    date_val = st.date_input("Date", value=_default_date, key=f"{sk}_date", format="DD.MM.YYYY")
+    date_val = st.date_input("Date", value=_default_date,
+                             key=f"{sk}_date", format="DD.MM.YYYY")
 
     # Актив
     _asset_val = analysis.get("asset") or ""
@@ -349,10 +386,12 @@ if not is_new_analysis:
 
     account_rows_all = cached_accounts(user_id)
     setup_rows_all = cached_setups(user_id)
-    accounts_options = to_option_format(account_rows_all, formatter=lambda a: a.get("name", ""))
+    accounts_options = to_option_format(
+        account_rows_all, formatter=lambda a: a.get("name", ""))
     account_map = {a["id"]: a["name"] for a in account_rows_all}
     setup_map = {s["id"]: s["name"] for s in setup_rows_all}
-    _default_acc_row = next((a for a in account_rows_all if not a.get("is_archived")), None)
+    _default_acc_row = next(
+        (a for a in account_rows_all if not a.get("is_archived")), None)
     _default_acc = _default_acc_row["id"] if _default_acc_row else None
 
     trade_rows = list_trades(user_id, {"analysis_id": analysis_id})
@@ -437,9 +476,11 @@ if submitted:
         st.stop()
 
     # Авто-вычисление state
-    all_stages = list_analysis_stages(user_id, {"analysis_id": analysis_id}) if not is_new_analysis else []
+    all_stages = list_analysis_stages(
+        user_id, {"analysis_id": analysis_id}) if not is_new_analysis else []
     stage_types = {s["type"] for s in all_stages}
-    trade_rows_for_state = list_trades(user_id, {"analysis_id": analysis_id}) if not is_new_analysis else []
+    trade_rows_for_state = list_trades(
+        user_id, {"analysis_id": analysis_id}) if not is_new_analysis else []
     trade_count = len(trade_rows_for_state)
     computed_state = (
         "post-market" if "post-market" in stage_types else
@@ -477,7 +518,8 @@ if submitted:
                 current_analysis_id = analysis_id
 
         st.cache_data.clear()
-        st.toast("Analysis saved." if not is_new_analysis else "Analysis created.", icon="🔥")
+        st.toast(
+            "Analysis saved." if not is_new_analysis else "Analysis created.", icon="🔥")
         if is_new_analysis:
             st.query_params["id"] = str(current_analysis_id)
         st.rerun()

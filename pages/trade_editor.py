@@ -225,7 +225,8 @@ with side_col:
                     f"**{note.get('date_local', '')}  {time_display}  ·  {category}{badge}**")
                 _edit_key = f"_editing_note_{note['id']}"
                 if edit_col.button("✎", key=f"_edit_btn_{note['id']}", help="Edit"):
-                    st.session_state[_edit_key] = not st.session_state.get(_edit_key, False)
+                    st.session_state[_edit_key] = not st.session_state.get(
+                        _edit_key, False)
                     st.rerun()
                 if del_col.button("✕", key=f"_del_note_{note['id']}",
                                   help="Remove from this trade" if is_shared else "Delete"):
@@ -242,12 +243,12 @@ with side_col:
                         label_visibility="collapsed",
                     )
                     save_col, cancel_col, _ = st.columns([0.12, 0.12, 0.76])
-                    if save_col.button("Save", key=f"_edit_save_{note['id']}", type="primary"):
+                    if save_col.button("Save", key=f"_edit_save_{note['id']}", type="primary", width="stretch"):
                         update_note(note["id"], user_id, {"body": new_body})
                         st.session_state.pop(_edit_key, None)
                         st.cache_data.clear()
                         st.rerun()
-                    if cancel_col.button("Cancel", key=f"_edit_cancel_{note['id']}"):
+                    if cancel_col.button("Cancel", key=f"_edit_cancel_{note['id']}", width="stretch"):
                         st.session_state.pop(_edit_key, None)
                         st.rerun()
                 else:
