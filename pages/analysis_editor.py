@@ -27,6 +27,7 @@ from db import (
     delete_analysis_stage,
     delete_note,
     detach_note_from_analysis,
+    update_note,
     get_analysis,
     list_analysis_notes,
     list_analysis_stages,
@@ -144,7 +145,7 @@ with side_col:
         for entry in entries:
             kind = entry["_kind"]
             with st.chat_message("user"):
-                hdr_col, del_col = st.columns([0.9, 0.1])
+                hdr_col, edit_col, del_col = st.columns([0.8, 0.1, 0.1])
 
                 if kind == "stage":
                     badge = _STAGE_LABEL.get(entry.get("type", ""), entry.get("type", ""))
@@ -173,16 +174,10 @@ with side_col:
                     time_display = (entry.get("time_local") or "")[:5]
                     hdr_col.markdown(f"**[Note]** {time_display}{badge_extra}")
 
-                    body = entry.get("body") or ""
-                    if body and body != "(image)":
-                        st.markdown(body)
-
-                    note_images = list_images(note_id=entry["id"])
-                    if note_images:
-                        img_cols = st.columns(min(len(note_images), 2))
-                        for i, img in enumerate(note_images):
-                            img_cols[i % 2].image(img["image_url"], use_container_width=True)
-
+                    _edit_key = f"_editing_anote_{entry['id']}"
+                    if edit_col.button("✎", key=f"_edit_abtn_{entry['id']}", help="Edit"):
+                        st.session_state[_edit_key] = not st.session_state.get(_edit_key, False)
+                        st.rerun()
                     if del_col.button(
                         "✕",
                         key=f"_del_anote_{entry['id']}",
@@ -194,6 +189,31 @@ with side_col:
                             delete_note(entry["id"], user_id)
                         st.cache_data.clear()
                         st.rerun()
+
+                    body = entry.get("body") or ""
+                    if st.session_state.get(_edit_key):
+                        new_body = st.text_area(
+                            "", value=body, key=f"_edit_aarea_{entry['id']}",
+                            label_visibility="collapsed",
+                        )
+                        save_col, cancel_col, _ = st.columns([0.12, 0.12, 0.76])
+                        if save_col.button("Save", key=f"_edit_asave_{entry['id']}", type="primary"):
+                            update_note(entry["id"], user_id, {"body": new_body})
+                            st.session_state.pop(_edit_key, None)
+                            st.cache_data.clear()
+                            st.rerun()
+                        if cancel_col.button("Cancel", key=f"_edit_acancel_{entry['id']}"):
+                            st.session_state.pop(_edit_key, None)
+                            st.rerun()
+                    else:
+                        if body and body != "(image)":
+                            st.markdown(body)
+
+                    note_images = list_images(note_id=entry["id"])
+                    if note_images:
+                        img_cols = st.columns(min(len(note_images), 2))
+                        for i, img in enumerate(note_images):
+                            img_cols[i % 2].image(img["image_url"], use_container_width=True)
 
     # --- Один chat_prompt с pills выбора типа ---
     _type_key = f"{sk}_entry_type"

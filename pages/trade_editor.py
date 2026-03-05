@@ -32,6 +32,7 @@ from db import (
     delete_note,
     delete_trade,
     detach_note_from_trade,
+    update_note,
     get_trade_by_id,
     list_images,
     list_notes,
@@ -214,7 +215,7 @@ with side_col:
     else:
         for note in reversed(trade_notes):
             with st.chat_message("user"):
-                hdr_col, del_col = st.columns([0.9, 0.1])
+                hdr_col, edit_col, del_col = st.columns([0.8, 0.1, 0.1])
                 time_display = (note.get("time_local") or "")[:5]
                 category = note.get("category") or "—"
                 count = note_counts.get(note["id"], 1)
@@ -222,6 +223,10 @@ with side_col:
                 badge = f"  ·  🔗 {count} trades" if is_shared else ""
                 hdr_col.markdown(
                     f"**{note.get('date_local', '')}  {time_display}  ·  {category}{badge}**")
+                _edit_key = f"_editing_note_{note['id']}"
+                if edit_col.button("✎", key=f"_edit_btn_{note['id']}", help="Edit"):
+                    st.session_state[_edit_key] = not st.session_state.get(_edit_key, False)
+                    st.rerun()
                 if del_col.button("✕", key=f"_del_note_{note['id']}",
                                   help="Remove from this trade" if is_shared else "Delete"):
                     if is_shared:
@@ -231,8 +236,23 @@ with side_col:
                     st.cache_data.clear()
                     st.rerun()
                 body = note.get("body") or ""
-                if body and body != "(image)":
-                    st.markdown(body)
+                if st.session_state.get(_edit_key):
+                    new_body = st.text_area(
+                        "", value=body, key=f"_edit_area_{note['id']}",
+                        label_visibility="collapsed",
+                    )
+                    save_col, cancel_col, _ = st.columns([0.12, 0.12, 0.76])
+                    if save_col.button("Save", key=f"_edit_save_{note['id']}", type="primary"):
+                        update_note(note["id"], user_id, {"body": new_body})
+                        st.session_state.pop(_edit_key, None)
+                        st.cache_data.clear()
+                        st.rerun()
+                    if cancel_col.button("Cancel", key=f"_edit_cancel_{note['id']}"):
+                        st.session_state.pop(_edit_key, None)
+                        st.rerun()
+                else:
+                    if body and body != "(image)":
+                        st.markdown(body)
                 note_images = list_images(note_id=note["id"])
                 if note_images:
                     img_cols = st.columns(min(len(note_images), 2))
