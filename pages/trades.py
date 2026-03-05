@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 import streamlit as st
 from db import create_trade, delete_trade, transaction
-from utils.cached_data import cached_accounts, cached_trades, filter_trades, page_mark
+from utils.cached_data import cached_accounts, cached_setups, cached_trades, filter_trades, page_mark
 from helpers import (
     parse_date,
     to_option_format,
@@ -46,11 +46,17 @@ EXECUTION_VARS = {
 }
 
 
-# --- Загружаем список счетов и ассеты ---
+# --- Загружаем список счетов, сетапов и ассетов ---
 account_rows_all = cached_accounts(user_id)
+setup_rows_all = cached_setups(user_id)
 assets_list = get_setting("assets", ASSETS_VALUES)
 accounts = to_option_format(
     account_rows_all, formatter=lambda acc: f"{acc['name']}")
+setups = to_option_format(
+    setup_rows_all, formatter=lambda s: f"{s['name']}")
+account_map: Dict[int, str] = {acc["id"]: acc["name"]
+                               for acc in account_rows_all}
+setup_map: Dict[int, str] = {s["id"]: s["name"] for s in setup_rows_all}
 
 # === ВЕРХНЯЯ ПАНЕЛЬ С ФИЛЬТРАМИ ПЕРИОДОВ ===
 period_col, _ = st.columns([0.7, 0.3], vertical_alignment="bottom")
@@ -76,7 +82,7 @@ selected_key = label_to_key.get(selected_label, "today")
 
 if selected_key == "custom":
     with st.container():
-        fc1, fc2, fc3, fc4, fc5, fc6, fc7, fc8 = st.columns(8)
+        fc1, fc2, fc3, fc4, fc5, fc6, fc7, fc8, fc9 = st.columns(9)
         date_range = fc1.date_input(
             "Date Range",
             value=(
@@ -109,19 +115,25 @@ if selected_key == "custom":
             placeholder="All",
             index=None,
         )
-        status = fc6.selectbox(
+        with fc6:
+            setup_filter = custom_selectbox(
+                "Setup",
+                setups,
+                placeholder="All",
+            )
+        status = fc7.selectbox(
             "Status",
             TRADE_STATUS_VALUES,
             placeholder="All",
             index=None,
         )
-        result = fc7.selectbox(
+        result = fc8.selectbox(
             "Result",
             TRADE_RESULT_VALUES,
             placeholder="All",
             index=None,
         )
-        execution = fc8.selectbox(
+        execution = fc9.selectbox(
             "Execution",
             list(EXECUTION_VARS.values()),
             placeholder="All",
@@ -130,6 +142,8 @@ if selected_key == "custom":
 
     if account_id:
         filter["account_id"] = account_id
+    if setup_filter:
+        filter["setup_id"] = setup_filter
     if status:
         filter["status"] = status
     if result:
@@ -171,9 +185,13 @@ else:
         axis=1,
     )
     df["_link"] = "/trade_editor?id=" + df["id"].astype(str)
+    df["account_name"] = df["account_id"].map(account_map)
+    df["setup_name"] = df["setup_id"].map(setup_map)
+    df["execution"] = df["is_correct"].map({1: "✓", 0: "✗"})
 
-    display_cols = ["_link", "date_local", "session",
-                    "asset", "trade_type", "status", "result", "net_pnl", "risk_reward"]
+    display_cols = ["_link", "date_local", "session", "asset", "trade_type",
+                    "account_name", "setup_name", "status", "result",
+                    "net_pnl", "risk_reward", "reward_percent", "execution"]
     for col in display_cols:
         if col not in df.columns:
             df[col] = None
@@ -185,11 +203,15 @@ else:
             "session": st.column_config.TextColumn("Session"),
             "asset": st.column_config.TextColumn("Asset"),
             "trade_type": st.column_config.TextColumn("Type"),
+            "account_name": st.column_config.TextColumn("Account"),
+            "setup_name": st.column_config.TextColumn("Setup"),
             "status": st.column_config.TextColumn("Status"),
             "result": st.column_config.TextColumn("Result"),
             "net_pnl": st.column_config.NumberColumn("PnL"),
             "risk_reward": st.column_config.NumberColumn("R:R"),
-            "_link": st.column_config.LinkColumn("Open", display_text="Open"),
+            "reward_percent": st.column_config.NumberColumn("R%", format="%.2f%%"),
+            "execution": st.column_config.TextColumn("Exec"),
+            "_link": st.column_config.LinkColumn("", display_text="Open →"),
         },
         selection_mode="multi-row",
         on_select="rerun",
