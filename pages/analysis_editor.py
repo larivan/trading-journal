@@ -147,8 +147,8 @@ with side_col:
         }
         for entry in entries:
             kind = entry["_kind"]
-            with st.chat_message("user"):
-                hdr_col, edit_col, del_col = st.columns([0.8, 0.1, 0.1])
+            with st.container(border=True):
+                hdr_col, actions_col = st.columns([0.85, 0.15])
 
                 if kind == "stage":
                     badge = _STAGE_LABEL.get(
@@ -157,11 +157,12 @@ with side_col:
                     hdr_col.markdown(f"**[{badge}]** {time_display}")
 
                     _edit_skey = f"_editing_stage_{entry['id']}"
-                    if edit_col.button("✎", key=f"_edit_sbtn_{entry['id']}", help="Edit"):
+                    edit_col, del_col = actions_col.columns(2, gap="small")
+                    if edit_col.button("✎", key=f"_edit_sbtn_{entry['id']}", help="Edit", use_container_width=True):
                         st.session_state[_edit_skey] = not st.session_state.get(
                             _edit_skey, False)
                         st.rerun()
-                    if del_col.button("✕", key=f"_del_stage_{entry['id']}"):
+                    if del_col.button("✕", key=f"_del_stage_{entry['id']}", use_container_width=True):
                         delete_analysis_stage(entry["id"])
                         st.cache_data.clear()
                         st.rerun()
@@ -202,7 +203,8 @@ with side_col:
                     hdr_col.markdown(f"**[Note]** {time_display}{badge_extra}")
 
                     _edit_key = f"_editing_anote_{entry['id']}"
-                    if edit_col.button("✎", key=f"_edit_abtn_{entry['id']}", help="Edit"):
+                    edit_col, del_col = actions_col.columns(2, gap="small")
+                    if edit_col.button("✎", key=f"_edit_abtn_{entry['id']}", help="Edit", use_container_width=True):
                         st.session_state[_edit_key] = not st.session_state.get(
                             _edit_key, False)
                         st.rerun()
@@ -210,6 +212,7 @@ with side_col:
                         "✕",
                         key=f"_del_anote_{entry['id']}",
                         help="Remove from this analysis" if is_shared else "Delete",
+                        use_container_width=True,
                     ):
                         if is_shared:
                             detach_note_from_analysis(analysis_id, entry["id"])
@@ -245,9 +248,6 @@ with side_col:
                         for i, img in enumerate(note_images):
                             img_cols[i % 2].image(
                                 img["image_url"], use_container_width=True)
-
-                    st.markdown(
-                        "<style>.st-emotion-cache-1lq56da{flex: none;width: auto;}</style>", unsafe_allow_html=True)
 
     # --- Один chat_prompt с pills выбора типа ---
     _type_key = f"{sk}_entry_type"

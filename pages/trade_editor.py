@@ -214,8 +214,8 @@ with side_col:
             st.caption("No comments yet. Send your first one below.")
     else:
         for note in reversed(trade_notes):
-            with st.chat_message("user"):
-                hdr_col, edit_col, del_col = st.columns([0.8, 0.1, 0.1])
+            with st.container(border=True):
+                hdr_col, actions_col = st.columns([0.85, 0.15])
                 time_display = (note.get("time_local") or "")[:5]
                 category = note.get("category") or "—"
                 count = note_counts.get(note["id"], 1)
@@ -224,12 +224,14 @@ with side_col:
                 hdr_col.markdown(
                     f"**{note.get('date_local', '')}  {time_display}  ·  {category}{badge}**")
                 _edit_key = f"_editing_note_{note['id']}"
-                if edit_col.button("✎", key=f"_edit_btn_{note['id']}", help="Edit"):
+                edit_col, del_col = actions_col.columns(2, gap="small")
+                if edit_col.button("✎", key=f"_edit_btn_{note['id']}", help="Edit", use_container_width=True):
                     st.session_state[_edit_key] = not st.session_state.get(
                         _edit_key, False)
                     st.rerun()
                 if del_col.button("✕", key=f"_del_note_{note['id']}",
-                                  help="Remove from this trade" if is_shared else "Delete"):
+                                  help="Remove from this trade" if is_shared else "Delete",
+                                  use_container_width=True):
                     if is_shared:
                         detach_note_from_trade(trade_id, note["id"])
                     else:
@@ -260,8 +262,6 @@ with side_col:
                     for i, ch in enumerate(note_images):
                         img_cols[i % 2].image(
                             ch["image_url"], use_container_width=True)
-                st.markdown(
-                    "<style>.st-emotion-cache-1lq56da{flex: none;width: auto;}</style>", unsafe_allow_html=True)
 
     if trade_id:
         _all_notes = list_notes(user_id)
