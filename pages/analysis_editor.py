@@ -250,13 +250,26 @@ with side_col:
                                 img["image_url"], use_container_width=True)
 
     # --- Один chat_prompt с pills выбора типа ---
+    _STAGE_TYPE_ORDER = {"pre-market": 0, "plan": 1, "post-market": 2}
+    _STAGE_LABEL_MAP = [("Pre-Market", "pre-market"), ("Plan", "plan"), ("Post-Market", "post-market")]
+    _existing_orders = [
+        _STAGE_TYPE_ORDER[s["type"]]
+        for s in analysis_stages
+        if s.get("type") in _STAGE_TYPE_ORDER
+    ]
+    _min_order = max(_existing_orders) if _existing_orders else 0
+    _available_pills = [
+        label for label, key in _STAGE_LABEL_MAP
+        if _STAGE_TYPE_ORDER[key] >= _min_order
+    ] + ["Note"]
+
     _type_key = f"{sk}_entry_type"
-    if _type_key not in st.session_state:
-        st.session_state[_type_key] = "Pre-Market"
+    if st.session_state.get(_type_key) not in _available_pills:
+        st.session_state[_type_key] = _available_pills[0]
 
     st.pills(
         "Type",
-        ["Pre-Market", "Plan", "Post-Market", "Note"],
+        _available_pills,
         key=_type_key,
         label_visibility="collapsed",
     )
