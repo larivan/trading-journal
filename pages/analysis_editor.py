@@ -18,10 +18,7 @@ from db import (
     add_analysis_stage,
     add_image,
     attach_image_to_analysis_stage,
-    attach_image_to_note,
-    attach_note_to_analysis,
     count_notes_by_analysis,
-    create_note,
     create_trade,
     delete_analysis,
     delete_analysis_stage,
@@ -36,6 +33,12 @@ from db import (
     list_trades,
     transaction,
     update_analysis,
+)
+from components.editor_ui import (
+    render_delete_dialog,
+    render_editor_actions,
+    render_entry_card,
+    section_divider,
 )
 from helpers import calculate_trade_result, custom_selectbox, parse_date, to_option_format
 from utils.auth import get_current_user_id, get_setting
@@ -98,25 +101,13 @@ if not is_new_analysis:
     note_counts = count_notes_by_analysis(user_id)
 
 # --- Диалог подтверждения удаления ---
-if st.session_state.get("_ae_pending_delete"):
-    @st.dialog("Delete analysis")
-    def _confirm_delete() -> None:
-        st.warning("Delete this analysis? This cannot be undone.")
-        c1, c2 = st.columns(2)
-        if c1.button("Delete", type="primary", width="stretch"):
-            try:
-                delete_analysis(
-                    st.session_state["_ae_pending_delete"], user_id)
-            except Exception as exc:
-                st.toast(f"Failed to delete: {exc}", icon="❌")
-            st.session_state.pop("_ae_pending_delete", None)
-            st.cache_data.clear()
-            st.switch_page("pages/analysis.py")
-        if c2.button("Cancel", width="stretch"):
-            st.session_state.pop("_ae_pending_delete", None)
-            st.rerun()
-
-    _confirm_delete()
+render_delete_dialog(
+    pending_key="_ae_pending_delete",
+    entity_label="analysis",
+    delete_fn=delete_analysis,
+    user_id=user_id,
+    redirect_page="pages/analysis.py",
+)
 
 
 # =====================================================================
@@ -147,107 +138,40 @@ with side_col:
         }
         for entry in entries:
             kind = entry["_kind"]
-            with st.container(border=True):
-                hdr_col, actions_col = st.columns([0.85, 0.15])
-
-                if kind == "stage":
-                    badge = _STAGE_LABEL.get(
-                        entry.get("type", ""), entry.get("type", ""))
-                    time_display = (entry.get("time_local") or "")[:5]
-                    hdr_col.markdown(f"**[{badge}]** {time_display}")
-
-                    _edit_skey = f"_editing_stage_{entry['id']}"
-                    edit_col, del_col = actions_col.columns(2, gap="small")
-                    if edit_col.button("✎", key=f"_edit_sbtn_{entry['id']}", help="Edit", use_container_width=True):
-                        st.session_state[_edit_skey] = not st.session_state.get(
-                            _edit_skey, False)
-                        st.rerun()
-                    if del_col.button("✕", key=f"_del_stage_{entry['id']}", use_container_width=True):
-                        delete_analysis_stage(entry["id"])
-                        st.cache_data.clear()
-                        st.rerun()
-
-                    body = entry.get("summary") or ""
-                    if st.session_state.get(_edit_skey):
-                        new_body = st.text_area(
-                            "", value=body, key=f"_edit_sarea_{entry['id']}",
-                            label_visibility="collapsed",
-                        )
-                        save_col, cancel_col, _ = st.columns(
-                            [0.12, 0.12, 0.76])
-                        if save_col.button("Save", key=f"_edit_ssave_{entry['id']}", type="primary", width="stretch"):
-                            update_analysis_stage(
-                                entry["id"], {"summary": new_body})
-                            st.session_state.pop(_edit_skey, None)
-                            st.cache_data.clear()
-                            st.rerun()
-                        if cancel_col.button("Cancel", key=f"_edit_scancel_{entry['id']}", width="stretch"):
-                            st.session_state.pop(_edit_skey, None)
-                            st.rerun()
-                    else:
-                        if body and body != "(image)":
-                            st.markdown(body)
-
-                    stage_images = list_images(analysis_stage_id=entry["id"])
-                    if stage_images:
-                        img_cols = st.columns(min(len(stage_images), 2))
-                        for i, img in enumerate(stage_images):
-                            img_cols[i % 2].image(
-                                img["image_url"], use_container_width=True)
-
-                else:  # note
-                    count = note_counts.get(entry["id"], 1)
-                    is_shared = count > 1
-                    badge_extra = f"  ·  🔗 {count} analyses" if is_shared else ""
-                    time_display = (entry.get("time_local") or "")[:5]
-                    hdr_col.markdown(f"**[Note]** {time_display}{badge_extra}")
-
-                    _edit_key = f"_editing_anote_{entry['id']}"
-                    edit_col, del_col = actions_col.columns(2, gap="small")
-                    if edit_col.button("✎", key=f"_edit_abtn_{entry['id']}", help="Edit", use_container_width=True):
-                        st.session_state[_edit_key] = not st.session_state.get(
-                            _edit_key, False)
-                        st.rerun()
-                    if del_col.button(
-                        "✕",
-                        key=f"_del_anote_{entry['id']}",
-                        help="Remove from this analysis" if is_shared else "Delete",
-                        use_container_width=True,
-                    ):
-                        if is_shared:
-                            detach_note_from_analysis(analysis_id, entry["id"])
-                        else:
-                            delete_note(entry["id"], user_id)
-                        st.cache_data.clear()
-                        st.rerun()
-
-                    body = entry.get("body") or ""
-                    if st.session_state.get(_edit_key):
-                        new_body = st.text_area(
-                            "", value=body, key=f"_edit_aarea_{entry['id']}",
-                            label_visibility="collapsed",
-                        )
-                        save_col, cancel_col, _ = st.columns(
-                            [0.12, 0.12, 0.76])
-                        if save_col.button("Save", key=f"_edit_asave_{entry['id']}", type="primary"):
-                            update_note(entry["id"], user_id,
-                                        {"body": new_body})
-                            st.session_state.pop(_edit_key, None)
-                            st.cache_data.clear()
-                            st.rerun()
-                        if cancel_col.button("Cancel", key=f"_edit_acancel_{entry['id']}"):
-                            st.session_state.pop(_edit_key, None)
-                            st.rerun()
-                    else:
-                        if body and body != "(image)":
-                            st.markdown(body)
-
-                    note_images = list_images(note_id=entry["id"])
-                    if note_images:
-                        img_cols = st.columns(min(len(note_images), 2))
-                        for i, img in enumerate(note_images):
-                            img_cols[i % 2].image(
-                                img["image_url"], use_container_width=True)
+            if kind == "stage":
+                badge = "[" + _STAGE_LABEL.get(entry.get("type", ""), entry.get("type", "")) + "]"
+                time_display = (entry.get("time_local") or "")[:5]
+                stage_images = list_images(analysis_stage_id=entry["id"])
+                render_entry_card(
+                    entry_id=entry["id"],
+                    badge=badge,
+                    time_display=time_display,
+                    body=entry.get("summary") or "",
+                    images=stage_images,
+                    on_save=lambda new_body, eid=entry["id"]: update_analysis_stage(eid, {"summary": new_body}),
+                    on_delete=lambda eid=entry["id"]: delete_analysis_stage(eid),
+                    key_prefix="stage",
+                )
+            else:  # note
+                count = note_counts.get(entry["id"], 1)
+                is_shared = count > 1
+                badge_extra = f"  ·  🔗 {count} analyses" if is_shared else ""
+                time_display = (entry.get("time_local") or "")[:5]
+                note_images = list_images(note_id=entry["id"])
+                render_entry_card(
+                    entry_id=entry["id"],
+                    badge=f"[Note]{badge_extra}",
+                    time_display=time_display,
+                    body=entry.get("body") or "",
+                    images=note_images,
+                    on_save=lambda new_body, eid=entry["id"]: update_note(eid, user_id, {"body": new_body}),
+                    on_delete=lambda eid=entry["id"], shared=is_shared: (
+                        detach_note_from_analysis(analysis_id, eid) if shared
+                        else delete_note(eid, user_id)
+                    ),
+                    delete_help="Remove from this analysis" if is_shared else "Delete",
+                    key_prefix="anote",
+                )
 
     # --- Один chat_prompt с pills выбора типа ---
     _STAGE_TYPE_ORDER = {"pre-market": 0, "plan": 1, "post-market": 2}
@@ -261,7 +185,7 @@ with side_col:
     _available_pills = [
         label for label, key in _STAGE_LABEL_MAP
         if _STAGE_TYPE_ORDER[key] >= _min_order
-    ] + ["Note"]
+    ]
 
     _type_key = f"{sk}_entry_type"
     if st.session_state.get(_type_key) not in _available_pills:
@@ -286,42 +210,26 @@ with side_col:
             st.warning("Save the analysis first to add entries.")
         else:
             entry_type = st.session_state.get(_type_key, "Pre-Market")
-            if entry_type == "Note":
-                note_payload = {
-                    "body": (resp.text or "").strip() or "(image)",
-                    "category": "Observation",
-                    "date_local": date.today().isoformat(),
-                    "time_local": _dt.now().strftime("%H:%M:%S"),
-                }
-                with transaction() as conn:
-                    new_note_id = create_note(user_id, note_payload, conn=conn)
-                    attach_note_to_analysis(
-                        analysis_id, new_note_id, conn=conn)
-                    for img in (resp.images or []):
-                        data_uri = f"data:{img.type};{img.format},{img.data}"
-                        image_id = add_image(data_uri, conn=conn)
-                        attach_image_to_note(new_note_id, image_id, conn=conn)
-            else:
-                _type_map = {
-                    "Pre-Market": "pre-market",
-                    "Plan": "plan",
-                    "Post-Market": "post-market",
-                }
-                with transaction() as conn:
-                    stage_id = add_analysis_stage(
-                        {
-                            "analysis_id": analysis_id,
-                            "type": _type_map[entry_type],
-                            "summary": (resp.text or "").strip() or "(image)",
-                            "time_local": _dt.now().strftime("%H:%M:%S"),
-                        },
-                        conn=conn,
-                    )
-                    for img in (resp.images or []):
-                        data_uri = f"data:{img.type};{img.format},{img.data}"
-                        image_id = add_image(data_uri, conn=conn)
-                        attach_image_to_analysis_stage(
-                            stage_id, image_id, conn=conn)
+            _type_map = {
+                "Pre-Market": "pre-market",
+                "Plan": "plan",
+                "Post-Market": "post-market",
+            }
+            with transaction() as conn:
+                stage_id = add_analysis_stage(
+                    {
+                        "analysis_id": analysis_id,
+                        "type": _type_map[entry_type],
+                        "summary": (resp.text or "").strip() or "(image)",
+                        "time_local": _dt.now().strftime("%H:%M:%S"),
+                    },
+                    conn=conn,
+                )
+                for img in (resp.images or []):
+                    data_uri = f"data:{img.type};{img.format},{img.data}"
+                    image_id = add_image(data_uri, conn=conn)
+                    attach_image_to_analysis_stage(
+                        stage_id, image_id, conn=conn)
             st.cache_data.clear()
             st.rerun()
 
@@ -343,10 +251,7 @@ with meta_col:
         key=f"{sk}_asset",
     )
 
-    st.markdown(
-        "<hr style='margin:6px 0;border:0;border-top:1px solid rgba(49,51,63,.1)'>",
-        unsafe_allow_html=True,
-    )
+    section_divider()
     st.caption("PRE-MARKET")
 
     _daily_key = f"{sk}_daily_bias"
@@ -360,10 +265,7 @@ with meta_col:
         label_visibility="collapsed",
     )
 
-    st.markdown(
-        "<hr style='margin:6px 0;border:0;border-top:1px solid rgba(49,51,63,.1)'>",
-        unsafe_allow_html=True,
-    )
+    section_divider()
     st.caption("POST-MARKET")
 
     _fact_key = f"{sk}_fact_bias"
@@ -379,18 +281,12 @@ with meta_col:
 
 # --- Нижняя панель actions ---
 st.divider()
-btn_back, btn_save, btn_delete, _ = st.columns([0.1, 0.1, 0.1, 0.7])
-if btn_back.button("← Back", width="stretch"):
-    back_page = st.session_state.pop("_back_page", "pages/analysis.py")
-    back_params = st.session_state.pop("_back_params", {})
-    if back_params:
-        st.session_state["_returning_params"] = back_params
-    st.switch_page(back_page)
-submitted = btn_save.button("Save", type="primary", width="stretch")
-if not is_new_analysis:
-    if btn_delete.button("Delete", type="secondary", width="stretch"):
-        st.session_state["_ae_pending_delete"] = analysis_id
-        st.rerun()
+submitted = render_editor_actions(
+    is_new=is_new_analysis,
+    pending_delete_key="_ae_pending_delete",
+    entity_id=analysis_id,
+    default_back_page="pages/analysis.py",
+)
 
 # --- Секция трейдов (под actions, отдельный раздел) ---
 if not is_new_analysis:

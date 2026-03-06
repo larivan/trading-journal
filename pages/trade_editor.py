@@ -7,6 +7,12 @@ from typing import Any, Dict, Optional
 import streamlit as st
 from streamlit_chat_prompt import prompt as chat_prompt
 
+from components.editor_ui import (
+    render_delete_dialog,
+    render_editor_actions,
+    render_entry_card,
+    section_divider,
+)
 from components.image_editor import persist_image_editor, render_image_editor
 from components.trade_manager.defaults import get_trade_defaults
 from components.trade_manager.sections import (
@@ -173,24 +179,13 @@ def _on_status_change() -> None:
 
 
 # Диалог подтверждения удаления
-if st.session_state.get("_te_pending_delete"):
-    @st.dialog("Delete trade")
-    def _confirm_delete() -> None:
-        st.warning("Delete this trade? This cannot be undone.")
-        c1, c2 = st.columns(2)
-        if c1.button("Delete", type="primary", width="stretch"):
-            try:
-                delete_trade(st.session_state["_te_pending_delete"], user_id)
-            except Exception as exc:
-                st.toast(f"Failed to delete: {exc}", icon="❌")
-            st.session_state.pop("_te_pending_delete", None)
-            st.cache_data.clear()
-            st.switch_page("pages/trades.py")
-        if c2.button("Cancel", width="stretch"):
-            st.session_state.pop("_te_pending_delete", None)
-            st.rerun()
-
-    _confirm_delete()
+render_delete_dialog(
+    pending_key="_te_pending_delete",
+    entity_label="trade",
+    delete_fn=delete_trade,
+    user_id=user_id,
+    redirect_page="pages/trades.py",
+)
 
 _NOTE_CATEGORIES = ["Hot thought", "Cold thought", "Observation"]
 
@@ -213,55 +208,28 @@ with side_col:
         with st.container(border=True):
             st.caption("No comments yet. Send your first one below.")
     else:
-        for note in reversed(trade_notes):
-            with st.container(border=True):
-                hdr_col, actions_col = st.columns([0.85, 0.15])
-                time_display = (note.get("time_local") or "")[:5]
-                category = note.get("category") or "—"
-                count = note_counts.get(note["id"], 1)
-                is_shared = count > 1
-                badge = f"  ·  🔗 {count} trades" if is_shared else ""
-                hdr_col.markdown(
-                    f"**{note.get('date_local', '')}  {time_display}  ·  {category}{badge}**")
-                _edit_key = f"_editing_note_{note['id']}"
-                edit_col, del_col = actions_col.columns(2, gap="small")
-                if edit_col.button("✎", key=f"_edit_btn_{note['id']}", help="Edit", use_container_width=True):
-                    st.session_state[_edit_key] = not st.session_state.get(
-                        _edit_key, False)
-                    st.rerun()
-                if del_col.button("✕", key=f"_del_note_{note['id']}",
-                                  help="Remove from this trade" if is_shared else "Delete",
-                                  use_container_width=True):
-                    if is_shared:
-                        detach_note_from_trade(trade_id, note["id"])
-                    else:
-                        delete_note(note["id"], user_id)
-                    st.cache_data.clear()
-                    st.rerun()
-                body = note.get("body") or ""
-                if st.session_state.get(_edit_key):
-                    new_body = st.text_area(
-                        "", value=body, key=f"_edit_area_{note['id']}",
-                        label_visibility="collapsed",
-                    )
-                    save_col, cancel_col, _ = st.columns([0.12, 0.12, 0.76])
-                    if save_col.button("Save", key=f"_edit_save_{note['id']}", type="primary", width="stretch"):
-                        update_note(note["id"], user_id, {"body": new_body})
-                        st.session_state.pop(_edit_key, None)
-                        st.cache_data.clear()
-                        st.rerun()
-                    if cancel_col.button("Cancel", key=f"_edit_cancel_{note['id']}", width="stretch"):
-                        st.session_state.pop(_edit_key, None)
-                        st.rerun()
-                else:
-                    if body and body != "(image)":
-                        st.markdown(body)
-                note_images = list_images(note_id=note["id"])
-                if note_images:
-                    img_cols = st.columns(min(len(note_images), 2))
-                    for i, ch in enumerate(note_images):
-                        img_cols[i % 2].image(
-                            ch["image_url"], use_container_width=True)
+        for note in trade_notes:
+            time_display = (note.get("time_local") or "")[:5]
+            category = note.get("category") or "—"
+            count = note_counts.get(note["id"], 1)
+            is_shared = count > 1
+            shared_badge = f"  ·  🔗 {count} trades" if is_shared else ""
+            badge = f"{note.get('date_local', '')}  {time_display}  ·  {category}{shared_badge}"
+            note_images = list_images(note_id=note["id"])
+            render_entry_card(
+                entry_id=note["id"],
+                badge=badge,
+                time_display="",
+                body=note.get("body") or "",
+                images=note_images,
+                on_save=lambda new_body, nid=note["id"]: update_note(nid, user_id, {"body": new_body}),
+                on_delete=lambda nid=note["id"], shared=is_shared: (
+                    detach_note_from_trade(trade_id, nid) if shared
+                    else delete_note(nid, user_id)
+                ),
+                delete_help="Remove from this trade" if is_shared else "Delete",
+                key_prefix="tnote",
+            )
 
     if trade_id:
         _all_notes = list_notes(user_id)
@@ -348,10 +316,7 @@ with stages_col:
     )
     is_missed = int(is_missed_option == "Missed") if is_missed_option else 0
 
-    st.markdown(
-        "<hr style='margin:6px 0;border:0;border-top:1px solid rgba(49,51,63,.1)'>",
-        unsafe_allow_html=True,
-    )
+    section_divider()
     st.caption("ENTRY")
 
     locked_from_analysis = st.session_state.get(
@@ -369,10 +334,7 @@ with stages_col:
         user_tz=trade.get("local_tz") or get_setting("local_tz", LOCAL_TZ),
     )
 
-    st.markdown(
-        "<hr style='margin:6px 0;border:0;border-top:1px solid rgba(49,51,63,.1)'>",
-        unsafe_allow_html=True,
-    )
+    section_divider()
     st.caption("OUTCOME")
 
     outcome_values = render_outcome_stage(
@@ -382,10 +344,7 @@ with stages_col:
         on_change=_calculate_rewards,
     )
 
-    st.markdown(
-        "<hr style='margin:6px 0;border:0;border-top:1px solid rgba(49,51,63,.1)'>",
-        unsafe_allow_html=True,
-    )
+    section_divider()
     st.caption("REVIEW")
 
     review_values = render_review_stage(
@@ -396,18 +355,12 @@ with stages_col:
 
 st.divider()
 # --- Нижняя панель actions ---
-btn_back, btn_save, btn_delete, _ = st.columns([0.1, 0.1, 0.1, 0.68])
-if btn_back.button("← Back", width="stretch"):
-    back_page = st.session_state.pop("_back_page", "pages/trades.py")
-    back_params = st.session_state.pop("_back_params", {})
-    if back_params:
-        st.session_state["_returning_params"] = back_params
-    st.switch_page(back_page)
-submitted = btn_save.button("Save", type="primary", width="stretch")
-if not is_new_trade:
-    if btn_delete.button("Delete", type="secondary", width="stretch"):
-        st.session_state["_te_pending_delete"] = trade_id
-        st.rerun()
+submitted = render_editor_actions(
+    is_new=is_new_trade,
+    pending_delete_key="_te_pending_delete",
+    entity_id=trade_id,
+    default_back_page="pages/trades.py",
+)
 
 # --- Сохранение ---
 if submitted:
