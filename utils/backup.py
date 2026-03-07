@@ -38,6 +38,14 @@ def get_backup_bytes(path: Path) -> bytes:
     return path.read_bytes()
 
 
+_SQLITE_MAGIC = b"SQLite format 3\x00"
+
+
+def validate_backup_file(data: bytes) -> bool:
+    """Return True if data starts with the SQLite file header."""
+    return data[:16] == _SQLITE_MAGIC
+
+
 def maybe_create_daily_backup() -> None:
     """Create a backup at most once per calendar day (auto-backup on startup)."""
     from datetime import date

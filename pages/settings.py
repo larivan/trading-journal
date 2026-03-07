@@ -23,7 +23,7 @@ from config import (
 from db import delete_account, delete_setup, list_accounts, update_user_settings
 from helpers import custom_selectbox, get_excerpt, to_option_format
 from utils.auth import get_current_user_id, get_user_settings, load_user_session
-from utils.backup import create_backup, get_backup_bytes, list_backups
+from utils.backup import create_backup, get_backup_bytes, list_backups, validate_backup_file
 from utils.cached_data import cached_accounts, cached_setups, cached_trades, filter_setups
 from utils.session_state import open_dialog
 
@@ -33,17 +33,9 @@ st.title(":material/settings: Settings")
 user_id = get_current_user_id()
 settings = get_user_settings(user_id) if user_id else {}
 
-tab_profile, tab_accounts, tab_setups, tab_journal, tab_prefs, tab_backup = st.tabs(
-    ["Profile", "Accounts", "Setups", "Journal Setup", "Preferences", "Backup"]
+tab_accounts, tab_setups, tab_journal, tab_prefs, tab_backup = st.tabs(
+    ["Accounts", "Setups", "Journal Setup", "Preferences", "Backup"]
 )
-
-# =====================================================================
-# Profile
-# =====================================================================
-with tab_profile:
-    st.text_input("Email", value=st.user.email if st.user.is_logged_in else "", disabled=True)
-    st.text_input("Name", value=getattr(st.user, "name", "") or "", disabled=True)
-    st.caption("Profile information is managed by your Google account.")
 
 # =====================================================================
 # Accounts
@@ -322,13 +314,16 @@ with tab_journal:
         elif risk_min >= risk_max:
             st.error("Risk min must be less than Risk max.")
         else:
+            resolved_default_asset = None if new_default_asset == "—" else new_default_asset
+            if resolved_default_asset not in new_assets:
+                resolved_default_asset = None
             update_user_settings(user_id, {
                 "assets": new_assets,
                 "mistake_types": new_mistake_types,
                 "be_threshold": be_threshold,
                 "risk_min": risk_min,
                 "risk_max": risk_max,
-                "default_asset": None if new_default_asset == "—" else new_default_asset,
+                "default_asset": resolved_default_asset,
                 "default_account_id": new_default_account_id,
             })
             load_user_session(user_id)
@@ -345,11 +340,7 @@ with tab_prefs:
         st.markdown("##### Localization")
         all_timezones = sorted(pytz.all_timezones)
         current_tz = settings.get("local_tz", "Europe/Moscow")
-        tz_index = None
-        for i, tz in enumerate(all_timezones):
-            if tz == current_tz:
-                tz_index = i
-                break
+        tz_index = all_timezones.index(current_tz) if current_tz in all_timezones else None
 
         selected_tz = st.selectbox(
             "Timezone",
@@ -357,12 +348,6 @@ with tab_prefs:
             index=tz_index,
             help="Used for trade session detection",
         )
-        if st.button("Save localization"):
-            update_user_settings(user_id, {
-                "local_tz": selected_tz,
-            })
-            load_user_session(user_id)
-            st.success("Localization saved.")
 
     with col_iface:
         st.markdown("##### Interface")
@@ -374,10 +359,14 @@ with tab_prefs:
             format_func=lambda x: "English" if x == "en" else "Русский",
         )
 
-        if st.button("Save interface settings"):
-            update_user_settings(user_id, {"language": selected_language})
-            load_user_session(user_id)
-            st.success("Interface settings saved.")
+    if st.button("Save preferences", type="primary"):
+        update_user_settings(user_id, {
+            "local_tz": selected_tz,
+            "language": selected_language,
+        })
+        load_user_session(user_id)
+        st.success("Preferences saved.")
+        st.rerun()
 
 # =====================================================================
 # Backup
@@ -434,9 +423,13 @@ with tab_backup:
         if uploaded:
             if st.button("Restore database", type="secondary"):
                 from db.connection import DB_PATH
-                try:
-                    with open(DB_PATH, "wb") as f:
-                        f.write(uploaded.read())
-                    st.success("Database restored. Please restart the application.")
-                except Exception as exc:
-                    st.error(f"Restore failed: {exc}")
+                data = uploaded.read()
+                if not validate_backup_file(data):
+                    st.error("Invalid file: not a SQLite database.")
+                else:
+                    try:
+                        with open(DB_PATH, "wb") as f:
+                            f.write(data)
+                        st.success("Database restored. Please restart the application.")
+                    except Exception as exc:
+                        st.error(f"Restore failed: {exc}")

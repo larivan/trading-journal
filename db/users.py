@@ -12,8 +12,6 @@ WRITABLE_SETTING_FIELDS = [
     "risk_min",
     "risk_max",
     "local_tz",
-    "currency",
-    "theme",
     "language",
     "default_asset",
     "default_account_id",
@@ -26,8 +24,6 @@ _DEFAULT_SETTINGS: Dict[str, Any] = {
     "risk_min": 0.5,
     "risk_max": 2.0,
     "local_tz": "Europe/Moscow",
-    "currency": "USD",
-    "theme": "light",
     "language": "en",
     "mistake_types": [],
 }

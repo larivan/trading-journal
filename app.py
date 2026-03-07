@@ -97,6 +97,8 @@ else:
         if user:
             name = user.get("username") or user.get("email", "")
             st.write(f"👤 {name}")
+            if user.get("username"):
+                st.caption(user.get("email", ""))
         if st.button("Logout", key="sidebar_logout", width="stretch"):
             logout()
             st.logout()

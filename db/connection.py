@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
     be_threshold       REAL    DEFAULT 0.05,
     risk_min           REAL    DEFAULT 0.5,
     risk_max           REAL    DEFAULT 2.0,
-    local_tz           TEXT    DEFAULT 'UTC+3',
+    local_tz           TEXT    DEFAULT 'Europe/Moscow',
     currency           TEXT    DEFAULT 'USD',
     theme              TEXT    DEFAULT 'light',
     language           TEXT    DEFAULT 'en',
