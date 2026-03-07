@@ -48,6 +48,34 @@ with tab_profile:
 # =====================================================================
 # Accounts
 # =====================================================================
+@st.dialog("Delete accounts")
+def _confirm_delete_accounts(ids: List[Any], name_map: Dict[int, str]) -> None:
+    n = len(ids)
+    st.warning(f"Delete {n} account{'s' if n > 1 else ''}? This cannot be undone.")
+    for aid in ids:
+        st.text(f"• {name_map.get(int(aid), f'#{aid}')}")
+    st.caption("Accounts with trades cannot be deleted.")
+    col1, col2 = st.columns(2)
+    if col1.button("Delete", type="primary", width="stretch"):
+        blocked = []
+        for aid in ids:
+            try:
+                delete_account(int(aid), user_id)
+            except sqlite3.IntegrityError:
+                blocked.append(name_map.get(int(aid), f"#{aid}"))
+            except (ValueError, sqlite3.Error) as exc:
+                st.toast(f"Failed to delete account: {exc}", icon="❌")
+        st.session_state.pop("_pending_delete_account_ids", None)
+        st.cache_data.clear()
+        if blocked:
+            names = ", ".join(f'"{name}"' for name in blocked)
+            st.toast(f"Cannot delete {names}: account has trades", icon="⚠️")
+        st.rerun()
+    if col2.button("Cancel", width="stretch"):
+        st.session_state.pop("_pending_delete_account_ids", None)
+        st.rerun()
+
+
 with tab_accounts:
     actions_col, _ = st.columns([0.2, 0.8])
     with actions_col:
@@ -81,11 +109,7 @@ with tab_accounts:
     def _delete_accounts(ids: List[Any]) -> None:
         if not ids:
             return
-        for account_id in ids:
-            try:
-                delete_account(int(account_id), user_id)
-            except (ValueError, sqlite3.Error) as exc:
-                st.toast(f"Failed to delete account #{account_id}: {exc}", icon="❌")
+        st.session_state["_pending_delete_account_ids"] = ids
         st.rerun()
 
     render_entity_gallery(
@@ -99,6 +123,10 @@ with tab_accounts:
         on_delete=_delete_accounts,
     )
     render_account_manager()
+
+    pending = st.session_state.get("_pending_delete_account_ids")
+    if pending:
+        _confirm_delete_accounts(pending, {acc["id"]: acc["name"] for acc in account_rows})
 
 # =====================================================================
 # Setups
