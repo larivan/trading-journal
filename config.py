@@ -24,18 +24,6 @@ PAGES = {
         'default': False,
         'layout': 'wide',
     },
-    'setups': {
-        'title': 'Setups',
-        'icon': ':material/grid_view:',
-        'default': False,
-        'layout': 'wide',
-    },
-    'settings_accounts': {
-        'title': 'Accounts',
-        'icon': ':material/account_balance_wallet:',
-        'default': False,
-        'layout': 'wide',
-    },
     'settings': {
         'title': 'Settings',
         'icon': ':material/settings:',

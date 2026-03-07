@@ -1,17 +1,31 @@
-"""Страница настроек с вкладками: Profile, Journal Setup, Preferences, Backup."""
+"""Страница настроек с вкладками: Profile, Accounts, Setups, Journal Setup, Preferences, Backup."""
 
+import sqlite3
 from datetime import datetime
+from typing import Any, Dict, List
 
 import pandas as pd
 import pytz
 import streamlit as st
 
-from config import ASSETS_VALUES, BE_THRESHOLD, DEFAULT_MISTAKE_TYPES
-from db import update_user_settings
+from components.account_manager import render_account_manager
+from components.entity_gallery import render_entity_gallery
+from components.setup_manager import render_setup_manager
+from config import (
+    ACCOUNT_DIALOG_NAME,
+    ACCOUNT_ID_STATE,
+    ASSETS_VALUES,
+    BE_THRESHOLD,
+    DEFAULT_MISTAKE_TYPES,
+    SETUP_DIALOG_NAME,
+    SETUP_ID_STATE,
+)
+from db import delete_account, delete_setup, list_accounts, update_user_settings
+from helpers import custom_selectbox, get_excerpt, to_option_format
 from utils.auth import get_current_user_id, get_user_settings, load_user_session
 from utils.backup import create_backup, get_backup_bytes, list_backups
-from utils.cached_data import cached_accounts
-from helpers import to_option_format, custom_selectbox
+from utils.cached_data import cached_accounts, cached_setups, filter_setups
+from utils.session_state import open_dialog
 
 st.set_page_config(page_title="Settings", page_icon=":material/settings:", layout="wide")
 st.title(":material/settings: Settings")
@@ -19,8 +33,8 @@ st.title(":material/settings: Settings")
 user_id = get_current_user_id()
 settings = get_user_settings(user_id) if user_id else {}
 
-tab_profile, tab_journal, tab_prefs, tab_backup = st.tabs(
-    ["Profile", "Journal Setup", "Preferences", "Backup"]
+tab_profile, tab_accounts, tab_setups, tab_journal, tab_prefs, tab_backup = st.tabs(
+    ["Profile", "Accounts", "Setups", "Journal Setup", "Preferences", "Backup"]
 )
 
 # =====================================================================
@@ -30,6 +44,127 @@ with tab_profile:
     st.text_input("Email", value=st.user.email if st.user.is_logged_in else "", disabled=True)
     st.text_input("Name", value=getattr(st.user, "name", "") or "", disabled=True)
     st.caption("Profile information is managed by your Google account.")
+
+# =====================================================================
+# Accounts
+# =====================================================================
+with tab_accounts:
+    actions_col, _ = st.columns([0.2, 0.8])
+    with actions_col:
+        if st.button("Create", type="primary", width="stretch", key="settings_accounts_create"):
+            st.session_state.pop(ACCOUNT_ID_STATE, None)
+            open_dialog(ACCOUNT_DIALOG_NAME)
+
+    account_rows = list_accounts(user_id, include_archived=True)
+
+    def _bool_label(value: Any) -> str:
+        return "Yes" if value else "No"
+
+    account_columns: List[Dict[str, Any]] = [
+        {"field": "name", "label": "Name", "id": "name", "role": "title"},
+        {"field": "broker", "label": "Broker", "id": "broker"},
+        {
+            "field": "starting_balance",
+            "label": "Starting balance",
+            "id": "starting_balance",
+            "format": lambda v: f"{float(v):.2f}" if v is not None else "",
+        },
+    ]
+
+    def _open_account(row: Dict[str, Any]) -> None:
+        account_id = row.get("id")
+        if account_id is None:
+            return
+        st.session_state[ACCOUNT_ID_STATE] = account_id
+        open_dialog(ACCOUNT_DIALOG_NAME)
+
+    def _delete_accounts(ids: List[Any]) -> None:
+        if not ids:
+            return
+        for account_id in ids:
+            try:
+                delete_account(int(account_id), user_id)
+            except (ValueError, sqlite3.Error) as exc:
+                st.toast(f"Failed to delete account #{account_id}: {exc}", icon="❌")
+        st.rerun()
+
+    render_entity_gallery(
+        entity_name="account",
+        key="settings_accounts_gallery",
+        rows=account_rows,
+        columns=account_columns,
+        empty_message="No accounts found.",
+        page_size=9,
+        on_open=_open_account,
+        on_delete=_delete_accounts,
+    )
+    render_account_manager()
+
+# =====================================================================
+# Setups
+# =====================================================================
+with tab_setups:
+    search_col, _, actions_col = st.columns([0.6, 0.2, 0.2])
+
+    with search_col:
+        setups_query = st.text_input(
+            "Search",
+            value="",
+            key="settings_setups_search_query",
+            placeholder="Type to search...",
+        ).strip()
+
+    with actions_col:
+        if st.button("Create", type="primary", width="stretch", key="settings_setups_create"):
+            st.session_state.pop(SETUP_ID_STATE, None)
+            open_dialog(SETUP_DIALOG_NAME)
+
+    setups_filters: Dict[str, Any] = {}
+    if setups_query:
+        setups_filters["query"] = setups_query
+
+    setup_rows = filter_setups(cached_setups(user_id), setups_filters, order_by="name", ascending=True)
+
+    setup_columns: List[Dict[str, Any]] = [
+        {"field": "name", "label": "Setup", "id": "name", "role": "title"},
+        {
+            "field": "description",
+            "label": "Description",
+            "id": "description",
+            "role": "text",
+            "format": lambda value: get_excerpt(value, 140),
+        },
+    ]
+
+    def _open_setup(row: Dict[str, Any]) -> None:
+        setup_id = row.get("id")
+        if setup_id is None:
+            return
+        st.session_state[SETUP_ID_STATE] = setup_id
+        open_dialog(SETUP_DIALOG_NAME)
+
+    def _delete_setups(ids: List[Any]) -> None:
+        if not ids:
+            return
+        for setup_id in ids:
+            try:
+                delete_setup(int(setup_id), user_id)
+            except (ValueError, sqlite3.Error) as exc:
+                st.toast(f"Failed to delete setup #{setup_id}: {exc}", icon="❌")
+        st.cache_data.clear()
+        st.rerun()
+
+    render_entity_gallery(
+        entity_name="setup",
+        key="settings_setups_gallery",
+        rows=setup_rows,
+        columns=setup_columns,
+        empty_message="No setups yet.",
+        page_size=12,
+        on_open=_open_setup,
+        on_delete=_delete_setups,
+    )
+    render_setup_manager()
 
 # =====================================================================
 # Journal Setup
