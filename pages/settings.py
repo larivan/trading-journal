@@ -155,27 +155,36 @@ with tab_accounts:
 # =====================================================================
 # Setups
 # =====================================================================
+@st.dialog("Delete setups")
+def _confirm_delete_setups(ids: List[Any], name_map: Dict[int, str]) -> None:
+    n = len(ids)
+    st.warning(f"Delete {n} setup{'s' if n > 1 else ''}? This cannot be undone.")
+    for sid in ids:
+        st.text(f"• {name_map.get(int(sid), f'#{sid}')}")
+    col1, col2 = st.columns(2)
+    if col1.button("Delete", type="primary", width="stretch"):
+        for sid in ids:
+            try:
+                delete_setup(int(sid), user_id)
+            except (ValueError, sqlite3.Error) as exc:
+                st.toast(f"Failed to delete setup #{sid}: {exc}", icon="❌")
+        st.session_state.pop("_pending_delete_setup_ids", None)
+        st.session_state.pop("settings_setups_gallery", None)
+        st.cache_data.clear()
+        st.rerun()
+    if col2.button("Cancel", width="stretch"):
+        st.session_state.pop("_pending_delete_setup_ids", None)
+        st.rerun()
+
+
 with tab_setups:
-    search_col, _, actions_col = st.columns([0.6, 0.2, 0.2])
-
-    with search_col:
-        setups_query = st.text_input(
-            "Search",
-            value="",
-            key="settings_setups_search_query",
-            placeholder="Type to search...",
-        ).strip()
-
+    actions_col, _ = st.columns([0.2, 0.8])
     with actions_col:
         if st.button("Create", type="primary", width="stretch", key="settings_setups_create"):
             st.session_state.pop(SETUP_ID_STATE, None)
             open_dialog(SETUP_DIALOG_NAME)
 
-    setups_filters: Dict[str, Any] = {}
-    if setups_query:
-        setups_filters["query"] = setups_query
-
-    setup_rows = filter_setups(cached_setups(user_id), setups_filters, order_by="name", ascending=True)
+    setup_rows = filter_setups(cached_setups(user_id), {}, order_by="name", ascending=True)
 
     setup_columns: List[Dict[str, Any]] = [
         {"field": "name", "label": "Setup", "id": "name", "role": "title"},
@@ -198,12 +207,7 @@ with tab_setups:
     def _delete_setups(ids: List[Any]) -> None:
         if not ids:
             return
-        for setup_id in ids:
-            try:
-                delete_setup(int(setup_id), user_id)
-            except (ValueError, sqlite3.Error) as exc:
-                st.toast(f"Failed to delete setup #{setup_id}: {exc}", icon="❌")
-        st.cache_data.clear()
+        st.session_state["_pending_delete_setup_ids"] = ids
         st.rerun()
 
     render_entity_gallery(
@@ -217,6 +221,11 @@ with tab_setups:
         on_delete=_delete_setups,
     )
     render_setup_manager()
+
+    pending_setups = st.session_state.get("_pending_delete_setup_ids")
+    if pending_setups:
+        all_setups = cached_setups(user_id)
+        _confirm_delete_setups(pending_setups, {s["id"]: s["name"] for s in all_setups})
 
 # =====================================================================
 # Journal Setup
