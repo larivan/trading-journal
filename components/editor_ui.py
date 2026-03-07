@@ -58,19 +58,20 @@ def render_editor_actions(
 
     Возвращает True, если нажата кнопка Save.
     """
-    btn_back, btn_save, btn_delete, _ = st.columns([0.1, 0.1, 0.1, 0.7])
+    show_delete = not is_new and entity_id is not None
+    cols = st.columns(3 if show_delete else 2)
 
-    if btn_back.button("← Back", width="stretch"):
+    if cols[0].button("← Back", width="stretch"):
         back_page = st.session_state.pop("_back_page", default_back_page)
         back_params = st.session_state.pop("_back_params", {})
         if back_params:
             st.session_state["_returning_params"] = back_params
         st.switch_page(back_page)
 
-    submitted = btn_save.button("Save", type="primary", width="stretch")
+    submitted = cols[1].button("Save", type="primary", width="stretch")
 
-    if not is_new and entity_id is not None:
-        if btn_delete.button("Delete", type="secondary", width="stretch"):
+    if show_delete:
+        if cols[2].button("Delete", type="secondary", width="stretch"):
             st.session_state[pending_delete_key] = entity_id
             st.rerun()
 

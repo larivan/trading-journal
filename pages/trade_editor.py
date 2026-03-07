@@ -171,6 +171,28 @@ def _calculate_rewards() -> None:
         )
 
 
+def _chart_images_changed(db_images: list, editor_images: list) -> bool:
+    """Возвращает True, если состояние редактора отличается от БД."""
+    db_by_id = {img["id"]: img for img in db_images}
+    editor_by_id: dict = {}
+    for row in editor_images:
+        iid = row.get("id")
+        url = (row.get("image_url") or "").strip()
+        if iid is None and url:
+            return True  # новое изображение
+        if iid is not None:
+            editor_by_id[iid] = row
+    if set(db_by_id) != set(editor_by_id):
+        return True  # удалено одно или несколько
+    for iid, db_row in db_by_id.items():
+        ed_row = editor_by_id.get(iid)
+        if ed_row is None:
+            return True
+        if (ed_row.get("caption") or "") != (db_row.get("caption") or ""):
+            return True
+    return False
+
+
 def _on_status_change() -> None:
     key = f"{state_key}_is_missed"
     if st.session_state.get(key) is None:
@@ -199,6 +221,17 @@ with side_col:
         base_rows=images,
         layout_columns=2,
     )
+
+    if trade_id and _chart_images_changed(images, current_images):
+        with transaction() as conn:
+            persist_image_editor(
+                attached_images=images,
+                editor_rows=current_images,
+                attach_image=lambda iid, c=conn: attach_image_to_trade(trade_id, iid, conn=c),
+                conn=conn,
+            )
+        st.cache_data.clear()
+        st.rerun()
 
     st.markdown("#### Comments")
     trade_notes = list_trade_notes(trade_id) if trade_id else []
@@ -283,22 +316,25 @@ with side_col:
         main_bottom=False,
     )
     if response and (response.text or response.images):
-        body = (response.text or "").strip() or "(image)"
-        note_payload = {
-            "body": body,
-            "category": selected_category or "Observation",
-            "date_local": date.today().isoformat(),
-            "time_local": _dt.now().strftime("%H:%M:%S"),
-        }
-        with transaction() as conn:
-            new_note_id = create_note(user_id, note_payload, conn=conn)
-            attach_note_to_trade(trade_id, new_note_id, conn=conn)
-            for img in (response.images or []):
-                data_uri = f"data:{img.type};{img.format},{img.data}"
-                image_id = add_image(data_uri, conn=conn)
-                attach_image_to_note(new_note_id, image_id, conn=conn)
-        st.cache_data.clear()
-        st.rerun()
+        if is_new_trade:
+            st.warning("Save the trade first to add comments.")
+        else:
+            body = (response.text or "").strip() or "(image)"
+            note_payload = {
+                "body": body,
+                "category": selected_category or "Observation",
+                "date_local": date.today().isoformat(),
+                "time_local": _dt.now().strftime("%H:%M:%S"),
+            }
+            with transaction() as conn:
+                new_note_id = create_note(user_id, note_payload, conn=conn)
+                attach_note_to_trade(trade_id, new_note_id, conn=conn)
+                for img in (response.images or []):
+                    data_uri = f"data:{img.type};{img.format},{img.data}"
+                    image_id = add_image(data_uri, conn=conn)
+                    attach_image_to_note(new_note_id, image_id, conn=conn)
+            st.cache_data.clear()
+            st.rerun()
 
 with stages_col:
     # Taken / Missed toggle — всегда вверху
@@ -353,14 +389,13 @@ with stages_col:
         mistake_type_options=mistake_type_options,
     )
 
-st.divider()
-# --- Нижняя панель actions ---
-submitted = render_editor_actions(
-    is_new=is_new_trade,
-    pending_delete_key="_te_pending_delete",
-    entity_id=trade_id,
-    default_back_page="pages/trades.py",
-)
+    st.divider()
+    submitted = render_editor_actions(
+        is_new=is_new_trade,
+        pending_delete_key="_te_pending_delete",
+        entity_id=trade_id,
+        default_back_page="pages/trades.py",
+    )
 
 # --- Сохранение ---
 if submitted:

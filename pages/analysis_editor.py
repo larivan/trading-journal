@@ -250,14 +250,13 @@ with meta_col:
         label_visibility="collapsed",
     )
 
-# --- Нижняя панель actions ---
-st.divider()
-submitted = render_editor_actions(
-    is_new=is_new_analysis,
-    pending_delete_key="_ae_pending_delete",
-    entity_id=analysis_id,
-    default_back_page="pages/analysis.py",
-)
+    st.divider()
+    submitted = render_editor_actions(
+        is_new=is_new_analysis,
+        pending_delete_key="_ae_pending_delete",
+        entity_id=analysis_id,
+        default_back_page="pages/analysis.py",
+    )
 
 # --- Секция трейдов (под actions, отдельный раздел) ---
 if not is_new_analysis:
