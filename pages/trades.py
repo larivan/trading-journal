@@ -57,6 +57,8 @@ setups = to_option_format(
     setup_rows_all, formatter=lambda s: f"{s['name']}")
 account_map: Dict[int, str] = {acc["id"]: acc["name"]
                                for acc in account_rows_for_map}
+account_currency_map: Dict[int, str] = {acc["id"]: acc.get("currency") or "USD"
+                                        for acc in account_rows_for_map}
 setup_map: Dict[int, str] = {s["id"]: s["name"] for s in setup_rows_all}
 
 # === ВЕРХНЯЯ ПАНЕЛЬ С ФИЛЬТРАМИ ПЕРИОДОВ ===
@@ -187,12 +189,17 @@ else:
     )
     df["_link"] = "/trade_editor?id=" + df["id"].astype(str)
     df["account_name"] = df["account_id"].map(account_map)
+    df["net_pnl_fmt"] = df.apply(
+        lambda r: f"{account_currency_map.get(r['account_id'], 'USD')} {r['net_pnl']:+.2f}"
+        if r.get("net_pnl") is not None else "",
+        axis=1,
+    )
     df["setup_name"] = df["setup_id"].map(setup_map)
     df["execution"] = df["is_correct"].map({1: "✓", 0: "✗"})
 
     display_cols = ["_link", "date_local", "session", "asset", "trade_type",
                     "account_name", "setup_name", "status", "result",
-                    "net_pnl", "risk_reward", "reward_percent", "execution"]
+                    "net_pnl_fmt", "risk_reward", "reward_percent", "execution"]
     for col in display_cols:
         if col not in df.columns:
             df[col] = None
@@ -208,7 +215,7 @@ else:
             "setup_name": st.column_config.TextColumn("Setup"),
             "status": st.column_config.TextColumn("Status"),
             "result": st.column_config.TextColumn("Result"),
-            "net_pnl": st.column_config.NumberColumn("PnL"),
+            "net_pnl_fmt": st.column_config.TextColumn("PnL"),
             "risk_reward": st.column_config.NumberColumn("R:R"),
             "reward_percent": st.column_config.NumberColumn("R%", format="%.2f%%"),
             "execution": st.column_config.TextColumn("Exec"),

@@ -67,6 +67,14 @@ def render_account_manager() -> None:
                 key=f"{state_key}_broker",
                 placeholder="Optional",
             )
+            _CURRENCIES = ["USD", "EUR", "GBP", "CHF", "JPY", "CAD", "AUD", "RUB"]
+            currency_value = st.selectbox(
+                "Currency",
+                _CURRENCIES,
+                index=_CURRENCIES.index(account.get("currency") or "USD")
+                if (account.get("currency") or "USD") in _CURRENCIES else 0,
+                key=f"{state_key}_currency",
+            )
             balance_value = st.number_input(
                 "Starting balance",
                 value=float(account.get("starting_balance") or 0.0),
@@ -86,7 +94,7 @@ def render_account_manager() -> None:
                 )
             st.markdown(f"**Broker:** {account.get('broker') or 'N/A'}")
             st.markdown(
-                f"**Starting balance:** ${float(account.get('starting_balance') or 0.0):,.2f}"
+                f"**Starting balance:** {account.get('currency') or 'USD'} {float(account.get('starting_balance') or 0.0):,.2f}"
             )
 
         archived = bool(account.get("archived"))
@@ -149,6 +157,7 @@ def render_account_manager() -> None:
             payload: Dict[str, Any] = {
                 "name": name_clean,
                 "broker": (broker_value or "").strip() or None,
+                "currency": currency_value,
                 "starting_balance": balance_value,
                 "is_prop": 1 if is_prop_value else 0,
             }
@@ -159,7 +168,7 @@ def render_account_manager() -> None:
                         user_id,
                         payload["name"],
                         payload["broker"],
-                        "USD",
+                        currency_value,
                         payload["starting_balance"],
                         payload["is_prop"],
                     )

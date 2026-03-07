@@ -93,10 +93,13 @@ with tab_accounts:
         {"field": "name", "label": "Name", "id": "name", "role": "title"},
         {"field": "broker", "label": "Broker", "id": "broker"},
         {
-            "field": "starting_balance",
+            "field": None,
             "label": "Starting balance",
             "id": "starting_balance",
-            "format": lambda v: f"{float(v):.2f}" if v is not None else "",
+            "compute": lambda row: (
+                f"{row.get('currency') or 'USD'} {float(row.get('starting_balance') or 0):,.2f}"
+                if row.get("starting_balance") is not None else ""
+            ),
         },
     ]
 
@@ -325,18 +328,9 @@ with tab_prefs:
             index=tz_index,
             help="Used for trade session detection",
         )
-        selected_currency = st.selectbox(
-            "Currency",
-            ["USD", "EUR", "GBP", "RUB", "JPY", "CHF"],
-            index=["USD", "EUR", "GBP", "RUB", "JPY", "CHF"].index(
-                settings.get("currency", "USD")
-            ),
-        )
-
         if st.button("Save localization"):
             update_user_settings(user_id, {
                 "local_tz": selected_tz,
-                "currency": selected_currency,
             })
             load_user_session(user_id)
             st.success("Localization saved.")
