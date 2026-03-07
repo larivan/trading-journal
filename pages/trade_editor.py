@@ -232,7 +232,7 @@ with side_col:
             )
 
     if trade_id:
-        _all_notes = list_notes(user_id)
+        _all_notes = list_notes(user_id, {"exclude_analysis": True})
         _attached_ids = {n["id"] for n in trade_notes}
         _linkable = [n for n in _all_notes if n["id"] not in _attached_ids]
         if _linkable:

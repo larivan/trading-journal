@@ -112,6 +112,8 @@ def list_notes(
             pattern = f"%{value}%"
             q += " AND (body LIKE ?)"
             params.append(pattern)
+        elif key == "exclude_analysis" and value:
+            q += " AND NOT EXISTS (SELECT 1 FROM analysis_notes an WHERE an.note_id = notes.id)"
 
     if order_by:
         if order_by not in NOTE_ORDER_COLUMNS:
