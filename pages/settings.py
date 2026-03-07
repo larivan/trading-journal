@@ -144,6 +144,25 @@ with tab_accounts:
     if pending:
         _confirm_delete_accounts(pending, {acc["id"]: acc["name"] for acc in account_rows})
 
+    st.divider()
+    st.markdown("##### Default account for new trades")
+    current_default_account_id = settings.get("default_account_id")
+    active_account_rows = [a for a in account_rows if not a.get("archived")]
+    accounts_opts = [{"label": "—", "value": None}] + to_option_format(active_account_rows, formatter=lambda a: a["name"])
+    default_account_col, _ = st.columns([0.3, 0.7])
+    with default_account_col:
+        new_default_account_id = custom_selectbox(
+            "Account",
+            accounts_opts,
+            value=current_default_account_id,
+            key="settings_default_account",
+        )
+        if st.button("Save", key="settings_save_default_account"):
+            update_user_settings(user_id, {"default_account_id": new_default_account_id})
+            load_user_session(user_id)
+            st.success("Saved.")
+            st.rerun()
+
 # =====================================================================
 # Setups
 # =====================================================================
@@ -239,6 +258,11 @@ with tab_journal:
             key="settings_assets_editor",
         )
 
+        current_default_asset = settings.get("default_asset")
+        assets_for_default = ["—"] + current_assets
+        default_asset_idx = assets_for_default.index(current_default_asset) if current_default_asset in assets_for_default else 0
+        new_default_asset = st.selectbox("Default asset", assets_for_default, index=default_asset_idx)
+
     with col_mistakes:
         st.markdown("##### Mistake types")
         current_mistakes = settings.get("mistake_types", DEFAULT_MISTAKE_TYPES)
@@ -255,8 +279,7 @@ with tab_journal:
 
     with col_thresh:
         st.markdown("##### Thresholds")
-        col1, col2, col3 = st.columns(3)
-        be_threshold = col1.number_input(
+        be_threshold = st.number_input(
             "BE Threshold",
             value=float(settings.get("be_threshold", BE_THRESHOLD)),
             step=0.01,
@@ -265,37 +288,19 @@ with tab_journal:
             format="%.2f",
             help="Trades with |RR| ≤ threshold are considered Break-even",
         )
-        risk_min = col2.number_input(
+        risk_min = st.number_input(
             "Risk min, %",
             value=float(settings.get("risk_min", 0.5)),
             step=0.1,
             min_value=0.1,
             format="%.1f",
         )
-        risk_max = col3.number_input(
+        risk_max = st.number_input(
             "Risk max, %",
             value=float(settings.get("risk_max", 2.0)),
             step=0.1,
             min_value=0.1,
             format="%.1f",
-        )
-
-    st.markdown("#### Defaults for new trade")
-    def_col1, def_col2 = st.columns(2)
-    current_default_asset = settings.get("default_asset")
-    current_default_account_id = settings.get("default_account_id")
-
-    assets_for_default = ["—"] + current_assets
-    default_asset_idx = 0
-    if current_default_asset in assets_for_default:
-        default_asset_idx = assets_for_default.index(current_default_asset)
-    new_default_asset = def_col1.selectbox("Default asset", assets_for_default, index=default_asset_idx)
-
-    account_rows = cached_accounts(user_id)
-    accounts_opts = [{"label": "—", "value": None}] + to_option_format(account_rows, formatter=lambda a: a["name"])
-    with def_col2:
-        new_default_account_id = custom_selectbox(
-            "Default account", accounts_opts, value=current_default_account_id, key="settings_default_account"
         )
 
     if st.button("Save trading settings", type="primary"):
@@ -324,7 +329,6 @@ with tab_journal:
                 "risk_min": risk_min,
                 "risk_max": risk_max,
                 "default_asset": resolved_default_asset,
-                "default_account_id": new_default_account_id,
             })
             load_user_session(user_id)
             st.success("Trading settings saved.")
