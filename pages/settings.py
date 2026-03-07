@@ -66,6 +66,7 @@ def _confirm_delete_accounts(ids: List[Any], name_map: Dict[int, str]) -> None:
             except (ValueError, sqlite3.Error) as exc:
                 st.toast(f"Failed to delete account: {exc}", icon="❌")
         st.session_state.pop("_pending_delete_account_ids", None)
+        st.session_state.pop("settings_accounts_gallery", None)
         st.cache_data.clear()
         if blocked:
             names = ", ".join(f'"{name}"' for name in blocked)
