@@ -21,6 +21,7 @@ from db import (
     update_account,
 )
 from utils.auth import get_current_user_id
+from utils.cached_data import cached_trades
 from utils.session_state import close_dialog, dialog_is_active
 
 
@@ -92,10 +93,16 @@ def render_account_manager() -> None:
                     f"""{':blue-badge[Prop Account]' if bool(account.get("is_prop")) else ''}
                     {':gray-badge[Archived]' if bool(account.get("archived")) else ''}"""
                 )
-            st.markdown(f"**Broker:** {account.get('broker') or 'N/A'}")
-            st.markdown(
-                f"**Starting balance:** {account.get('currency') or 'USD'} {float(account.get('starting_balance') or 0.0):,.2f}"
+            currency = account.get("currency") or "USD"
+            starting = float(account.get("starting_balance") or 0.0)
+            trades = cached_trades(user_id)
+            pnl = sum(
+                t["net_pnl"] for t in trades
+                if t.get("account_id") == account_id and t.get("net_pnl") is not None
             )
+            st.markdown(f"**Broker:** {account.get('broker') or 'N/A'}")
+            st.markdown(f"**Starting balance:** {currency} {starting:,.2f}")
+            st.markdown(f"**Current balance:** {currency} {starting + pnl:,.2f}")
 
         archived = bool(account.get("archived"))
         if is_new:

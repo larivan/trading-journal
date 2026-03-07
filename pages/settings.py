@@ -24,7 +24,7 @@ from db import delete_account, delete_setup, list_accounts, update_user_settings
 from helpers import custom_selectbox, get_excerpt, to_option_format
 from utils.auth import get_current_user_id, get_user_settings, load_user_session
 from utils.backup import create_backup, get_backup_bytes, list_backups
-from utils.cached_data import cached_accounts, cached_setups, filter_setups
+from utils.cached_data import cached_accounts, cached_setups, cached_trades, filter_setups
 from utils.session_state import open_dialog
 
 st.set_page_config(page_title="Settings", page_icon=":material/settings:", layout="wide")
@@ -86,11 +86,23 @@ with tab_accounts:
 
     account_rows = list_accounts(user_id, include_archived=True)
 
-    def _bool_label(value: Any) -> str:
-        return "Yes" if value else "No"
+    trades_all = cached_trades(user_id)
+    account_pnl: Dict[int, float] = {}
+    for _t in trades_all:
+        _aid = _t.get("account_id")
+        _pnl = _t.get("net_pnl")
+        if _aid is not None and _pnl is not None:
+            account_pnl[_aid] = account_pnl.get(_aid, 0.0) + _pnl
 
     account_columns: List[Dict[str, Any]] = [
         {"field": "name", "label": "Name", "id": "name", "role": "title"},
+        {
+            "field": None,
+            "label": "",
+            "id": "archived_label",
+            "role": "subtitle",
+            "compute": lambda row: "Archived" if row.get("archived") else "",
+        },
         {"field": "broker", "label": "Broker", "id": "broker"},
         {
             "field": None,
@@ -99,6 +111,14 @@ with tab_accounts:
             "compute": lambda row: (
                 f"{row.get('currency') or 'USD'} {float(row.get('starting_balance') or 0):,.2f}"
                 if row.get("starting_balance") is not None else ""
+            ),
+        },
+        {
+            "field": None,
+            "label": "Current balance",
+            "id": "current_balance",
+            "compute": lambda row: (
+                f"{row.get('currency') or 'USD'} {(row.get('starting_balance') or 0) + account_pnl.get(row['id'], 0.0):,.2f}"
             ),
         },
     ]
