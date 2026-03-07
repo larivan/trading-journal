@@ -191,7 +191,7 @@ else:
     df["account_name"] = df["account_id"].map(account_map)
     df["net_pnl_fmt"] = df.apply(
         lambda r: f"{account_currency_map.get(r['account_id'], 'USD')} {r['net_pnl']:+.2f}"
-        if r.get("net_pnl") is not None else "",
+        if pd.notna(r.get("net_pnl")) else "",
         axis=1,
     )
     df["setup_name"] = df["setup_id"].map(setup_map)

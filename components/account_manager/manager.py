@@ -67,7 +67,7 @@ def render_account_manager() -> None:
                 key=f"{state_key}_broker",
                 placeholder="Optional",
             )
-            _CURRENCIES = ["USD", "EUR", "GBP", "CHF", "JPY", "CAD", "AUD", "RUB"]
+            _CURRENCIES = ["USD", "EUR"]
             currency_value = st.selectbox(
                 "Currency",
                 _CURRENCIES,
@@ -98,29 +98,31 @@ def render_account_manager() -> None:
             )
 
         archived = bool(account.get("archived"))
-        c1, c2, c3 = st.columns(3)
-        save_clicked = c1.button(
-            "Save",
-            type="primary",
-            width="stretch",
-            key=f"{state_key}_save",
-            disabled=not is_new,
-        )
-        archive_clicked = c2.button(
-            "Restore" if archived else "Archive",
-            type="secondary",
-            width="stretch",
-            key=f"{state_key}_archive",
-            help="Archived accounts stay in the list but are hidden from selections.",
-            disabled=is_new,
-        )
-        delete_clicked = c3.button(
-            "Delete",
-            type="secondary",
-            width="stretch",
-            key=f"{state_key}_delete",
-            disabled=is_new,
-        )
+        if is_new:
+            save_clicked = st.button(
+                "Save",
+                type="primary",
+                width="stretch",
+                key=f"{state_key}_save",
+            )
+            archive_clicked = False
+            delete_clicked = False
+        else:
+            save_clicked = False
+            c1, c2 = st.columns(2)
+            archive_clicked = c1.button(
+                "Restore" if archived else "Archive",
+                type="secondary",
+                width="stretch",
+                key=f"{state_key}_archive",
+                help="Archived accounts stay in the list but are hidden from selections.",
+            )
+            delete_clicked = c2.button(
+                "Delete",
+                type="secondary",
+                width="stretch",
+                key=f"{state_key}_delete",
+            )
 
         if delete_clicked and not is_new:
             try:
