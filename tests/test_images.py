@@ -62,7 +62,6 @@ class TestAddGetImage:
         image_id = add_image("https://example.com/i.png")
         image = get_image(image_id)
         assert image["trade_id"] is None
-        assert image["analysis_stage_id"] is None
         assert image["setup_id"] is None
         assert image["note_id"] is None
 
@@ -120,7 +119,6 @@ class TestListImages:
         images = list_images(unattached=True)
         assert all(
             i["trade_id"] is None
-            and i["analysis_stage_id"] is None
             and i["setup_id"] is None
             and i["note_id"] is None
             for i in images

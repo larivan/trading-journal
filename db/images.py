@@ -6,12 +6,11 @@ from db.connection import get_conn, _managed_conn, _rows_to_dicts
 
 
 # Entity types for image attachments
-EntityType = Literal["trade", "analysis_stage", "setup", "note"]
+EntityType = Literal["trade", "setup", "note"]
 
 # Mapping from entity type to column name
 _ENTITY_COLUMNS: Dict[EntityType, str] = {
     "trade": "trade_id",
-    "analysis_stage": "analysis_stage_id",
     "setup": "setup_id",
     "note": "note_id",
 }
@@ -19,7 +18,6 @@ _ENTITY_COLUMNS: Dict[EntityType, str] = {
 # Error messages for each entity type
 _ENTITY_LABELS: Dict[EntityType, str] = {
     "trade": "trade",
-    "analysis_stage": "analysis stage",
     "setup": "setup",
     "note": "note",
 }
@@ -106,7 +104,6 @@ def delete_image(image_id: int, *, conn: Optional[sqlite3.Connection] = None) ->
 def list_images(
     *,
     trade_id: Optional[int] = None,
-    analysis_stage_id: Optional[int] = None,
     analysis_id: Optional[int] = None,
     setup_id: Optional[int] = None,
     note_id: Optional[int] = None,
@@ -118,9 +115,6 @@ def list_images(
     if trade_id is not None:
         conditions.append("trade_id=?")
         params.append(trade_id)
-    if analysis_stage_id is not None:
-        conditions.append("analysis_stage_id=?")
-        params.append(analysis_stage_id)
     if analysis_id is not None:
         conditions.append("analysis_id=?")
         params.append(analysis_id)
@@ -132,7 +126,6 @@ def list_images(
         params.append(note_id)
     if unattached:
         conditions.append("trade_id IS NULL")
-        conditions.append("analysis_stage_id IS NULL")
         conditions.append("analysis_id IS NULL")
         conditions.append("setup_id IS NULL")
         conditions.append("note_id IS NULL")
@@ -182,7 +175,7 @@ def attach_image(
     try:
         cur = conn.cursor()
         image_row = cur.execute(
-            "SELECT id, trade_id, analysis_stage_id, setup_id, note_id FROM images WHERE id=?",
+            "SELECT id, trade_id, setup_id, note_id FROM images WHERE id=?",
             (image_id,),
         ).fetchone()
 
@@ -266,20 +259,6 @@ def detach_image_from_trade(
 ) -> None:
     """Detach image from trade. Wrapper for detach_image()."""
     detach_image("trade", trade_id, image_id, conn=conn)
-
-
-def attach_image_to_analysis_stage(
-    stage_id: int, image_id: int, *, conn: Optional[sqlite3.Connection] = None
-) -> None:
-    """Attach image to analysis stage. Wrapper for attach_image()."""
-    attach_image("analysis_stage", stage_id, image_id, conn=conn)
-
-
-def detach_image_from_analysis_stage(
-    stage_id: int, image_id: int, *, conn: Optional[sqlite3.Connection] = None
-) -> None:
-    """Detach image from analysis stage. Wrapper for detach_image()."""
-    detach_image("analysis_stage", stage_id, image_id, conn=conn)
 
 
 def attach_image_to_setup(

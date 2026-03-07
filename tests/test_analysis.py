@@ -6,11 +6,6 @@ from db.analysis import (
     get_analysis,
     update_analysis,
     delete_analysis,
-    add_analysis_stage,
-    get_analysis_stage,
-    list_analysis_stages,
-    update_analysis_stage,
-    delete_analysis_stage,
 )
 
 
@@ -32,7 +27,6 @@ class TestAddAnalysis:
             "daily_bias": "Bullish",
             "fact_bias": "Bullish",
             "day_result": "profit",
-            "state": "post-market",
         })
 
         analysis = get_analysis(analysis_id, test_user)
@@ -132,69 +126,3 @@ class TestDeleteAnalysis:
         """Delete invalid analysis ID raises ValueError."""
         with pytest.raises(ValueError, match="not found"):
             delete_analysis(99999, test_user)
-
-
-class TestAnalysisStages:
-    def test_add_stage(self, test_user):
-        """Test adding analysis stage."""
-        analysis_id = add_analysis(test_user, {"date_local": "2026-02-01"})
-        stage_id = add_analysis_stage({
-            "analysis_id": analysis_id,
-            "type": "pre-market",
-            "summary": "Morning analysis",
-        })
-
-        assert stage_id is not None
-        assert stage_id > 0
-
-    def test_get_stage(self, test_user):
-        """Test getting analysis stage."""
-        analysis_id = add_analysis(test_user, {"date_local": "2026-02-01", "asset": "EUR/USD"})
-        stage_id = add_analysis_stage({
-            "analysis_id": analysis_id,
-            "type": "plan",
-            "summary": "Trading plan",
-        })
-
-        stage = get_analysis_stage(stage_id)
-        assert stage is not None
-        assert stage["type"] == "plan"
-        assert stage["summary"] == "Trading plan"
-        assert stage["asset"] == "EUR/USD"  # Joined from analysis
-
-    def test_list_stages_by_analysis(self, test_user):
-        """Test listing stages filtered by analysis."""
-        a1 = add_analysis(test_user, {"date_local": "2026-02-01"})
-        a2 = add_analysis(test_user, {"date_local": "2026-02-02"})
-
-        add_analysis_stage({"analysis_id": a1, "type": "pre-market"})
-        add_analysis_stage({"analysis_id": a1, "type": "plan"})
-        add_analysis_stage({"analysis_id": a2, "type": "pre-market"})
-
-        stages = list_analysis_stages(test_user, {"analysis_id": a1})
-        assert len(stages) == 2
-
-    def test_update_stage(self, test_user):
-        """Test updating analysis stage."""
-        analysis_id = add_analysis(test_user, {"date_local": "2026-02-01"})
-        stage_id = add_analysis_stage({
-            "analysis_id": analysis_id,
-            "type": "pre-market",
-            "summary": "Original",
-        })
-
-        update_analysis_stage(stage_id, {"summary": "Updated"})
-
-        stage = get_analysis_stage(stage_id)
-        assert stage["summary"] == "Updated"
-
-    def test_delete_stage(self, test_user):
-        """Test deleting analysis stage."""
-        analysis_id = add_analysis(test_user, {"date_local": "2026-02-01"})
-        stage_id = add_analysis_stage({
-            "analysis_id": analysis_id,
-            "type": "pre-market",
-        })
-
-        delete_analysis_stage(stage_id)
-        assert get_analysis_stage(stage_id) is None

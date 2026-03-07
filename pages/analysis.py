@@ -10,7 +10,6 @@ from config import (
     ASSETS_VALUES,
     DAILY_BIAS_VALUES,
     DAY_RESULT_VALUES,
-    ANALYSIS_STATE_VALUES,
     LOCAL_TZ,
 )
 from db import add_analysis, delete_analysis, transaction
@@ -55,7 +54,7 @@ selected_key = label_to_key.get(selected_label, "today")
 
 if selected_key == "custom":
     with st.container():
-        fc1, fc2, fc3, fc4, fc5, fc6 = st.columns(6)
+        fc1, fc2, fc3, fc4, fc5 = st.columns(5)
         date_range = fc1.date_input(
             "Date Range",
             value=(
@@ -71,8 +70,6 @@ if selected_key == "custom":
             "Fact bias", ["All"] + DAILY_BIAS_VALUES)
         day_result_choice = fc5.selectbox(
             "Result", ["All"] + DAY_RESULT_VALUES)
-        state_choice = fc6.selectbox(
-            "Analysis Type", ["All"] + ANALYSIS_STATE_VALUES)
 
     if asset_choice != "All":
         filters["asset"] = asset_choice
@@ -82,8 +79,6 @@ if selected_key == "custom":
         filters["fact_bias"] = fact_bias_choice
     if day_result_choice != "All":
         filters["day_result"] = day_result_choice
-    if state_choice != "All":
-        filters["state"] = state_choice
 else:
     local_tz = get_setting("local_tz", LOCAL_TZ)
     date_range = compute_date_range(selected_key, tz_name=local_tz)
@@ -106,7 +101,7 @@ else:
     df["_link"] = "/analysis_editor?id=" + df["id"].astype(str)
 
     display_cols = ["_link", "date_display", "asset",
-                    "daily_bias", "fact_bias", "day_result", "state"]
+                    "daily_bias", "fact_bias", "day_result"]
     for col in display_cols:
         if col not in df.columns:
             df[col] = None
@@ -119,8 +114,7 @@ else:
             "daily_bias": st.column_config.TextColumn("Daily bias"),
             "fact_bias": st.column_config.TextColumn("Fact bias"),
             "day_result": st.column_config.TextColumn("Result"),
-            "state": st.column_config.TextColumn("State"),
-            "_link": st.column_config.LinkColumn("Open", display_text="Open"),
+            "_link": st.column_config.LinkColumn("", display_text="Open →"),
         },
         selection_mode="multi-row",
         on_select="rerun",

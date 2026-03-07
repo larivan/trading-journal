@@ -280,49 +280,6 @@ def count_notes_by_trade(user_id: int) -> Dict[int, int]:
         conn.close()
 
 
-# =====================================================================
-# Note relations with analysis stages
-# =====================================================================
-
-
-def attach_note_to_analysis_stage(
-    stage_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
-) -> None:
-    if stage_id is None or note_id is None:
-        return
-    conn, own = _managed_conn(conn)
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT OR IGNORE INTO analysis_notes (analysis_stage_id, note_id) VALUES (?, ?)",
-            (stage_id, note_id),
-        )
-        if own:
-            conn.commit()
-    finally:
-        if own:
-            conn.close()
-
-
-def detach_note_from_analysis_stage(
-    stage_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
-) -> None:
-    if stage_id is None or note_id is None:
-        return
-    conn, own = _managed_conn(conn)
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "DELETE FROM analysis_notes WHERE analysis_stage_id=? AND note_id=?",
-            (stage_id, note_id),
-        )
-        if own:
-            conn.commit()
-    finally:
-        if own:
-            conn.close()
-
-
 def attach_note_to_analysis(
     analysis_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
@@ -331,7 +288,7 @@ def attach_note_to_analysis(
     conn, own = _managed_conn(conn)
     try:
         conn.execute(
-            "INSERT OR IGNORE INTO analysis_note_links(analysis_id, note_id) VALUES(?,?)",
+            "INSERT OR IGNORE INTO analysis_notes(analysis_id, note_id) VALUES(?,?)",
             (analysis_id, note_id),
         )
         if own:
@@ -349,7 +306,7 @@ def detach_note_from_analysis(
     conn, own = _managed_conn(conn)
     try:
         conn.execute(
-            "DELETE FROM analysis_note_links WHERE analysis_id=? AND note_id=?",
+            "DELETE FROM analysis_notes WHERE analysis_id=? AND note_id=?",
             (analysis_id, note_id),
         )
         if own:
@@ -368,7 +325,7 @@ def list_analysis_notes(analysis_id: int) -> List[Dict[str, Any]]:
         rows = conn.execute(
             "SELECT n.id, n.user_id, n.body, n.category, n.date_local, n.time_local "
             "FROM notes n "
-            "JOIN analysis_note_links l ON l.note_id=n.id "
+            "JOIN analysis_notes l ON l.note_id=n.id "
             "WHERE l.analysis_id=? ORDER BY n.date_local, n.time_local",
             (analysis_id,),
         ).fetchall()
@@ -383,7 +340,7 @@ def count_notes_by_analysis(user_id: int) -> Dict[int, int]:
     try:
         rows = conn.execute(
             "SELECT l.note_id, COUNT(*) as cnt "
-            "FROM analysis_note_links l "
+            "FROM analysis_notes l "
             "JOIN analysis a ON a.id=l.analysis_id "
             "WHERE a.user_id=? "
             "GROUP BY l.note_id",
@@ -394,21 +351,3 @@ def count_notes_by_analysis(user_id: int) -> Dict[int, int]:
         conn.close()
 
 
-def list_analysis_stage_notes(stage_id: int) -> List[Dict[str, Any]]:
-    if stage_id is None:
-        return []
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            f"""
-            SELECT {', '.join(NOTE_SELECT_COLUMNS)}
-            FROM notes n
-            JOIN analysis_notes an ON an.note_id = n.id
-            WHERE an.analysis_stage_id=?
-            ORDER BY n.date_local DESC, n.time_local DESC, n.id DESC
-            """,
-            (stage_id,),
-        ).fetchall()
-        return _rows_to_dicts(rows)
-    finally:
-        conn.close()

@@ -15,20 +15,18 @@ from config import (
 )
 from db import (
     add_analysis,
-    add_analysis_stage,
     add_image,
-    attach_image_to_analysis_stage,
+    attach_image_to_note,
+    attach_note_to_analysis,
     count_notes_by_analysis,
+    create_note,
     create_trade,
     delete_analysis,
-    delete_analysis_stage,
     delete_note,
     detach_note_from_analysis,
-    update_analysis_stage,
     update_note,
     get_analysis,
     list_analysis_notes,
-    list_analysis_stages,
     list_images,
     list_trades,
     transaction,
@@ -90,13 +88,10 @@ sk = f"{ANALYSIS_MANAGER_KEY_PREFIX}{analysis_id or 'new'}"
 # --- Загрузка данных ---
 assets = get_setting("assets", ASSETS_VALUES)
 local_tz = get_setting("local_tz", LOCAL_TZ)
-analysis_stages: List[Dict[str, Any]] = []
 analysis_notes: List[Dict[str, Any]] = []
 note_counts: Dict[int, int] = {}
 
 if not is_new_analysis:
-    analysis_stages = list_analysis_stages(
-        user_id, {"analysis_id": analysis_id})
     analysis_notes = list_analysis_notes(analysis_id)
     note_counts = count_notes_by_analysis(user_id)
 
@@ -119,72 +114,52 @@ side_col, meta_col = st.columns([2, 1], gap="medium")
 with side_col:
     st.markdown("#### Journal")
 
-    # --- Объединённая лента: stages + notes, сортировка по времени ---
-    entries: List[Dict[str, Any]] = []
-    for s in analysis_stages:
-        entries.append({"_kind": "stage", **s})
-    for n in analysis_notes:
-        entries.append({"_kind": "note", **n})
-    entries.sort(key=lambda e: (e.get("time_local") or ""))
+    _CATEGORY_LABEL = {
+        "pre-market": "Pre-Market",
+        "plan": "Plan",
+        "post-market": "Post-Market",
+    }
 
-    if not entries:
+    if not analysis_notes:
         with st.container(border=True):
             st.caption("No entries yet.")
     else:
-        _STAGE_LABEL = {
-            "pre-market": "Pre-Market",
-            "plan": "Plan",
-            "post-market": "Post-Market",
-        }
+        entries = sorted(analysis_notes, key=lambda e: (e.get("time_local") or ""))
         for entry in entries:
-            kind = entry["_kind"]
-            if kind == "stage":
-                badge = "[" + _STAGE_LABEL.get(entry.get("type", ""), entry.get("type", "")) + "]"
-                time_display = (entry.get("time_local") or "")[:5]
-                stage_images = list_images(analysis_stage_id=entry["id"])
-                render_entry_card(
-                    entry_id=entry["id"],
-                    badge=badge,
-                    time_display=time_display,
-                    body=entry.get("summary") or "",
-                    images=stage_images,
-                    on_save=lambda new_body, eid=entry["id"]: update_analysis_stage(eid, {"summary": new_body}),
-                    on_delete=lambda eid=entry["id"]: delete_analysis_stage(eid),
-                    key_prefix="stage",
-                )
-            else:  # note
-                count = note_counts.get(entry["id"], 1)
-                is_shared = count > 1
-                badge_extra = f"  ·  🔗 {count} analyses" if is_shared else ""
-                time_display = (entry.get("time_local") or "")[:5]
-                note_images = list_images(note_id=entry["id"])
-                render_entry_card(
-                    entry_id=entry["id"],
-                    badge=f"[Note]{badge_extra}",
-                    time_display=time_display,
-                    body=entry.get("body") or "",
-                    images=note_images,
-                    on_save=lambda new_body, eid=entry["id"]: update_note(eid, user_id, {"body": new_body}),
-                    on_delete=lambda eid=entry["id"], shared=is_shared: (
-                        detach_note_from_analysis(analysis_id, eid) if shared
-                        else delete_note(eid, user_id)
-                    ),
-                    delete_help="Remove from this analysis" if is_shared else "Delete",
-                    key_prefix="anote",
-                )
+            count = note_counts.get(entry["id"], 1)
+            is_shared = count > 1
+            category = entry.get("category") or ""
+            badge_label = _CATEGORY_LABEL.get(category, category) if category else "Note"
+            badge_extra = f"  ·  🔗 {count} analyses" if is_shared else ""
+            time_display = (entry.get("time_local") or "")[:5]
+            note_images = list_images(note_id=entry["id"])
+            render_entry_card(
+                entry_id=entry["id"],
+                badge=f"[{badge_label}]{badge_extra}",
+                time_display=time_display,
+                body=entry.get("body") or "",
+                images=note_images,
+                on_save=lambda new_body, eid=entry["id"]: update_note(eid, user_id, {"body": new_body}),
+                on_delete=lambda eid=entry["id"], shared=is_shared: (
+                    detach_note_from_analysis(analysis_id, eid) if shared
+                    else delete_note(eid, user_id)
+                ),
+                delete_help="Remove from this analysis" if is_shared else "Delete",
+                key_prefix="anote",
+            )
 
     # --- Один chat_prompt с pills выбора типа ---
-    _STAGE_TYPE_ORDER = {"pre-market": 0, "plan": 1, "post-market": 2}
-    _STAGE_LABEL_MAP = [("Pre-Market", "pre-market"), ("Plan", "plan"), ("Post-Market", "post-market")]
+    _CATEGORY_ORDER = {"pre-market": 0, "plan": 1, "post-market": 2}
+    _CATEGORY_LABEL_MAP = [("Pre-Market", "pre-market"), ("Plan", "plan"), ("Post-Market", "post-market")]
     _existing_orders = [
-        _STAGE_TYPE_ORDER[s["type"]]
-        for s in analysis_stages
-        if s.get("type") in _STAGE_TYPE_ORDER
+        _CATEGORY_ORDER[n["category"]]
+        for n in analysis_notes
+        if n.get("category") in _CATEGORY_ORDER
     ]
     _min_order = max(_existing_orders) if _existing_orders else 0
     _available_pills = [
-        label for label, key in _STAGE_LABEL_MAP
-        if _STAGE_TYPE_ORDER[key] >= _min_order
+        label for label, key in _CATEGORY_LABEL_MAP
+        if _CATEGORY_ORDER[key] >= _min_order
     ]
 
     _type_key = f"{sk}_entry_type"
@@ -216,20 +191,16 @@ with side_col:
                 "Post-Market": "post-market",
             }
             with transaction() as conn:
-                stage_id = add_analysis_stage(
-                    {
-                        "analysis_id": analysis_id,
-                        "type": _type_map[entry_type],
-                        "summary": (resp.text or "").strip() or "(image)",
-                        "time_local": _dt.now().strftime("%H:%M:%S"),
-                    },
-                    conn=conn,
-                )
+                note_id = create_note(user_id, {
+                    "body": (resp.text or "").strip() or "(image)",
+                    "category": _type_map[entry_type],
+                    "time_local": _dt.now().strftime("%H:%M:%S"),
+                }, conn=conn)
+                attach_note_to_analysis(analysis_id, note_id, conn=conn)
                 for img in (resp.images or []):
                     data_uri = f"data:{img.type};{img.format},{img.data}"
                     image_id = add_image(data_uri, conn=conn)
-                    attach_image_to_analysis_stage(
-                        stage_id, image_id, conn=conn)
+                    attach_image_to_note(note_id, image_id, conn=conn)
             st.cache_data.clear()
             st.rerun()
 
@@ -384,23 +355,11 @@ if submitted:
         message_placeholder.error("Select an asset.")
         st.stop()
 
-    # Авто-вычисление state
-    all_stages = list_analysis_stages(
-        user_id, {"analysis_id": analysis_id}) if not is_new_analysis else []
-    stage_types = {s["type"] for s in all_stages}
-    trade_rows_for_state = list_trades(
-        user_id, {"analysis_id": analysis_id}) if not is_new_analysis else []
-    trade_count = len(trade_rows_for_state)
-    computed_state = (
-        "post-market" if "post-market" in stage_types else
-        "execution" if trade_count > 0 else
-        "plan" if "plan" in stage_types else
-        "pre-market"
-    )
-
     # Авто-вычисление day_result из net_pnl трейдов
+    trade_rows_for_result = list_trades(
+        user_id, {"analysis_id": analysis_id}) if not is_new_analysis else []
     completed = [
-        t for t in trade_rows_for_state
+        t for t in trade_rows_for_result
         if t.get("net_pnl") is not None and not t.get("is_missed")
     ]
     if completed:
@@ -415,7 +374,6 @@ if submitted:
         "daily_bias": daily_bias,
         "fact_bias": fact_bias,
         "day_result": computed_day_result,
-        "state": computed_state,
     }
 
     try:
