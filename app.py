@@ -1,16 +1,16 @@
-import logging
-import streamlit as st
-from db import init_db
-
-logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(message)s")
-from config import PAGES, EDITOR_PAGES
+from utils.backup import maybe_create_daily_backup
 from utils.auth import (
     require_auth,
     get_current_user_id,
     logout,
     ensure_user_from_oauth,
 )
-from utils.backup import maybe_create_daily_backup
+from config import PAGES, EDITOR_PAGES
+import logging
+import streamlit as st
+from db import init_db
+
+logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(message)s")
 
 init_db()
 
@@ -92,13 +92,14 @@ else:
         user_id = get_current_user_id()
         if "sidebar_user" not in st.session_state:
             from db import get_user_by_id
-            st.session_state["sidebar_user"] = get_user_by_id(user_id) if user_id else None
+            st.session_state["sidebar_user"] = get_user_by_id(
+                user_id) if user_id else None
         user = st.session_state["sidebar_user"]
         if user:
             name = user.get("username") or user.get("email", "")
             st.write(f"👤 {name}")
             if user.get("username"):
-                st.caption(user.get("email", ""))
+                st.write(user.get("email", ""))
         if st.button("Logout", key="sidebar_logout", width="stretch"):
             logout()
             st.logout()
