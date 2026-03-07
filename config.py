@@ -89,7 +89,7 @@ ANALYSIS_SUCCESS_STATE = "am_success_message"
 ANALYSIS_MANAGER_KEY_PREFIX = "am_analysis_id_"
 ASSETS_VALUES = ["EUR/USD", "GBP/USD", "XAU/USD", "XAG/USD"]
 DAILY_BIAS_VALUES = ["Bullish", "Bearish", "Neutral"]
-DAY_RESULT_VALUES = ["profit", "loss", "null"]
+DAY_RESULT_VALUES = ["Profit", "Loss", "Breakeven"]
 
 # Notes
 NOTE_DIALOG_NAME = "note_manager"

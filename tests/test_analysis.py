@@ -26,13 +26,12 @@ class TestAddAnalysis:
             "asset": "GBP/USD",
             "daily_bias": "Bullish",
             "fact_bias": "Bullish",
-            "day_result": "profit",
         })
 
         analysis = get_analysis(analysis_id, test_user)
         assert analysis["asset"] == "GBP/USD"
         assert analysis["daily_bias"] == "Bullish"
-        assert analysis["day_result"] == "profit"
+        assert analysis["day_result"] is None  # computed from trades; none attached
 
     def test_add_analysis_missing_date_raises(self, test_user):
         """Test creating analysis without date raises error."""

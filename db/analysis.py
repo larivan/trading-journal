@@ -13,7 +13,6 @@ ANALYSIS_COLUMNS = [
     "asset",
     "daily_bias",
     "fact_bias",
-    "day_result",
 ]
 
 ANALYSIS_WRITABLE_FIELDS = [
@@ -21,7 +20,6 @@ ANALYSIS_WRITABLE_FIELDS = [
     "asset",
     "daily_bias",
     "fact_bias",
-    "day_result",
 ]
 
 ANALYSIS_ORDER_COLUMNS = {
@@ -30,8 +28,16 @@ ANALYSIS_ORDER_COLUMNS = {
     "asset": "asset",
     "daily_bias": "daily_bias",
     "fact_bias": "fact_bias",
-    "day_result": "day_result",
 }
+
+_DAY_RESULT_SQL = """\
+    CASE
+        WHEN COUNT(CASE WHEN t.net_pnl IS NOT NULL AND (t.is_missed IS NULL OR t.is_missed = 0) THEN 1 END) = 0 THEN NULL
+        WHEN SUM(CASE WHEN t.net_pnl IS NOT NULL AND (t.is_missed IS NULL OR t.is_missed = 0) THEN t.net_pnl ELSE 0 END) > 0 THEN 'Profit'
+        WHEN SUM(CASE WHEN t.net_pnl IS NOT NULL AND (t.is_missed IS NULL OR t.is_missed = 0) THEN t.net_pnl ELSE 0 END) < 0 THEN 'Loss'
+        ELSE 'Breakeven'
+    END AS day_result\
+"""
 
 
 def _normalize_analysis_payload(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -92,17 +98,20 @@ def list_analysis(
     ascending: bool = False,
 ) -> List[Dict[str, Any]]:
     filters = filters or {}
-    select_clause = ", ".join(ANALYSIS_COLUMNS)
-    q = f"SELECT {select_clause} FROM analysis WHERE user_id=?"
+    a_cols = ", ".join(f"a.{c}" for c in ANALYSIS_COLUMNS)
+    q = (
+        f"SELECT {a_cols}, {_DAY_RESULT_SQL} "
+        f"FROM analysis a LEFT JOIN trades t ON t.analysis_id = a.id "
+        f"WHERE a.user_id=?"
+    )
     params: List[Any] = [user_id]
 
     mapping = {
-        "asset": "asset",
-        "daily_bias": "daily_bias",
-        "fact_bias": "fact_bias",
-        "day_result": "day_result",
-        "date_from": "date_local >= ?",
-        "date_to": "date_local <= ?",
+        "asset": "a.asset",
+        "daily_bias": "a.daily_bias",
+        "fact_bias": "a.fact_bias",
+        "date_from": "a.date_local >= ?",
+        "date_to": "a.date_local <= ?",
     }
     for key, value in filters.items():
         if value is None:
@@ -114,6 +123,8 @@ def list_analysis(
             q += f" AND {mapping[key]} = ?"
             params.append(value)
 
+    q += " GROUP BY a.id"
+
     if order_by:
         if order_by not in ANALYSIS_ORDER_COLUMNS:
             raise ValueError(
@@ -124,7 +135,7 @@ def list_analysis(
             f"{'ASC' if ascending else 'DESC'}"
         )
     else:
-        q += " ORDER BY date_local DESC, id DESC"
+        q += " ORDER BY a.date_local DESC, a.id DESC"
 
     conn = get_conn()
     try:
@@ -135,10 +146,13 @@ def list_analysis(
 
 
 def get_analysis(analysis_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+    a_cols = ", ".join(f"a.{c}" for c in ANALYSIS_COLUMNS)
     conn = get_conn()
     try:
         row = conn.execute(
-            f"SELECT {', '.join(ANALYSIS_COLUMNS)} FROM analysis WHERE id=? AND user_id=?",
+            f"SELECT {a_cols}, {_DAY_RESULT_SQL} "
+            f"FROM analysis a LEFT JOIN trades t ON t.analysis_id = a.id "
+            f"WHERE a.id=? AND a.user_id=? GROUP BY a.id",
             (analysis_id, user_id),
         ).fetchone()
         return dict(row) if row else None

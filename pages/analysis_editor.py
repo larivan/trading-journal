@@ -124,12 +124,14 @@ with side_col:
         with st.container(border=True):
             st.caption("No entries yet.")
     else:
-        entries = sorted(analysis_notes, key=lambda e: (e.get("time_local") or ""))
+        entries = sorted(analysis_notes, key=lambda e: (
+            e.get("time_local") or ""))
         for entry in entries:
             count = note_counts.get(entry["id"], 1)
             is_shared = count > 1
             category = entry.get("category") or ""
-            badge_label = _CATEGORY_LABEL.get(category, category) if category else "Note"
+            badge_label = _CATEGORY_LABEL.get(
+                category, category) if category else "Note"
             badge_extra = f"  ·  🔗 {count} analyses" if is_shared else ""
             time_display = (entry.get("time_local") or "")[:5]
             note_images = list_images(note_id=entry["id"])
@@ -139,7 +141,8 @@ with side_col:
                 time_display=time_display,
                 body=entry.get("body") or "",
                 images=note_images,
-                on_save=lambda new_body, eid=entry["id"]: update_note(eid, user_id, {"body": new_body}),
+                on_save=lambda new_body, eid=entry["id"]: update_note(
+                    eid, user_id, {"body": new_body}),
                 on_delete=lambda eid=entry["id"], shared=is_shared: (
                     detach_note_from_analysis(analysis_id, eid) if shared
                     else delete_note(eid, user_id)
@@ -150,7 +153,8 @@ with side_col:
 
     # --- Один chat_prompt с pills выбора типа ---
     _CATEGORY_ORDER = {"pre-market": 0, "plan": 1, "post-market": 2}
-    _CATEGORY_LABEL_MAP = [("Pre-Market", "pre-market"), ("Plan", "plan"), ("Post-Market", "post-market")]
+    _CATEGORY_LABEL_MAP = [("Pre-Market", "pre-market"),
+                           ("Plan", "plan"), ("Post-Market", "post-market")]
     _existing_orders = [
         _CATEGORY_ORDER[n["category"]]
         for n in analysis_notes
@@ -354,25 +358,11 @@ if submitted:
         message_placeholder.error("Select an asset.")
         st.stop()
 
-    # Авто-вычисление day_result из net_pnl трейдов
-    trade_rows_for_result = list_trades(
-        user_id, {"analysis_id": analysis_id}) if not is_new_analysis else []
-    completed = [
-        t for t in trade_rows_for_result
-        if t.get("net_pnl") is not None and not t.get("is_missed")
-    ]
-    if completed:
-        total_pnl = sum(t["net_pnl"] for t in completed)
-        computed_day_result = "profit" if total_pnl > 0 else "loss" if total_pnl < 0 else "null"
-    else:
-        computed_day_result = None
-
     payload: Dict[str, Any] = {
         "date_local": date_val.isoformat(),
         "asset": asset_val,
         "daily_bias": daily_bias,
         "fact_bias": fact_bias,
-        "day_result": computed_day_result,
     }
 
     try:
