@@ -48,6 +48,7 @@ EXECUTION_VARS = {
 
 # --- Загружаем список счетов, сетапов и ассетов ---
 account_rows_all = cached_accounts(user_id)
+account_rows_for_map = cached_accounts(user_id, include_archived=True)
 setup_rows_all = cached_setups(user_id)
 assets_list = get_setting("assets", ASSETS_VALUES)
 accounts = to_option_format(
@@ -55,7 +56,7 @@ accounts = to_option_format(
 setups = to_option_format(
     setup_rows_all, formatter=lambda s: f"{s['name']}")
 account_map: Dict[int, str] = {acc["id"]: acc["name"]
-                               for acc in account_rows_all}
+                               for acc in account_rows_for_map}
 setup_map: Dict[int, str] = {s["id"]: s["name"] for s in setup_rows_all}
 
 # === ВЕРХНЯЯ ПАНЕЛЬ С ФИЛЬТРАМИ ПЕРИОДОВ ===
