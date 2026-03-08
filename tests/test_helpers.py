@@ -13,7 +13,6 @@ from helpers import (
     is_win_rr,
     parse_date,
     parse_time,
-    result_label,
     safe_choice_index,
     to_option_format,
 )
@@ -160,21 +159,6 @@ class TestSafeChoiceIndex:
         assert safe_choice_index(["A", "B"], None) is None
 
 
-class TestResultLabel:
-    def test_known_win(self):
-        assert result_label("win") == "Win"
-
-    def test_known_loss(self):
-        assert result_label("loss") == "Loss"
-
-    def test_unknown_uses_title(self):
-        assert result_label("some_value") == "Some Value"
-
-    def test_none_returns_empty(self):
-        assert result_label(None) == ""
-
-    def test_empty_string_returns_empty(self):
-        assert result_label("") == ""
 
 
 class TestFormatLocalDate:

@@ -1,8 +1,9 @@
 # db/trades.py — Trade CRUD operations
+import json
 import sqlite3
 from typing import Any, Dict, List, Optional
 
-from config import TRADE_STATE_VALUES, TRADE_SESSION_VALUES
+from config import TRADE_SESSION_VALUES
 from db._normalize import coerce_float, coerce_int, normalize_date, normalize_time
 from db.connection import get_conn, _managed_conn, _rows_to_dicts
 
@@ -15,7 +16,7 @@ TRADE_ORDER_COLUMNS = {
     "setup_id",
     "analysis_id",
     "asset",
-    "state",
+    "trade_type",
     "is_missed",
     "session",
     "net_pnl",
@@ -33,17 +34,15 @@ TRADE_COLUMNS = [
     "setup_id",
     "analysis_id",
     "asset",
+    "trade_type",
     "risk_pct",
     "session",
-    "state",
     "is_missed",
     "net_pnl",
     "risk_reward",
     "reward_percent",
-    "estimation",
-    "emotional_problems",
-    "hot_thoughts",
-    "cold_thoughts",
+    "is_correct",
+    "mistake_types",
 ]
 
 WRITABLE_TRADE_FIELDS = [
@@ -54,21 +53,27 @@ WRITABLE_TRADE_FIELDS = [
     "setup_id",
     "analysis_id",
     "asset",
+    "trade_type",
     "risk_pct",
     "session",
-    "state",
     "is_missed",
     "net_pnl",
     "risk_reward",
     "reward_percent",
-    "estimation",
-    "emotional_problems",
-    "hot_thoughts",
-    "cold_thoughts",
+    "is_correct",
+    "mistake_types",
 ]
 
-_INT_FIELDS = {"account_id", "setup_id", "analysis_id", "is_missed", "estimation"}
+_INT_FIELDS = {"account_id", "setup_id", "analysis_id", "is_missed", "is_correct"}
 _FLOAT_FIELDS = {"risk_pct", "net_pnl", "risk_reward", "reward_percent"}
+
+
+def _compute_status(t: dict) -> str:
+    if t.get("is_correct") is not None:
+        return "Reviewed"
+    if t.get("net_pnl") is not None or t.get("is_missed"):
+        return "Outcome"
+    return "Open"
 
 
 def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -90,20 +95,19 @@ def _normalize_trade_payload(data: Dict[str, Any]) -> Dict[str, Any]:
             payload[key] = normalize_time(value)
             continue
 
-        if key == "state":
-            if value not in TRADE_STATE_VALUES:
-                raise ValueError(
-                    f"state must be one of: {', '.join(TRADE_STATE_VALUES)}"
-                )
-            payload[key] = value
-            continue
-
         if key == "session":
             if value not in TRADE_SESSION_VALUES:
                 raise ValueError(
                     f"session must be one of: {', '.join(TRADE_SESSION_VALUES)}"
                 )
             payload[key] = value
+            continue
+
+        if key == "mistake_types":
+            if isinstance(value, list):
+                payload[key] = json.dumps(value)
+            else:
+                payload[key] = value
             continue
 
         if key in _INT_FIELDS:
@@ -126,7 +130,11 @@ def get_trade_by_id(trade_id: int, user_id: int) -> Optional[Dict[str, Any]]:
             "SELECT * FROM trades WHERE id=? AND user_id=?",
             (trade_id, user_id),
         ).fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        t = dict(row)
+        t["status"] = _compute_status(t)
+        return t
     finally:
         conn.close()
 
@@ -232,12 +240,12 @@ def list_trades(
     mapping = {
         "account_id": "account_id",
         "asset": "asset",
+        "trade_type": "trade_type",
         "setup_id": "setup_id",
         "analysis_id": "analysis_id",
-        "state": "state",
         "is_missed": "is_missed",
         "session": "session",
-        "estimation": "estimation",
+        "is_correct": "is_correct",
         "date_from": "date_local >= ?",
         "date_to": "date_local <= ?",
     }
@@ -275,6 +283,9 @@ def list_trades(
     conn = get_conn()
     try:
         rows = conn.execute(q, p).fetchall()
-        return _rows_to_dicts(rows)
+        result = _rows_to_dicts(rows)
+        for t in result:
+            t["status"] = _compute_status(t)
+        return result
     finally:
         conn.close()

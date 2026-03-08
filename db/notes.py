@@ -9,6 +9,7 @@ from db.connection import get_conn, _managed_conn, _rows_to_dicts
 
 NOTE_WRITABLE_FIELDS = [
     "body",
+    "category",
     "date_local",
     "time_local",
 ]
@@ -17,6 +18,7 @@ NOTE_SELECT_COLUMNS = [
     "id",
     "user_id",
     "body",
+    "category",
     "date_local",
     "time_local",
 ]
@@ -110,6 +112,8 @@ def list_notes(
             pattern = f"%{value}%"
             q += " AND (body LIKE ?)"
             params.append(pattern)
+        elif key == "exclude_analysis" and value:
+            q += " AND NOT EXISTS (SELECT 1 FROM analysis_notes an WHERE an.note_id = notes.id)"
 
     if order_by:
         if order_by not in NOTE_ORDER_COLUMNS:
@@ -278,22 +282,16 @@ def count_notes_by_trade(user_id: int) -> Dict[int, int]:
         conn.close()
 
 
-# =====================================================================
-# Note relations with analysis stages
-# =====================================================================
-
-
-def attach_note_to_analysis_stage(
-    stage_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
+def attach_note_to_analysis(
+    analysis_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    if stage_id is None or note_id is None:
+    if analysis_id is None or note_id is None:
         return
     conn, own = _managed_conn(conn)
     try:
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT OR IGNORE INTO analysis_notes (analysis_stage_id, note_id) VALUES (?, ?)",
-            (stage_id, note_id),
+        conn.execute(
+            "INSERT OR IGNORE INTO analysis_notes(analysis_id, note_id) VALUES(?,?)",
+            (analysis_id, note_id),
         )
         if own:
             conn.commit()
@@ -302,17 +300,16 @@ def attach_note_to_analysis_stage(
             conn.close()
 
 
-def detach_note_from_analysis_stage(
-    stage_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
+def detach_note_from_analysis(
+    analysis_id: int, note_id: int, *, conn: Optional[sqlite3.Connection] = None
 ) -> None:
-    if stage_id is None or note_id is None:
+    if analysis_id is None or note_id is None:
         return
     conn, own = _managed_conn(conn)
     try:
-        cur = conn.cursor()
-        cur.execute(
-            "DELETE FROM analysis_notes WHERE analysis_stage_id=? AND note_id=?",
-            (stage_id, note_id),
+        conn.execute(
+            "DELETE FROM analysis_notes WHERE analysis_id=? AND note_id=?",
+            (analysis_id, note_id),
         )
         if own:
             conn.commit()
@@ -321,21 +318,38 @@ def detach_note_from_analysis_stage(
             conn.close()
 
 
-def list_analysis_stage_notes(stage_id: int) -> List[Dict[str, Any]]:
-    if stage_id is None:
+def list_analysis_notes(analysis_id: int) -> List[Dict[str, Any]]:
+    """Возвращает notes, прикреплённые к анализу напрямую."""
+    if analysis_id is None:
         return []
     conn = get_conn()
     try:
         rows = conn.execute(
-            f"""
-            SELECT {', '.join(NOTE_SELECT_COLUMNS)}
-            FROM notes n
-            JOIN analysis_notes an ON an.note_id = n.id
-            WHERE an.analysis_stage_id=?
-            ORDER BY n.date_local DESC, n.time_local DESC, n.id DESC
-            """,
-            (stage_id,),
+            "SELECT n.id, n.user_id, n.body, n.category, n.date_local, n.time_local "
+            "FROM notes n "
+            "JOIN analysis_notes l ON l.note_id=n.id "
+            "WHERE l.analysis_id=? ORDER BY n.date_local, n.time_local",
+            (analysis_id,),
         ).fetchall()
-        return _rows_to_dicts(rows)
+        return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+def count_notes_by_analysis(user_id: int) -> Dict[int, int]:
+    """Для каждой note возвращает, в скольких анализах она есть."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT l.note_id, COUNT(*) as cnt "
+            "FROM analysis_notes l "
+            "JOIN analysis a ON a.id=l.analysis_id "
+            "WHERE a.user_id=? "
+            "GROUP BY l.note_id",
+            (user_id,),
+        ).fetchall()
+        return {r["note_id"]: r["cnt"] for r in rows}
+    finally:
+        conn.close()
+
+

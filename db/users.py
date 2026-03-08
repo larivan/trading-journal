@@ -9,23 +9,25 @@ from db.connection import get_conn, _managed_conn, _now_iso_utc, _rows_to_dicts
 WRITABLE_SETTING_FIELDS = [
     "assets",
     "be_threshold",
+    "currency",
     "risk_min",
     "risk_max",
     "local_tz",
-    "currency",
-    "theme",
     "language",
+    "default_asset",
+    "default_account_id",
+    "mistake_types",
 ]
 
 _DEFAULT_SETTINGS: Dict[str, Any] = {
     "assets": ["EUR/USD", "GBP/USD", "XAU/USD", "XAG/USD"],
     "be_threshold": 0.05,
+    "currency": "USD",
     "risk_min": 0.5,
     "risk_max": 2.0,
     "local_tz": "Europe/Moscow",
-    "currency": "USD",
-    "theme": "light",
     "language": "en",
+    "mistake_types": [],
 }
 
 
@@ -92,12 +94,13 @@ def get_user_settings(user_id: int) -> Dict[str, Any]:
             return dict(_DEFAULT_SETTINGS)
         result = dict(_DEFAULT_SETTINGS)
         result.update({k: v for k, v in dict(row).items() if v is not None})
-        # Parse assets JSON
-        if isinstance(result.get("assets"), str):
-            try:
-                result["assets"] = json.loads(result["assets"])
-            except (json.JSONDecodeError, TypeError):
-                result["assets"] = _DEFAULT_SETTINGS["assets"]
+        # Parse JSON list fields
+        for field, default in (("assets", _DEFAULT_SETTINGS["assets"]), ("mistake_types", [])):
+            if isinstance(result.get(field), str):
+                try:
+                    result[field] = json.loads(result[field])
+                except (json.JSONDecodeError, TypeError):
+                    result[field] = default
         return result
     finally:
         conn.close()
@@ -115,7 +118,7 @@ def update_user_settings(
         if key not in data:
             continue
         value = data[key]
-        if key == "assets":
+        if key in ("assets", "mistake_types"):
             if isinstance(value, list):
                 payload[key] = json.dumps(value)
             else:

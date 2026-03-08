@@ -21,6 +21,7 @@ from db import (
     update_account,
 )
 from utils.auth import get_current_user_id
+from utils.cached_data import cached_trades
 from utils.session_state import close_dialog, dialog_is_active
 
 
@@ -67,6 +68,14 @@ def render_account_manager() -> None:
                 key=f"{state_key}_broker",
                 placeholder="Optional",
             )
+            _CURRENCIES = ["USD", "EUR"]
+            currency_value = st.selectbox(
+                "Currency",
+                _CURRENCIES,
+                index=_CURRENCIES.index(account.get("currency") or "USD")
+                if (account.get("currency") or "USD") in _CURRENCIES else 0,
+                key=f"{state_key}_currency",
+            )
             balance_value = st.number_input(
                 "Starting balance",
                 value=float(account.get("starting_balance") or 0.0),
@@ -84,34 +93,43 @@ def render_account_manager() -> None:
                     f"""{':blue-badge[Prop Account]' if bool(account.get("is_prop")) else ''}
                     {':gray-badge[Archived]' if bool(account.get("archived")) else ''}"""
                 )
-            st.markdown(f"**Broker:** {account.get('broker') or 'N/A'}")
-            st.markdown(
-                f"**Starting balance:** ${float(account.get('starting_balance') or 0.0):,.2f}"
+            currency = account.get("currency") or "USD"
+            starting = float(account.get("starting_balance") or 0.0)
+            trades = cached_trades(user_id)
+            pnl = sum(
+                t["net_pnl"] for t in trades
+                if t.get("account_id") == account_id and t.get("net_pnl") is not None
             )
+            st.markdown(f"**Broker:** {account.get('broker') or 'N/A'}")
+            st.markdown(f"**Starting balance:** {currency} {starting:,.2f}")
+            st.markdown(f"**Current balance:** {currency} {starting + pnl:,.2f}")
 
         archived = bool(account.get("archived"))
-        c1, c2, c3 = st.columns(3)
-        save_clicked = c1.button(
-            "Save",
-            type="primary",
-            width="stretch",
-            key=f"{state_key}_save",
-        )
-        archive_clicked = c2.button(
-            "Restore" if archived else "Archive",
-            type="secondary",
-            width="stretch",
-            key=f"{state_key}_archive",
-            help="Archived accounts stay in the list but are hidden from selections.",
-            disabled=is_new,
-        )
-        delete_clicked = c3.button(
-            "Delete",
-            type="secondary",
-            width="stretch",
-            key=f"{state_key}_delete",
-            disabled=is_new,
-        )
+        if is_new:
+            save_clicked = st.button(
+                "Save",
+                type="primary",
+                width="stretch",
+                key=f"{state_key}_save",
+            )
+            archive_clicked = False
+            delete_clicked = False
+        else:
+            save_clicked = False
+            c1, c2 = st.columns(2)
+            archive_clicked = c1.button(
+                "Restore" if archived else "Archive",
+                type="secondary",
+                width="stretch",
+                key=f"{state_key}_archive",
+                help="Archived accounts stay in the list but are hidden from selections.",
+            )
+            delete_clicked = c2.button(
+                "Delete",
+                type="secondary",
+                width="stretch",
+                key=f"{state_key}_delete",
+            )
 
         if delete_clicked and not is_new:
             try:
@@ -148,6 +166,7 @@ def render_account_manager() -> None:
             payload: Dict[str, Any] = {
                 "name": name_clean,
                 "broker": (broker_value or "").strip() or None,
+                "currency": currency_value,
                 "starting_balance": balance_value,
                 "is_prop": 1 if is_prop_value else 0,
             }
@@ -158,12 +177,13 @@ def render_account_manager() -> None:
                         user_id,
                         payload["name"],
                         payload["broker"],
-                        "USD",
+                        currency_value,
                         payload["starting_balance"],
                         payload["is_prop"],
                     )
-                    st.session_state[ACCOUNT_ID_STATE] = new_id
                     st.session_state[ACCOUNT_SUCCESS_STATE] = "Account created."
+                    _reset_account_state()
+                    close_dialog()
                 else:
                     update_account(int(account_id), user_id, payload)
                     st.session_state[ACCOUNT_SUCCESS_STATE] = "Account saved."
@@ -171,6 +191,7 @@ def render_account_manager() -> None:
                 st.error(f"Failed to save account: {exc}")
                 return
 
+            st.cache_data.clear()
             st.rerun()
 
     if dialog_is_active(ACCOUNT_DIALOG_NAME):

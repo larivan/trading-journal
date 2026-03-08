@@ -109,10 +109,12 @@ def filter_trades(
     Поддерживаемые ключи filters:
       date_from, date_to  — строки ISO (date_local >= / <=)
       account_id          — int
-      state               — str
+      setup_id            — int
+      status              — str (computed: "Open" | "Outcome" | "Reviewed")
+      trade_type          — str
       asset               — str
       session             — str
-      estimation          — int (0 или 1)
+      is_correct          — int (0 или 1)
       is_missed           — int (0 или 1)
       result              — "Win" | "Loss" | "BE" | "Miss"
     """
@@ -123,10 +125,12 @@ def filter_trades(
     date_from = filters.get("date_from")
     date_to = filters.get("date_to")
     account_id = filters.get("account_id")
-    state = filters.get("state")
+    setup_id = filters.get("setup_id")
+    status = filters.get("status")
     asset = filters.get("asset")
+    trade_type = filters.get("trade_type")
     session = filters.get("session")
-    estimation = filters.get("estimation")
+    is_correct = filters.get("is_correct")
     is_missed_f = filters.get("is_missed")
     result_f = filters.get("result")
 
@@ -137,13 +141,17 @@ def filter_trades(
             continue
         if account_id is not None and row.get("account_id") != account_id:
             continue
-        if state is not None and row.get("state") != state:
+        if setup_id is not None and row.get("setup_id") != setup_id:
+            continue
+        if status is not None and row.get("status") != status:
             continue
         if asset is not None and row.get("asset") != asset:
             continue
+        if trade_type is not None and row.get("trade_type") != trade_type:
+            continue
         if session is not None and row.get("session") != session:
             continue
-        if estimation is not None and row.get("estimation") != estimation:
+        if is_correct is not None and row.get("is_correct") != is_correct:
             continue
         if is_missed_f is not None and row.get("is_missed") != is_missed_f:
             continue

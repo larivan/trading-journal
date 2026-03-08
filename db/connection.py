@@ -189,15 +189,18 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS user_settings (
-    user_id       INTEGER PRIMARY KEY,
-    assets        TEXT    DEFAULT '["EUR/USD","GBP/USD","XAU/USD","XAG/USD"]',
-    be_threshold  REAL    DEFAULT 0.05,
-    risk_min      REAL    DEFAULT 0.5,
-    risk_max      REAL    DEFAULT 2.0,
-    local_tz      TEXT    DEFAULT 'UTC+3',
-    currency      TEXT    DEFAULT 'USD',
-    theme         TEXT    DEFAULT 'light',
-    language      TEXT    DEFAULT 'en',
+    user_id            INTEGER PRIMARY KEY,
+    assets             TEXT    DEFAULT '["EUR/USD","GBP/USD","XAU/USD","XAG/USD"]',
+    be_threshold       REAL    DEFAULT 0.05,
+    risk_min           REAL    DEFAULT 0.5,
+    risk_max           REAL    DEFAULT 2.0,
+    local_tz           TEXT    DEFAULT 'Europe/Moscow',
+    currency           TEXT    DEFAULT 'USD',
+    theme              TEXT    DEFAULT 'light',
+    language           TEXT    DEFAULT 'en',
+    default_asset      TEXT    DEFAULT NULL,
+    default_account_id INTEGER DEFAULT NULL,
+    mistake_types      TEXT    DEFAULT '[]',
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -233,6 +236,7 @@ CREATE TABLE IF NOT EXISTS notes (
     body        TEXT NOT NULL,
     date_local  TEXT NOT NULL,
     time_local  TEXT NOT NULL,
+    category    TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -244,65 +248,53 @@ CREATE TABLE IF NOT EXISTS analysis (
     daily_bias  TEXT,
     fact_bias   TEXT,
     day_result  TEXT,
-    state       TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS analysis_stages (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    analysis_id  INTEGER NOT NULL,
-    time_local   TEXT,
-    type         TEXT,
-    summary      TEXT,
-    FOREIGN KEY (analysis_id) REFERENCES analysis(id) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
 CREATE TABLE IF NOT EXISTS trades (
-    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id            INTEGER NOT NULL,
-    local_tz           TEXT NOT NULL,
-    date_local         TEXT NOT NULL,
-    time_local         TEXT NOT NULL,
-    account_id         INTEGER NOT NULL,
-    setup_id           INTEGER,
-    analysis_id        INTEGER,
-    asset              TEXT NOT NULL,
-    session            TEXT NOT NULL,
-    state              TEXT NOT NULL,
-    is_missed          INTEGER DEFAULT 0,
-    net_pnl            REAL,
-    risk_pct           REAL,
-    risk_reward        REAL,
-    reward_percent     REAL,
-    estimation         INTEGER,
-    emotional_problems TEXT,
-    hot_thoughts       TEXT,
-    cold_thoughts      TEXT,
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        INTEGER NOT NULL,
+    local_tz       TEXT NOT NULL,
+    date_local     TEXT NOT NULL,
+    time_local     TEXT NOT NULL,
+    account_id     INTEGER NOT NULL,
+    setup_id       INTEGER,
+    analysis_id    INTEGER,
+    asset          TEXT NOT NULL,
+    trade_type     TEXT,
+    session        TEXT NOT NULL,
+    is_missed      INTEGER DEFAULT 0,
+    net_pnl        REAL,
+    risk_pct       REAL,
+    risk_reward    REAL,
+    reward_percent REAL,
+    is_correct     INTEGER,
+    mistake_types  TEXT,
     FOREIGN KEY (user_id)     REFERENCES users(id)    ON DELETE CASCADE,
     FOREIGN KEY (account_id)  REFERENCES accounts(id)  ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (setup_id)    REFERENCES setups(id)    ON DELETE SET NULL   ON UPDATE CASCADE,
     FOREIGN KEY (analysis_id) REFERENCES analysis(id)  ON DELETE SET NULL   ON UPDATE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS charts (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    chart_url         TEXT NOT NULL,
-    caption           TEXT,
-    trade_id          INTEGER,
-    analysis_stage_id INTEGER,
-    setup_id          INTEGER,
-    note_id           INTEGER,
+CREATE TABLE IF NOT EXISTS images (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    image_url   TEXT NOT NULL,
+    caption     TEXT,
+    trade_id    INTEGER,
+    analysis_id INTEGER,
+    setup_id    INTEGER,
+    note_id     INTEGER,
     CHECK (
         (CASE WHEN trade_id IS NOT NULL THEN 1 ELSE 0 END) +
-        (CASE WHEN analysis_stage_id IS NOT NULL THEN 1 ELSE 0 END) +
+        (CASE WHEN analysis_id IS NOT NULL THEN 1 ELSE 0 END) +
         (CASE WHEN setup_id IS NOT NULL THEN 1 ELSE 0 END) +
         (CASE WHEN note_id IS NOT NULL THEN 1 ELSE 0 END)
         <= 1
     ),
-    FOREIGN KEY (trade_id)          REFERENCES trades(id)           ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (analysis_stage_id) REFERENCES analysis_stages(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (setup_id)          REFERENCES setups(id)          ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (note_id)           REFERENCES notes(id)           ON DELETE CASCADE ON UPDATE CASCADE
+    FOREIGN KEY (trade_id)    REFERENCES trades(id)    ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (analysis_id) REFERENCES analysis(id)  ON DELETE CASCADE,
+    FOREIGN KEY (setup_id)    REFERENCES setups(id)    ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (note_id)     REFERENCES notes(id)     ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- =========================
@@ -310,12 +302,14 @@ CREATE TABLE IF NOT EXISTS charts (
 -- =========================
 
 CREATE TABLE IF NOT EXISTS analysis_notes (
-    analysis_stage_id INTEGER,
-    note_id           INTEGER,
-    PRIMARY KEY (analysis_stage_id, note_id),
-    FOREIGN KEY (analysis_stage_id) REFERENCES analysis_stages(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (note_id)           REFERENCES notes(id)           ON DELETE CASCADE ON UPDATE CASCADE
+    analysis_id INTEGER NOT NULL,
+    note_id     INTEGER NOT NULL,
+    PRIMARY KEY (analysis_id, note_id),
+    FOREIGN KEY (analysis_id) REFERENCES analysis(id) ON DELETE CASCADE,
+    FOREIGN KEY (note_id)     REFERENCES notes(id)    ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_analysis_notes_analysis ON analysis_notes(analysis_id);
 
 CREATE TABLE IF NOT EXISTS trade_notes (
     trade_id  INTEGER,
@@ -341,15 +335,13 @@ CREATE INDEX IF NOT EXISTS idx_trades_asset        ON trades(asset);
 CREATE INDEX IF NOT EXISTS idx_trades_setup        ON trades(setup_id);
 CREATE INDEX IF NOT EXISTS idx_trades_analysis     ON trades(analysis_id);
 
-CREATE INDEX IF NOT EXISTS idx_analysis_date_local         ON analysis(date_local);
-CREATE INDEX IF NOT EXISTS idx_analysis_asset              ON analysis(asset);
-CREATE INDEX IF NOT EXISTS idx_analysis_stages_analysis_id ON analysis_stages(analysis_id);
-CREATE INDEX IF NOT EXISTS idx_charts_trade_id             ON charts(trade_id);
-CREATE INDEX IF NOT EXISTS idx_charts_analysis_stage_id    ON charts(analysis_stage_id);
-CREATE INDEX IF NOT EXISTS idx_charts_setup_id             ON charts(setup_id);
-CREATE INDEX IF NOT EXISTS idx_charts_note_id              ON charts(note_id);
-CREATE INDEX IF NOT EXISTS idx_trade_notes_note_id         ON trade_notes(note_id);
-CREATE INDEX IF NOT EXISTS idx_analysis_notes_note_id      ON analysis_notes(note_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_date_local ON analysis(date_local);
+CREATE INDEX IF NOT EXISTS idx_analysis_asset      ON analysis(asset);
+CREATE INDEX IF NOT EXISTS idx_images_trade_id     ON images(trade_id);
+CREATE INDEX IF NOT EXISTS idx_images_setup_id     ON images(setup_id);
+CREATE INDEX IF NOT EXISTS idx_images_note_id      ON images(note_id);
+CREATE INDEX IF NOT EXISTS idx_images_analysis_id  ON images(analysis_id);
+CREATE INDEX IF NOT EXISTS idx_trade_notes_note_id ON trade_notes(note_id);
 """
 
 
@@ -369,6 +361,12 @@ def _execute_schema(conn) -> None:
     conn.commit()
 
 
+_DROP_LEGACY_SQL = """
+DROP TABLE IF EXISTS analysis_note_links;
+DROP TABLE IF EXISTS analysis_stages;
+"""
+
+
 def init_db() -> None:
     """Create DB schema if not exists."""
     if not _USE_TURSO:
@@ -376,9 +374,13 @@ def init_db() -> None:
     conn = get_conn()
     try:
         if _USE_TURSO:
+            for stmt in _DROP_LEGACY_SQL.split(";"):
+                s = stmt.strip()
+                if s:
+                    conn.execute(s)
             _execute_schema(conn)
         else:
-            conn.executescript(SCHEMA_SQL)
+            conn.executescript(_DROP_LEGACY_SQL + SCHEMA_SQL)
             conn.commit()
     finally:
         conn.close()

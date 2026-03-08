@@ -1,37 +1,33 @@
 import sqlite3
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from utils.date_periods import compute_date_range
 from typing import Any, Dict, List, Optional, Tuple
+import pandas as pd
 import streamlit as st
-from components.entity_table import render_entity_table
-from components.trade_manager import render_trade_manager
-from db import delete_trade
-from utils.cached_data import cached_accounts, cached_trades, filter_trades
+from db import create_trade, delete_trade, transaction
+from utils.cached_data import cached_accounts, cached_setups, cached_trades, filter_trades, page_mark
 from helpers import (
     parse_date,
     to_option_format,
-    apply_page_config_from_file,
     custom_selectbox,
     calculate_trade_result,
 )
-from utils.session_state import (
-    open_dialog,
-)
 from utils.auth import get_current_user_id, get_setting
+from utils.trade_sessions import detect_trade_session
 from config import (
     ASSETS_VALUES,
     LOCAL_TZ,
     TRADE_RESULT_VALUES,
     TRADE_SESSION_VALUES,
-    TRADE_STATE_VALUES,
-    TRADE_ID_STATE,
-    TRADE_DIALOG_NAME
+    TRADE_STATUS_VALUES,
+    TRADE_TYPE_VALUES,
 )
 
 # === БАЗОВАЯ ИНИЦИАЛИЗАЦИЯ СТРАНИЦЫ ===
-from utils.cached_data import page_mark
+st.set_page_config(page_title="Trades Database",
+                   page_icon=":material/view_list:", layout="wide")
+st.title(":material/view_list: Trades Database")
 page_mark("trades", "start")
-apply_page_config_from_file(__file__)
 
 user_id = get_current_user_id()
 
@@ -44,22 +40,29 @@ TAB_DEFINITIONS: Dict[str, str] = {
     "custom": "Custom",
 }
 
-ESTIMATION_VARS = {
-    1: "Like",
-    0: "Dislike",
+EXECUTION_VARS = {
+    1: "Correct",
+    0: "Has mistake",
 }
 
 
-# --- Загружаем список счетов ---
+# --- Загружаем список счетов, сетапов и ассетов ---
+account_rows_all = cached_accounts(user_id)
+account_rows_for_map = cached_accounts(user_id, include_archived=True)
+setup_rows_all = cached_setups(user_id)
+assets_list = get_setting("assets", ASSETS_VALUES)
 accounts = to_option_format(
-    cached_accounts(user_id),
-    formatter=lambda acc: f"{acc['name']}",
-)
+    account_rows_all, formatter=lambda acc: f"{acc['name']}")
+setups = to_option_format(
+    setup_rows_all, formatter=lambda s: f"{s['name']}")
+account_map: Dict[int, str] = {acc["id"]: acc["name"]
+                               for acc in account_rows_for_map}
+account_currency_map: Dict[int, str] = {acc["id"]: acc.get("currency") or "USD"
+                                        for acc in account_rows_for_map}
+setup_map: Dict[int, str] = {s["id"]: s["name"] for s in setup_rows_all}
 
 # === ВЕРХНЯЯ ПАНЕЛЬ С ФИЛЬТРАМИ ПЕРИОДОВ ===
-period_col, _, actions_col = st.columns(
-    [0.5, 0.3, 0.2], vertical_alignment="bottom"
-)
+period_col, _ = st.columns([0.7, 0.3], vertical_alignment="bottom")
 with period_col:
     period_key = "trade_current_period_label"
     if not st.session_state.get(period_key):
@@ -71,25 +74,18 @@ with period_col:
         width="stretch",
     )
 
-with actions_col:
-    if st.button(
-        "Create",
-        type="primary",
-        width="stretch",
-    ):
-        open_dialog(TRADE_DIALOG_NAME)
-
 # === ПРИМЕНЕНИЕ ПЕРИОДОВ И КАСТОМНЫХ ФИЛЬТРОВ ===
 filter: Dict[str, Any] = {}
 date_range: Optional[Tuple[date, date]] = None
 account_id: Optional[int] = None
+asset: Optional[str] = None
 
 label_to_key = {label: key for key, label in TAB_DEFINITIONS.items()}
 selected_key = label_to_key.get(selected_label, "today")
 
 if selected_key == "custom":
     with st.container():
-        fc1, fc2, fc3, fc4, fc5, fc6, fc7 = st.columns(7)
+        fc1, fc2, fc3, fc4, fc5, fc6, fc7, fc8, fc9 = st.columns(9)
         date_range = fc1.date_input(
             "Date Range",
             value=(
@@ -109,46 +105,63 @@ if selected_key == "custom":
                 "Account",
                 accounts,
                 placeholder="All",
+                key="trades_filter_account",
             )
         asset = fc4.selectbox(
             "Asset",
-            ASSETS_VALUES,
+            assets_list,
             placeholder="All",
             index=None,
         )
-        state = fc5.selectbox(
-            "State",
-            TRADE_STATE_VALUES,
+        trade_type = fc5.selectbox(
+            "Type",
+            TRADE_TYPE_VALUES,
             placeholder="All",
             index=None,
         )
-        result = fc6.selectbox(
+        with fc6:
+            setup_filter = custom_selectbox(
+                "Setup",
+                setups,
+                placeholder="All",
+                key="trades_filter_setup",
+            )
+        status = fc7.selectbox(
+            "Status",
+            TRADE_STATUS_VALUES,
+            placeholder="All",
+            index=None,
+        )
+        result = fc8.selectbox(
             "Result",
             TRADE_RESULT_VALUES,
             placeholder="All",
             index=None,
         )
-        estimation = fc7.selectbox(
-            "Estimation",
-            list(ESTIMATION_VARS.values()),
+        execution = fc9.selectbox(
+            "Execution",
+            list(EXECUTION_VARS.values()),
             placeholder="All",
             index=None,
         )
 
     if account_id:
         filter["account_id"] = account_id
-    if state:
-        filter["state"] = state
+    if setup_filter:
+        filter["setup_id"] = setup_filter
+    if status:
+        filter["status"] = status
     if result:
         filter["result"] = result
     if asset:
         filter["asset"] = asset
     if session:
         filter["session"] = session
-    if estimation:
-        estimation_key = {val: key for key, val in ESTIMATION_VARS.items()}
-        selected_estimation = estimation_key.get(estimation, None)
-        filter["estimation"] = selected_estimation
+    if trade_type:
+        filter["trade_type"] = trade_type
+    if execution:
+        execution_key = {val: key for key, val in EXECUTION_VARS.items()}
+        filter["is_correct"] = execution_key.get(execution)
 
 else:
     local_tz = get_setting("local_tz", LOCAL_TZ)
@@ -160,54 +173,121 @@ if date_range:
     filter["date_from"] = date_range[0].isoformat()
     filter["date_to"] = date_range[1].isoformat()
 
-# === ЗАГРУЗКА ДАННЫХ И ОПРЕДЕЛЕНИЕ КОЛОНОК ===
+# === ЗАГРУЗКА ДАННЫХ ===
 rows = filter_trades(cached_trades(user_id), filter)
 page_mark("trades", "data_loaded")
 
 
-# --- Настройка отображаемых колонок таблицы ---
-trade_table_columns: List[Dict[str, Any]] = [
-    {
-        "field": "date_local",
-        "label": "Date",
-        "compute": lambda row: row.get("date_local"),
-        "format": parse_date,
-        "id": "date_local",
-    },
-    {"field": "session", "label": "Session", "id": "session"},
-    {"field": "asset", "label": "Asset", "id": "asset"},
-    {"field": "state", "label": "State", "id": "state"},
-    {
-        "field": "result",
-        "label": "Result",
-        "compute": lambda row: calculate_trade_result(row.get("risk_reward"), row.get("is_missed")),
-        "id": "result"
-    },
-    {"field": "net_pnl", "label": "PnL", "id": "net_pnl"},
-    {"field": "risk_reward", "label": "R:R", "id": "risk_reward"},
-]
+# === ТАБЛИЦА ===
+selected_rows: List[int] = []
+if not rows:
+    st.info("No trades for the selected period.")
+else:
+    df = pd.DataFrame(rows)
+    df["result"] = df.apply(
+        lambda r: calculate_trade_result(
+            r.get("risk_reward"), r.get("is_missed")),
+        axis=1,
+    )
+    df["_link"] = "/trade_editor?id=" + df["id"].astype(str)
+    df["account_name"] = df["account_id"].map(account_map)
+    df["net_pnl_fmt"] = df.apply(
+        lambda r: f"{account_currency_map.get(r['account_id'], 'USD')} {r['net_pnl']:+.2f}"
+        if pd.notna(r.get("net_pnl")) else "",
+        axis=1,
+    )
+    df["setup_name"] = df["setup_id"].map(setup_map)
+    df["execution"] = df["is_correct"].map({1: "✓", 0: "✗"})
 
+    display_cols = ["_link", "date_local", "session", "asset", "trade_type",
+                    "account_name", "setup_name", "status", "result",
+                    "net_pnl_fmt", "risk_reward", "reward_percent", "execution"]
+    for col in display_cols:
+        if col not in df.columns:
+            df[col] = None
 
-# === ДЕЙСТВИЯ ПРИ ВЗАИМОДЕЙСТВИИ С ТАБЛИЦЕЙ ===
-def _handle_open_trade(row: Dict[str, Any]) -> None:
-    trade_id = row.get("id")
-    if not trade_id:
-        return
-    st.session_state[TRADE_ID_STATE] = trade_id
-    open_dialog(TRADE_DIALOG_NAME)
+    event = st.dataframe(
+        df[display_cols],
+        column_config={
+            "date_local": st.column_config.TextColumn("Date"),
+            "session": st.column_config.TextColumn("Session"),
+            "asset": st.column_config.TextColumn("Asset"),
+            "trade_type": st.column_config.TextColumn("Type"),
+            "account_name": st.column_config.TextColumn("Account"),
+            "setup_name": st.column_config.TextColumn("Setup"),
+            "status": st.column_config.TextColumn("Status"),
+            "result": st.column_config.TextColumn("Result"),
+            "net_pnl_fmt": st.column_config.TextColumn("PnL"),
+            "risk_reward": st.column_config.NumberColumn("R:R"),
+            "reward_percent": st.column_config.NumberColumn("R%", format="%.2f%%"),
+            "execution": st.column_config.TextColumn("Exec"),
+            "_link": st.column_config.LinkColumn("", display_text="Open →"),
+        },
+        selection_mode="multi-row",
+        on_select="rerun",
+        use_container_width=True,
+        hide_index=True,
+        key=f"trades_dataframe_{selected_key}",
+    )
 
+    selected_rows = event.selection.rows
 
-def _handle_delete_trades(ids: List[Any]) -> None:
-    if not ids:
-        return
-    st.session_state["_pending_delete_trade_ids"] = ids
-    st.rerun()
+btn_create, btn_delete, _ = st.columns([0.12, 0.15, 0.73])
+with btn_create.popover("Create", type="primary", width="stretch"):
+    if not account_rows_all:
+        st.error("Create an account first.")
+    else:
+        valid_ids = {acc["id"] for acc in account_rows_all}
+        default_acc = (
+            account_id
+            or (get_setting("default_account_id") if get_setting("default_account_id") in valid_ids else None)
+            or account_rows_all[0]["id"]
+        )
+        default_ast = (
+            (asset if asset in assets_list else None)
+            or (get_setting("default_asset") if get_setting("default_asset") in assets_list else None)
+            or (assets_list[0] if assets_list else "EUR/USD")
+        )
+        pop_account = custom_selectbox(
+            "Account", accounts, value=default_acc, key="_create_pop_account"
+        )
+        pop_asset = st.selectbox(
+            "Asset", assets_list,
+            index=assets_list.index(
+                default_ast) if default_ast in assets_list else 0,
+            key="_create_pop_asset",
+        )
+        if st.button("Go", type="primary", width=250, key="_create_pop_go"):
+            local_tz = get_setting("local_tz", LOCAL_TZ)
+            today = date.today()
+            now = datetime.now()
+            with transaction() as conn:
+                new_id = create_trade(user_id, {
+                    "date_local": today.isoformat(),
+                    "time_local": now.strftime("%H:%M:%S"),
+                    "account_id": pop_account,
+                    "asset": pop_asset,
+                    "session": detect_trade_session(today, now.time(), local_tz_label=local_tz),
+                    "local_tz": local_tz,
+                    "is_missed": 0,
+                }, conn=conn)
+            st.cache_data.clear()
+            st.session_state["_new_trade_id"] = new_id
+            st.session_state["_back_page"] = "pages/trades.py"
+            st.session_state.pop("_back_params", None)
+            st.switch_page("pages/trade_editor.py")
+if selected_rows:
+    selected_ids = [rows[i]["id"] for i in selected_rows]
+    if btn_delete.button(f"Delete ({len(selected_ids)})", type="secondary", width="stretch"):
+        st.session_state["_pending_delete_trade_ids"] = selected_ids
+        st.rerun()
 
 
 @st.dialog("Delete trades")
 def _confirm_delete_trades(ids: List[Any]) -> None:
     n = len(ids)
-    st.warning(f"Delete {n} trade{'s' if n > 1 else ''}? This cannot be undone.")
+    st.warning(
+        f"Delete {n} trade{'s' if n > 1 else ''}? This cannot be undone.")
     col1, col2 = st.columns(2)
     if col1.button("Delete", type="primary", width="stretch"):
         from db import transaction
@@ -217,7 +297,8 @@ def _confirm_delete_trades(ids: List[Any]) -> None:
                     try:
                         delete_trade(trade_id, user_id, conn=conn)
                     except (ValueError, sqlite3.Error) as exc:
-                        st.toast(f"Failed to delete trade {trade_id}: {exc}", icon="❌")
+                        st.toast(
+                            f"Failed to delete trade {trade_id}: {exc}", icon="❌")
         except Exception as exc:
             st.toast(f"Delete failed: {exc}", icon="❌")
         st.session_state.pop("_pending_delete_trade_ids", None)
@@ -228,22 +309,8 @@ def _confirm_delete_trades(ids: List[Any]) -> None:
         st.rerun()
 
 
-# --- Создаём таблицу с обработкой выделений и действий ---
-table_key = f"trades_table_{selected_key}"
-render_entity_table(
-    entity_name="trade",
-    key=table_key,
-    rows=rows,
-    columns=trade_table_columns,
-    empty_message="No trades for the selected period.",
-    page_size=100,
-    on_open=_handle_open_trade,
-    on_delete=_handle_delete_trades,
-)
-
 pending_delete_ids = st.session_state.get("_pending_delete_trade_ids")
 if pending_delete_ids:
     _confirm_delete_trades(pending_delete_ids)
 
-render_trade_manager()
 page_mark("trades", "done")
