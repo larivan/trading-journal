@@ -104,10 +104,8 @@ def delete_image(image_id: int, *, conn: Optional[sqlite3.Connection] = None) ->
 def list_images(
     *,
     trade_id: Optional[int] = None,
-    analysis_id: Optional[int] = None,
     setup_id: Optional[int] = None,
     note_id: Optional[int] = None,
-    unattached: bool = False,
 ) -> List[Dict[str, Any]]:
     conditions: List[str] = []
     params: List[Any] = []
@@ -115,20 +113,12 @@ def list_images(
     if trade_id is not None:
         conditions.append("trade_id=?")
         params.append(trade_id)
-    if analysis_id is not None:
-        conditions.append("analysis_id=?")
-        params.append(analysis_id)
     if setup_id is not None:
         conditions.append("setup_id=?")
         params.append(setup_id)
     if note_id is not None:
         conditions.append("note_id=?")
         params.append(note_id)
-    if unattached:
-        conditions.append("trade_id IS NULL")
-        conditions.append("analysis_id IS NULL")
-        conditions.append("setup_id IS NULL")
-        conditions.append("note_id IS NULL")
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     query = f"SELECT * FROM images {where_clause} ORDER BY id ASC"

@@ -66,6 +66,7 @@ class TestAddGetImage:
         assert image["note_id"] is None
 
 
+
 # ---------------------------------------------------------------------------
 # update_image
 # ---------------------------------------------------------------------------
@@ -113,16 +114,6 @@ class TestListImages:
         add_image("https://x.com/2.png")
         images = list_images()
         assert len(images) >= 2
-
-    def test_list_unattached(self, temp_db):
-        add_image("https://x.com/u.png")
-        images = list_images(unattached=True)
-        assert all(
-            i["trade_id"] is None
-            and i["setup_id"] is None
-            and i["note_id"] is None
-            for i in images
-        )
 
     def test_list_by_trade_id(self, test_user):
         acc_id = _make_account(test_user)

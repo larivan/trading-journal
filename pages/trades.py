@@ -105,6 +105,7 @@ if selected_key == "custom":
                 "Account",
                 accounts,
                 placeholder="All",
+                key="trades_filter_account",
             )
         asset = fc4.selectbox(
             "Asset",
@@ -123,6 +124,7 @@ if selected_key == "custom":
                 "Setup",
                 setups,
                 placeholder="All",
+                key="trades_filter_setup",
             )
         status = fc7.selectbox(
             "Status",
