@@ -13,7 +13,7 @@ from components.editor_ui import (
     render_entry_card,
     section_divider,
 )
-from components.image_editor import persist_image_editor, render_image_editor
+from components.image_editor import image_editor_value_state_key, persist_image_editor, render_image_editor
 from components.trade_manager.defaults import get_trade_defaults
 from components.trade_manager.sections import (
     render_main_stage,
@@ -230,6 +230,9 @@ with side_col:
                 attach_image=lambda iid, c=conn: attach_image_to_trade(trade_id, iid, conn=c),
                 conn=conn,
             )
+        _editor_key = f"{state_key}_chart_editor"
+        st.session_state.pop(_editor_key, None)
+        st.session_state.pop(image_editor_value_state_key(_editor_key), None)
         st.cache_data.clear()
         st.rerun()
 
