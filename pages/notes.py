@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 import streamlit as st
 from components.entity_gallery import render_entity_gallery
 from components.note_manager import render_note_manager
-from db import delete_note
+from db import delete_note, count_notes_by_trade, count_notes_by_analysis
 from utils.cached_data import cached_notes, filter_notes
 from helpers import (
     format_local_date,
@@ -18,8 +18,8 @@ from config import (
     NOTE_ID_STATE,
 )
 
-st.set_page_config(page_title="Observations", page_icon=":material/sticky_note_2:", layout="wide")
-st.title(":material/sticky_note_2: Observations")
+st.set_page_config(page_title="Notes", page_icon=":material/sticky_note_2:", layout="wide")
+st.title(":material/sticky_note_2: Notes")
 
 user_id = get_current_user_id()
 
@@ -68,7 +68,16 @@ rows = filter_notes(
     ascending=False,
 )
 
+notes_by_trade = count_notes_by_trade(user_id)
+notes_by_analysis = count_notes_by_analysis(user_id)
+
 note_columns: List[Dict[str, Any]] = [
+    {
+        "field": "category",
+        "label": "Category",
+        "id": "category",
+        "role": "detail",
+    },
     {
         "field": "date_local",
         "label": "Date",
@@ -91,7 +100,32 @@ note_columns: List[Dict[str, Any]] = [
         "id": "excerpt",
         "role": "text"
     },
+    {
+        "field": "linked",
+        "label": "Linked",
+        "compute": lambda row: _linked_label(row.get("id"), notes_by_trade, notes_by_analysis),
+        "id": "linked",
+        "role": "detail",
+    },
 ]
+
+
+def _linked_label(
+    note_id: Any,
+    by_trade: Dict[int, int],
+    by_analysis: Dict[int, int],
+) -> str:
+    if not note_id:
+        return ""
+    t = by_trade.get(int(note_id), 0)
+    a = by_analysis.get(int(note_id), 0)
+    if t and a:
+        return f"🔗 {t} trade{'s' if t != 1 else ''} · {a} anal{'yses' if a != 1 else 'ysis'}"
+    if t:
+        return f"🔗 {t} trade{'s' if t != 1 else ''}"
+    if a:
+        return f"🔗 {a} anal{'yses' if a != 1 else 'ysis'}"
+    return ""
 
 
 def _open_note(row: Dict[str, Any]) -> None:
@@ -110,7 +144,7 @@ def _delete_notes(ids: List[Any]) -> None:
             delete_note(int(note_id), user_id)
         except (ValueError, sqlite3.Error) as exc:
             st.toast(f"Failed to delete note #{note_id}: {exc}", icon="❌")
-    st.cache_data.clear()
+    cached_notes.clear()
     st.rerun()
 
 

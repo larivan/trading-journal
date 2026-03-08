@@ -27,6 +27,7 @@ from db import (
     update_note,
 )
 from utils.auth import get_current_user_id
+from utils.cached_data import cached_notes
 from utils.session_state import (
     open_dialog,
     close_dialog,
@@ -35,6 +36,8 @@ from utils.session_state import (
     remove_previous_dialog,
 )
 from helpers import parse_date
+
+_NOTE_CATEGORIES = ["Note", "Observation", "Hypothesis"]
 
 
 def render_note_manager() -> None:
@@ -69,19 +72,33 @@ def render_note_manager() -> None:
         on_dismiss=_handle_dialog_dismiss,
     )
     def _dialog() -> None:
-        body_value = st.text_area(
-            "Content",
-            value=note.get("body") or "",
-            height=240,
-            key=f"{state_key}_body",
-            placeholder="Write your note…",
-        )
-
         image_values = render_image_editor(
             key=f"{state_key}_charts",
             base_rows=image_table_rows(images),
             layout_columns=2,
         )
+
+        body_value = st.text_area(
+            "Content",
+            value=note.get("body") or "",
+            height=200,
+            key=f"{state_key}_body",
+            placeholder="Write your note…",
+        )
+
+        if is_new_note:
+            category_value = st.pills(
+                "Category",
+                options=_NOTE_CATEGORIES,
+                default=_NOTE_CATEGORIES[0],
+                selection_mode="single",
+                label_visibility="collapsed",
+                key=f"{state_key}_category",
+            )
+        else:
+            category_value = note.get("category")
+            if category_value:
+                st.caption(f":material/label: {category_value}")
 
         st.divider()
 
@@ -122,12 +139,12 @@ def render_note_manager() -> None:
                 message_col.error("Fill in the content.")
                 return
 
-            now_value = datetime.now()
-            payload: Dict[str, Any] = {
-                "body": body_clean,
-                "date_local": now_value.date().isoformat(),
-                "time_local": now_value.strftime("%H:%M:%S"),
-            }
+            now = datetime.now()
+            payload: Dict[str, Any] = {"body": body_clean}
+            if is_new_note:
+                payload["date_local"] = now.date().isoformat()
+                payload["time_local"] = now.strftime("%H:%M:%S")
+                payload["category"] = category_value or _NOTE_CATEGORIES[0]
 
             try:
                 with transaction() as conn:
@@ -156,7 +173,7 @@ def render_note_manager() -> None:
                 message_col.error(f"Failed to save note: {exc}")
                 return
 
-            st.cache_data.clear()
+            cached_notes.clear()
             st.rerun()
 
     if dialog_is_active(NOTE_DIALOG_NAME):
@@ -168,10 +185,11 @@ def _get_dialog_title(data: Dict[str, Any], is_new: bool) -> str:
         return "New note"
     if not data:
         return "-"
-    title = (data.get("title") or "Note").strip() or "Note"
+    body = (data.get("body") or "").strip()
+    excerpt = (body[:40] + "…") if len(body) > 40 else body
     parsed_date = parse_date(data.get("date_local"))
     formatted_date = parsed_date.strftime("%d.%m.%Y") if parsed_date else ""
-    return f"{title}{f' · {formatted_date}' if formatted_date else ''}"
+    return f"{excerpt}{f' · {formatted_date}' if formatted_date else ''}" if excerpt else f"Note{f' · {formatted_date}' if formatted_date else ''}"
 
 
 def _handle_dialog_dismiss() -> None:

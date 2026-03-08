@@ -19,7 +19,7 @@ PAGES = {
         'layout': 'wide',
     },
     'notes': {
-        'title': 'Observations',
+        'title': 'Notes',
         'icon': ':material/sticky_note_2:',
         'default': False,
         'layout': 'wide',
