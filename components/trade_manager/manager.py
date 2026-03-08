@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional
 import streamlit as st
 from components.note_manager import render_note_manager
 from components.image_editor import persist_image_editor, render_image_editor
-from components.note_selector import render_note_selector, clear_note_selector_state
 from helpers import to_option_format, parse_date, parse_time
 from utils.trade_sessions import detect_trade_session
 from utils.auth import get_current_user_id, get_setting
@@ -37,11 +36,8 @@ from db import (
     create_trade,
     delete_trade,
     get_trade_by_id,
-    list_trade_notes,
     list_images,
     attach_image_to_trade,
-    attach_note_to_trade,
-    detach_note_from_trade,
     update_trade,
     transaction,
 )
@@ -110,7 +106,6 @@ def render_trade_manager() -> None:
         )
         defaults = get_trade_defaults(trade, accounts)
         images = list_images(trade_id=trade_id) if trade_id else []
-        base_trade_notes = list_trade_notes(trade_id) if trade_id else []
 
         # Хедер с кнопками действий
         with st.container(border=True):
@@ -207,15 +202,6 @@ def render_trade_manager() -> None:
                 base_rows=images,
                 layout_columns=2,
             )
-            st.markdown("#### Observations")
-            staged_note_ids = render_note_selector(
-                entity_type="trade",
-                entity_id=trade_id,
-                state_key=f"{state_key}_note_selector",
-                previous_dialog_name=TRADE_DIALOG_NAME,
-                excerpt_limit=120,
-            )
-
         if not submitted:
             return
 
@@ -267,37 +253,25 @@ def render_trade_manager() -> None:
         else:
             payload["mistake_types"] = json.dumps([])
 
-        base_note_ids = {
-            note.get("id") for note in base_trade_notes if note.get("id") is not None
-        }
-        staged_note_ids_set = {
-            int(nid) for nid in (staged_note_ids or []) if nid is not None
-        }
-
         try:
             with st.spinner("Saving..."):
-              with transaction() as conn:
-                current_trade_id = trade_id
-                trade_images = images or []
-                if is_new_trade:
-                    payload["local_tz"] = local_tz
-                    current_trade_id = create_trade(user_id, payload, conn=conn)
-                else:
-                    update_trade(current_trade_id, user_id, payload, conn=conn)
+                with transaction() as conn:
+                    current_trade_id = trade_id
+                    trade_images = images or []
+                    if is_new_trade:
+                        payload["local_tz"] = local_tz
+                        current_trade_id = create_trade(user_id, payload, conn=conn)
+                    else:
+                        update_trade(current_trade_id, user_id, payload, conn=conn)
 
-                persist_image_editor(
-                    attached_images=trade_images,
-                    editor_rows=current_images,
-                    conn=conn,
-                    attach_image=lambda image_id, trade_id=current_trade_id: attach_image_to_trade(  # noqa: E731
-                        trade_id, image_id, conn=conn
-                    ),
-                )
-                for note_id in base_note_ids - staged_note_ids_set:
-                    detach_note_from_trade(
-                        current_trade_id, note_id, conn=conn)
-                for note_id in staged_note_ids_set - base_note_ids:
-                    attach_note_to_trade(current_trade_id, note_id, conn=conn)
+                    persist_image_editor(
+                        attached_images=trade_images,
+                        editor_rows=current_images,
+                        conn=conn,
+                        attach_image=lambda image_id, trade_id=current_trade_id: attach_image_to_trade(  # noqa: E731
+                            trade_id, image_id, conn=conn
+                        ),
+                    )
 
             if is_new_trade:
                 st.session_state[TRADE_ID_STATE] = current_trade_id
@@ -331,9 +305,6 @@ def _handle_dialog_dismiss() -> None:
     st.session_state.pop(TRADE_ID_STATE, None)
     st.session_state.pop(f"{TM_DEFAULT_PREFIX}analysis", None)
     st.session_state.pop(f"{TM_DEFAULT_PREFIX}asset", None)
-    clear_note_selector_state(
-        f"{TM_KEY_PREFIX}{current_trade_id or 'new'}_note_selector"
-    )
 
 
 def _get_account_id_by_label(label: str) -> Optional[int]:

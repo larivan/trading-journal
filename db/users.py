@@ -9,6 +9,7 @@ from db.connection import get_conn, _managed_conn, _now_iso_utc, _rows_to_dicts
 WRITABLE_SETTING_FIELDS = [
     "assets",
     "be_threshold",
+    "currency",
     "risk_min",
     "risk_max",
     "local_tz",
@@ -21,6 +22,7 @@ WRITABLE_SETTING_FIELDS = [
 _DEFAULT_SETTINGS: Dict[str, Any] = {
     "assets": ["EUR/USD", "GBP/USD", "XAU/USD", "XAG/USD"],
     "be_threshold": 0.05,
+    "currency": "USD",
     "risk_min": 0.5,
     "risk_max": 2.0,
     "local_tz": "Europe/Moscow",

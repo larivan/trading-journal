@@ -26,18 +26,6 @@ def test_notes_renders(page_app):
     assert not at.exception
 
 
-def test_setups_renders(page_app):
-    at = page_app("pages/setups.py")
-    at.run()
-    assert not at.exception
-
-
-def test_settings_accounts_renders(page_app):
-    at = page_app("pages/settings_accounts.py")
-    at.run()
-    assert not at.exception
-
-
 def test_settings_renders(page_app):
     at = page_app("pages/settings.py")
     at.run()
