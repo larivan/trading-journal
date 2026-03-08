@@ -97,9 +97,15 @@ else:
         user = st.session_state["sidebar_user"]
         if user:
             name = user.get("username") or user.get("email", "")
-            st.write(f"👤 {name}")
-            if user.get("username"):
-                st.write(user.get("email", ""))
+            email = user.get("email", "") if user.get("username") else ""
+            email_line = f'<div style="font-size:0.78rem;color:var(--text-color);opacity:0.6;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{email}</div>' if email else ""
+            st.markdown(
+                f'<div style="border:1px solid var(--border-color,rgba(128,128,128,0.3));border-radius:8px;padding:8px 12px;margin-bottom:8px">'
+                f'<span style="font-weight:600">👤 {name}</span>'
+                f'{email_line}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
         if st.button("Logout", key="sidebar_logout", width="stretch"):
             logout()
             st.logout()
