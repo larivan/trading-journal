@@ -3,7 +3,7 @@
 Unified metrics calculation module.
 All trading metrics are calculated here and reused across dashboard and other pages.
 """
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 import pandas as pd
 import numpy as np
 from helpers import is_win_rr
@@ -254,5 +254,60 @@ def compute_equity_curve(
     daily["cum_rr"] = daily["rr_sum"].cumsum()
     daily["cum_pnl"] = daily["pnl_sum"].cumsum()
     daily["cum_pct"] = daily["reward_sum"].cumsum()
-    
+
     return daily
+
+
+def compute_streak(fact_df: pd.DataFrame) -> Tuple[int, str]:
+    """
+    Compute the current consecutive win/loss streak.
+
+    Returns:
+        (count, "W" | "L" | "—")
+    """
+    if fact_df.empty:
+        return (0, "—")
+
+    df = fact_df.copy()
+    if "date" in df.columns:
+        df = df.sort_values("date")
+
+    if "rr" in df.columns:
+        rr_col = "rr"
+    elif "risk_reward" in df.columns:
+        rr_col = "risk_reward"
+    else:
+        return (0, "—")
+
+    results = df[rr_col].map(is_win_rr).tolist()
+    if not results:
+        return (0, "—")
+
+    last = results[-1]
+    count = 0
+    for r in reversed(results):
+        if r == last:
+            count += 1
+        else:
+            break
+
+    return (count, "W" if last else "L")
+
+
+def compute_max_drawdown_rr(fact_df: pd.DataFrame) -> float:
+    """
+    Compute the maximum drawdown in cumulative RR terms.
+
+    Returns:
+        float: Maximum drawdown (negative value, or 0.0 if no drawdown)
+    """
+    if fact_df.empty:
+        return 0.0
+
+    daily = compute_equity_curve(fact_df)
+    if daily.empty or "cum_rr" not in daily.columns:
+        return 0.0
+
+    cum_rr = daily["cum_rr"]
+    drawdown = cum_rr - cum_rr.cummax()
+    return float(drawdown.min())

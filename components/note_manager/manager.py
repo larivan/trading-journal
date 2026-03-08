@@ -20,6 +20,7 @@ from config import (
 )
 from db import (
     attach_image_to_note,
+    count_notes_by_trade,
     create_note,
     get_note,
     list_images,
@@ -27,7 +28,7 @@ from db import (
     update_note,
 )
 from utils.auth import get_current_user_id
-from utils.cached_data import cached_notes
+from utils.cached_data import cached_notes, cached_trades
 from utils.session_state import (
     open_dialog,
     close_dialog,
@@ -66,6 +67,12 @@ def render_note_manager() -> None:
     images: List[Dict[str, Any]] = list_images(
         note_id=note_id) if note_id else []
 
+    _notes_by_trade = count_notes_by_trade(user_id) if not is_new_note else {}
+    _all_trades = cached_trades(user_id) if not is_new_note else []
+    _total_trades = len(_all_trades) if _all_trades else 0
+    _linked_trade_count = _notes_by_trade.get(int(note_id), 0) if note_id else 0
+    _oor = _linked_trade_count / _total_trades * 100 if _total_trades else 0.0
+
     @st.dialog(
         _get_dialog_title(note, is_new_note),
         width="medium",
@@ -97,8 +104,13 @@ def render_note_manager() -> None:
             )
         else:
             category_value = note.get("category")
+            meta_parts = []
             if category_value:
-                st.caption(f":material/label: {category_value}")
+                meta_parts.append(f":material/label: {category_value}")
+            trades_label = f"{_linked_trade_count} trade{'s' if _linked_trade_count != 1 else ''}"
+            oor_label = f"{_oor:.1f}%"
+            meta_parts.append(f":material/link: {trades_label} linked · OOR: {oor_label}")
+            st.caption("  ·  ".join(meta_parts))
 
         st.divider()
 

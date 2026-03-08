@@ -1,3 +1,4 @@
+from utils.cached_data import page_mark
 import numpy as np
 import pandas as pd
 import altair as alt
@@ -9,17 +10,16 @@ from config import LOCAL_TZ
 from helpers import (
     to_option_format,
     custom_selectbox,
-    get_excerpt,
     is_win_rr,
-    calculate_trade_result,
 )
-from db import count_notes_by_trade
-from utils.cached_data import cached_trades, cached_analysis, cached_accounts, cached_notes, cached_setups
+from utils.cached_data import cached_trades, cached_analysis, cached_accounts, cached_setups
 from utils.auth import get_current_user_id, get_setting
 from utils.metrics import (
     compute_overview_metrics,
     compute_risk_metrics,
     compute_equity_curve,
+    compute_streak,
+    compute_max_drawdown_rr,
 )
 
 PERIOD_TABS: Dict[str, str] = {
@@ -45,7 +45,6 @@ RISK_EXPECTANCY_KPIS = {
     "profit_factor": (1.0, None),
 }
 
-from utils.cached_data import page_mark
 user_id = get_current_user_id()
 
 
@@ -62,7 +61,8 @@ def prepare_trades_df(user_id: int) -> pd.DataFrame:
     t_df = pd.DataFrame(trades)
 
     if not a_df.empty:
-        t_df["analysis_id"] = pd.to_numeric(t_df["analysis_id"], errors="coerce")
+        t_df["analysis_id"] = pd.to_numeric(
+            t_df["analysis_id"], errors="coerce")
         t_df = t_df.merge(
             a_df[["id", "daily_bias", "fact_bias"]],
             left_on="analysis_id",
@@ -73,7 +73,8 @@ def prepare_trades_df(user_id: int) -> pd.DataFrame:
     t_df = t_df[t_df["is_correct"].notna()]
     t_df["date"] = pd.to_datetime(t_df["date_local"])
     t_df["rr"] = pd.to_numeric(t_df["risk_reward"], errors="coerce")
-    t_df["pnl_usd"] = pd.to_numeric(t_df["net_pnl"], errors="coerce").fillna(0.0)
+    t_df["pnl_usd"] = pd.to_numeric(
+        t_df["net_pnl"], errors="coerce").fillna(0.0)
 
     if setups:
         setup_map = {s["id"]: s["name"] for s in setups}
@@ -83,31 +84,6 @@ def prepare_trades_df(user_id: int) -> pd.DataFrame:
 
     return t_df
 
-
-@st.cache_data(ttl=3600)
-def prepare_observations_df(user_id: int) -> pd.DataFrame:
-    obs = cached_notes(user_id)
-    trades = cached_trades(user_id)
-
-    if not obs:
-        return pd.DataFrame()
-
-    obs_df = pd.DataFrame(obs)
-    obs_df["excerpt"] = obs_df["body"].apply(
-        lambda x: get_excerpt(x, 60)
-    )
-    linked_counts = count_notes_by_trade(user_id) if trades else {}
-
-    obs_df["linked_trades"] = (
-        obs_df["id"].map(linked_counts).fillna(0).astype(int)
-    )
-    total_trades = len(trades) if trades else 0
-    if total_trades:
-        obs_df["oor"] = obs_df["linked_trades"] / total_trades * 100
-    else:
-        obs_df["oor"] = 0.0
-
-    return obs_df
 
 
 def kpi_badge(
@@ -207,6 +183,27 @@ def total_rr_bar(df_grouped: pd.DataFrame, category_col: str, value_col: str = "
     return chart
 
 
+def _equity_altair_chart(daily: pd.DataFrame, y_col: str, y_label: str) -> alt.Chart:
+    df = daily[["day", y_col]].copy()
+    df["zero"] = 0.0
+    df["y_pos"] = df[y_col].clip(lower=0)
+    df["y_neg"] = df[y_col].clip(upper=0)
+    base = alt.Chart(df).encode(x=alt.X("day:T", title=None))
+    area_pos = base.mark_area(opacity=0.2, color="#22c55e").encode(
+        y=alt.Y("y_pos:Q", title=y_label), y2=alt.Y2("zero:Q"))
+    area_neg = base.mark_area(opacity=0.2, color="#ef4444").encode(
+        y=alt.Y("zero:Q"), y2=alt.Y2("y_neg:Q"))
+    line = base.mark_line(color="#3b82f6", strokeWidth=2).encode(
+        y=alt.Y(f"{y_col}:Q"),
+        tooltip=[
+            alt.Tooltip("day:T", title="Date", format="%d %b %Y"),
+            alt.Tooltip(f"{y_col}:Q", title=y_label, format=".2f"),
+        ])
+    zero_rule = alt.Chart(pd.DataFrame({"y": [0.0]})).mark_rule(
+        color="#9ca3af", strokeDash=[4, 2]).encode(y="y:Q")
+    return (area_pos + area_neg + line + zero_rule).properties(height=280)
+
+
 # ----------------------------
 # Page config
 # ----------------------------
@@ -221,7 +218,6 @@ st.set_page_config(
 # ----------------------------
 page_mark("dashboard", "start")
 data_df = prepare_trades_df(user_id)
-obs_df = prepare_observations_df(user_id)
 page_mark("dashboard", "data_loaded")
 
 # ----------------------------
@@ -313,6 +309,7 @@ fact_winrate = overview["fact_winrate"]
 potential_winrate = overview["potential_winrate"]
 missed_rate = overview["missed_rate"]
 quality_ratio = overview["quality_ratio"]
+streak_n, streak_d = compute_streak(fact)
 
 with st.container(border=True):
     st.subheader("Overview")
@@ -348,37 +345,62 @@ with st.container(border=True):
 
     st.markdown("###### Core decision KPIs")
 
-    k1, k2, k3, k4, k5 = st.columns(5)
+    k1, k2, k3, k4, k5, k6 = st.columns(6)
 
     k1.metric(
         "Bias winrate",
         f"{bias_winrate*100:.0f}%",
         border=True,
+        help="% of days where your daily bias matched the actual market direction",
         **kpi_badge(OVERVIEW_KPIS, "bias_winrate", bias_winrate, positive_direction="higher"),
     )
     k2.metric(
         "Fact winrate",
         f"{fact_winrate*100:.0f}%" if fact_winrate is not None else "—",
+        help="% of executed trades that closed as wins (RR > 0.05)",
         **kpi_badge(OVERVIEW_KPIS, "fact_winrate", fact_winrate or 0.0, positive_direction="higher"),
         border=True
     )
     k3.metric(
         "Potential winrate",
         f"{potential_winrate*100:.0f}%",
+        help="% of all trades (fact + missed) that were winners",
         **kpi_badge(OVERVIEW_KPIS, "potential_winrate", potential_winrate, positive_direction="higher"),
         border=True
     )
     k4.metric(
         "Missed trades",
         f"{missed_rate*100:.0f}%",
+        help="% of your setups you identified but didn't execute",
         **kpi_badge(OVERVIEW_KPIS, "missed_rate", missed_rate, positive_direction="lower"),
         border=True
     )
     k5.metric(
         "Execution Quality Ratio",
         f"{quality_ratio*100:.0f}%",
+        help="% of trades executed without process mistakes",
         **kpi_badge(OVERVIEW_KPIS, "quality_ratio", quality_ratio, positive_direction="higher"),
         border=True
+    )
+
+    if streak_d == "W":
+        streak_delta = "Win streak"
+        streak_delta_color = "normal"
+    elif streak_d == "L":
+        streak_delta = "Loss streak"
+        streak_delta_color = "inverse"
+    else:
+        streak_delta = None
+        streak_delta_color = "off"
+
+    k6.metric(
+        "Streak",
+        f"{streak_n} {streak_d}" if streak_d != "—" else "—",
+        delta=streak_delta,
+        delta_color=streak_delta_color,
+        delta_arrow="off",
+        border=True,
+        help="Current consecutive win/loss streak",
     )
 
 # ----------------------------
@@ -387,8 +409,6 @@ with st.container(border=True):
 with st.container(border=True):
     st.subheader("Risk, expectancy & PnL")
 
-    c1, c2 = st.columns([1, 4])
-
     risk = compute_risk_metrics(fact, all_df=data_df)
     avg_rr = risk["avg_rr"]
     expected_value = risk["expected_value"]
@@ -396,73 +416,66 @@ with st.container(border=True):
     net_pnl = risk["net_pnl"]
     total_rr = risk["total_rr"]
     potential_rr = risk["potential_rr"]
-    total_reward = risk["total_reward"]
-    potential_reward = risk["potential_reward"]
 
-    fact_rr = fact["rr"]
-    fact_pnl = fact["pnl_usd"]
+    fact_rr = fact["rr"] if len(fact) else pd.Series(dtype=float)
+    fact_pnl = fact["pnl_usd"] if len(fact) else pd.Series(dtype=float)
+    best_rr = float(fact_rr.max()) if len(fact) else 0.0
+    worst_rr = float(fact_rr.min()) if len(fact) else 0.0
+    max_drawdown = compute_max_drawdown_rr(fact)
 
-    with c1:
-        st.metric(
-            "Average RR",
-            f"{avg_rr:.2f}R",
-            **kpi_badge(RISK_EXPECTANCY_KPIS, "avg_rr", avg_rr, positive_direction="higher"),
-            border=True
-        )
-        st.metric(
-            "Expected value",
-            f"{expected_value:+.2f}R",
-            **kpi_badge(RISK_EXPECTANCY_KPIS, "expected_value", expected_value, positive_direction="higher"),
-            border=True
-        )
-        st.metric(
-            "Profit factor",
-            f"{profit_factor:.2f}" if np.isfinite(profit_factor) else "∞",
-            **kpi_badge(RISK_EXPECTANCY_KPIS, "profit_factor", profit_factor, positive_direction="higher"),
-            border=True
-        )
-        st.metric("Net PnL", f"{net_pnl:,.0f}$", border=True)
+    # Row 1: avg_rr | expected_value | profit_factor | net_pnl
+    r1c1, r1c2, r1c3, r1c4 = st.columns(4)
+    r1c1.metric(
+        "Average RR",
+        f"{avg_rr:.2f}R",
+        **kpi_badge(RISK_EXPECTANCY_KPIS, "avg_rr", avg_rr, positive_direction="higher"),
+        border=True
+    )
+    r1c2.metric(
+        "Expected value",
+        f"{expected_value:+.2f}R",
+        **kpi_badge(RISK_EXPECTANCY_KPIS, "expected_value", expected_value, positive_direction="higher"),
+        border=True
+    )
+    r1c3.metric(
+        "Profit factor",
+        f"{profit_factor:.2f}" if np.isfinite(profit_factor) else "∞",
+        **kpi_badge(RISK_EXPECTANCY_KPIS, "profit_factor", profit_factor, positive_direction="higher"),
+        border=True
+    )
+    r1c4.metric("Net PnL", f"{net_pnl:,.0f}$", border=True, height="stretch")
 
-    with c2:
-        with st.container(border=True, height="stretch"):
-            st.markdown(f"**Equity curve**")
+    # Row 2: total_rr | potential_rr | max_drawdown | best_trade | worst_trade
+    r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
+    r2c1.metric("Total RR", f"{total_rr:.2f}R", border=True)
+    r2c2.metric("Potential RR", f"{potential_rr:.2f}R", border=True)
+    r2c3.metric("Max Drawdown", f"{max_drawdown:.2f}R", border=True)
+    r2c4.metric("Best Trade", f"{best_rr:+.2f}R", border=True)
+    r2c5.metric("Worst Trade", f"{worst_rr:+.2f}R", border=True)
 
-            y_key = "dashboard_y_axis_label"
-            if y_key not in st.session_state:
-                st.session_state[y_key] = "Cumulative %"
-            y_axis = st.segmented_control(
-                "Equity curve Y-axis",
-                key=y_key,
-                options=["Cumulative %", "Cumulative RR", "Cumulative $"],
-                label_visibility="collapsed",
-            )
+    # Row 3: equity curve | outcome distribution
+    chart_left, chart_right = st.columns([3, 2])
 
+    with chart_left:
+        with st.container(border=True):
+            st.markdown("**Equity curve**")
             if len(fact):
                 daily = compute_equity_curve(fact)
-                if y_axis == "Cumulative RR":
-                    series = daily.set_index("day")["cum_rr"]
-                elif y_axis == "Cumulative $":
-                    series = daily.set_index("day")["cum_pnl"]
+                if not daily.empty:
+                    st.altair_chart(
+                        _equity_altair_chart(daily, "cum_rr", "Cumulative RR"),
+                        use_container_width=True,
+                    )
                 else:
-                    series = daily.set_index("day")["cum_pct"]
+                    st.info(
+                        "No executed trades for equity curve in the current filters.")
             else:
-                series = pd.Series(dtype=float)
+                st.info(
+                    "No executed trades for equity curve in the current filters.")
 
-            if len(series):
-                st.line_chart(series, height="stretch")
-            else:
-                st.info("No executed trades for equity curve in the current filters.")
-
-    c3, c4 = st.columns([1, 4])
-    with c3:
-        st.metric("Total fact RR", f"{total_rr:.2f}R", border=True)
-        st.metric("Total potential RR", f"{potential_rr:.2f}R", border=True)
-        st.metric("Total fact reward", f"{total_reward:+.2f}%", border=True)
-        st.metric("Total potential reward", f"{potential_reward:.0f}%", border=True)
-
-    with c4:
-        with st.container(border=True, height="stretch"):
-            st.markdown(f"**Outcome distribution per trade**")
+    with chart_right:
+        with st.container(border=True):
+            st.markdown("**Outcome distribution per trade**")
             dist_mode_key = "dashboard_dist_mode_label"
             if dist_mode_key not in st.session_state:
                 st.session_state[dist_mode_key] = "RR (R)"
@@ -486,7 +499,8 @@ with st.container(border=True):
                     alt.Chart(dist_df)
                     .mark_bar()
                     .encode(
-                        x=alt.X(f"{x_title}:Q", bin=alt.Bin(maxbins=24), title=x_title),
+                        x=alt.X(f"{x_title}:Q", bin=alt.Bin(
+                            maxbins=24), title=x_title),
                         y=alt.Y("count():Q", title="Trades"),
                         tooltip=[alt.Tooltip("count():Q", title="Trades")],
                     )
@@ -494,18 +508,16 @@ with st.container(border=True):
                 )
                 st.altair_chart(hist, use_container_width=True)
             else:
-                st.info("No executed trades for distribution in the current filters.")
+                st.info(
+                    "No executed trades for distribution in the current filters.")
 
 # ============================
 # Breakdowns
 # ============================
 with st.container(border=True):
-    st.subheader("Breakdowns by asset, session, setup")
-    st.caption("Each block: table on the left, Total RR bar chart on the right.")
+    st.subheader("Breakdowns")
 
     def breakdown_block(title: str, group_col: str):
-        st.markdown(f"#### {title}")
-
         if len(fact) == 0:
             st.info("No executed trades in the current filters.")
             return
@@ -539,78 +551,19 @@ with st.container(border=True):
 
         with right:
             bar_df = table_df[[table_df.columns[0], "Total_RR"]].rename(
-                columns={table_df.columns[0]: "Category", "Total_RR": "Total RR"}
+                columns={table_df.columns[0]                         : "Category", "Total_RR": "Total RR"}
             )
-            chart = total_rr_bar(bar_df, category_col="Category", value_col="Total RR")
+            chart = total_rr_bar(
+                bar_df, category_col="Category", value_col="Total RR")
             st.altair_chart(chart, height="stretch")
 
-    breakdown_block("Assets", "asset")
-    st.divider()
-    breakdown_block("Sessions", "session")
-    st.divider()
-    breakdown_block("Setups", "setup")
+    tab1, tab2, tab3 = st.tabs(["Assets", "Sessions", "Setups"])
+    with tab1:
+        breakdown_block("Assets", "asset")
+    with tab2:
+        breakdown_block("Sessions", "session")
+    with tab3:
+        breakdown_block("Setups", "setup")
 
-
-# ============================
-# Notes & observations
-# ============================
-with st.container(border=True):
-    st.subheader("Notes & observations")
-    st.caption("OOR – Observation Occurrence Rate. Per-observation metric.")
-
-    if not obs_df.empty:
-        filtered_fact_count = len(fact)
-        if filtered_fact_count:
-            obs_df = obs_df.copy()
-            obs_df["oor"] = obs_df["linked_trades"] / filtered_fact_count * 100
-        else:
-            obs_df = obs_df.copy()
-            obs_df["oor"] = 0.0
-
-    st.dataframe(
-        obs_df[["excerpt", "linked_trades", "oor"]],
-        column_config={
-            "excerpt": "Excerpt",
-            "linked_trades": st.column_config.NumberColumn("Linked trades", format="%0.0f"),
-            "oor": st.column_config.NumberColumn("OOR (%)", format="%0.1f"),
-        },
-        hide_index=True
-    )
-
-# ============================
-# Recent trades
-# ============================
-with st.container(border=True):
-    st.subheader("Recent trades")
-
-    if len(fact):
-        recent = fact.sort_values("date", ascending=False).head(25).copy()
-        recent["date"] = recent["date"].dt.strftime("%Y-%m-%d")
-        recent["result"] = recent.apply(
-            lambda r: calculate_trade_result(r.get("risk_reward"), r.get("is_missed", 0)),
-            axis=1,
-        )
-        cols = ["date", "asset", "session", "setup", "risk_pct", "rr", "result", "pnl_usd"]
-        recent = recent[cols]
-        recent = recent.rename(
-            columns={"risk_pct": "Risk (%)", "rr": "RR", "result": "Result", "pnl_usd": "PnL ($)"}
-        )
-        st.dataframe(
-            recent,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "date": st.column_config.DateColumn("Date", format="DD.MM.YYYY"),
-                "asset": "Asset",
-                "session": "Session",
-                "setup": "Setup",
-                "Risk (%)": st.column_config.NumberColumn("Risk (%)", format="%0.1f"),
-                "RR": st.column_config.NumberColumn("RR", format="%0.1f"),
-                "Result": "Result",
-                "PnL ($)": st.column_config.NumberColumn("PnL ($)", format="%0.01f"),
-            }
-        )
-    else:
-        st.info("No trades.")
 
 page_mark("dashboard", "done")

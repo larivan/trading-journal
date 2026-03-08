@@ -5,7 +5,7 @@ import streamlit as st
 from components.entity_gallery import render_entity_gallery
 from components.note_manager import render_note_manager
 from db import delete_note, count_notes_by_trade, count_notes_by_analysis
-from utils.cached_data import cached_notes, filter_notes
+from utils.cached_data import cached_notes, cached_trades, filter_notes
 from helpers import (
     format_local_date,
     format_local_time,
@@ -70,6 +70,7 @@ rows = filter_notes(
 
 notes_by_trade = count_notes_by_trade(user_id)
 notes_by_analysis = count_notes_by_analysis(user_id)
+_total_trades = len(cached_trades(user_id) or [])
 
 note_columns: List[Dict[str, Any]] = [
     {
@@ -107,7 +108,25 @@ note_columns: List[Dict[str, Any]] = [
         "id": "linked",
         "role": "detail",
     },
+    {
+        "field": "oor",
+        "label": "OOR (%)",
+        "compute": lambda row: _oor_label(row.get("id"), notes_by_trade, _total_trades),
+        "id": "oor",
+        "role": "detail",
+    },
 ]
+
+
+def _oor_label(
+    note_id: Any,
+    by_trade: Dict[int, int],
+    total_trades: int,
+) -> str:
+    if not note_id or not total_trades:
+        return "—"
+    linked = by_trade.get(int(note_id), 0)
+    return f"{linked / total_trades * 100:.1f}%"
 
 
 def _linked_label(
