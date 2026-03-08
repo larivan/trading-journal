@@ -10,9 +10,11 @@ from helpers import (
     to_option_format,
     custom_selectbox,
     get_excerpt,
+    is_win_rr,
+    calculate_trade_result,
 )
 from db import count_notes_by_trade
-from utils.cached_data import cached_trades, cached_analysis, cached_accounts, cached_notes
+from utils.cached_data import cached_trades, cached_analysis, cached_accounts, cached_notes, cached_setups
 from utils.auth import get_current_user_id, get_setting
 from utils.metrics import (
     compute_overview_metrics,
@@ -51,6 +53,7 @@ user_id = get_current_user_id()
 def prepare_trades_df(user_id: int) -> pd.DataFrame:
     trades = cached_trades(user_id)
     analyses = cached_analysis(user_id)
+    setups = cached_setups(user_id)
 
     if not trades:
         return pd.DataFrame()
@@ -71,7 +74,12 @@ def prepare_trades_df(user_id: int) -> pd.DataFrame:
     t_df["date"] = pd.to_datetime(t_df["date_local"])
     t_df["rr"] = pd.to_numeric(t_df["risk_reward"], errors="coerce")
     t_df["pnl_usd"] = pd.to_numeric(t_df["net_pnl"], errors="coerce").fillna(0.0)
-    t_df["setup"] = t_df["setup_id"].fillna("No setup")
+
+    if setups:
+        setup_map = {s["id"]: s["name"] for s in setups}
+        t_df["setup"] = t_df["setup_id"].map(setup_map).fillna("No setup")
+    else:
+        t_df["setup"] = t_df["setup_id"].fillna("No setup")
 
     return t_df
 
@@ -221,7 +229,7 @@ page_mark("dashboard", "data_loaded")
 # ----------------------------
 st.title("Dashboard")
 st.caption(
-    "Analytics based on trades, psychology and observations.")
+    "Analytics based on reviewed trades only.")
 
 alt.data_transformers.disable_max_rows()
 
@@ -242,7 +250,7 @@ period_col, date_col, account_col = st.columns(
 )
 with period_col:
     period_key = "dashboard_period_label"
-    if not st.session_state.get(period_key):
+    if period_key not in st.session_state:
         st.session_state[period_key] = "Current quarter"
     selected_label = st.segmented_control(
         "Period",
@@ -420,7 +428,7 @@ with st.container(border=True):
             st.markdown(f"**Equity curve**")
 
             y_key = "dashboard_y_axis_label"
-            if not st.session_state.get(y_key):
+            if y_key not in st.session_state:
                 st.session_state[y_key] = "Cumulative %"
             y_axis = st.segmented_control(
                 "Equity curve Y-axis",
@@ -430,18 +438,7 @@ with st.container(border=True):
             )
 
             if len(fact):
-                daily = (
-                    fact.groupby(fact["date"].dt.date)
-                    .agg(rr_sum=("rr", "sum"), pnl_sum=("pnl_usd", "sum"), reward_sum=("reward_percent", "sum"))
-                    .reset_index()
-                    .rename(columns={"date": "day"})
-                )
-                daily["day"] = pd.to_datetime(daily["day"])
-                daily = daily.sort_values("day")
-                daily["cum_rr"] = daily["rr_sum"].cumsum()
-                daily["cum_pnl"] = daily["pnl_sum"].cumsum()
-                daily["cum_pct"] = daily["reward_sum"].cumsum()
-
+                daily = compute_equity_curve(fact)
                 if y_axis == "Cumulative RR":
                     series = daily.set_index("day")["cum_rr"]
                 elif y_axis == "Cumulative $":
@@ -467,7 +464,7 @@ with st.container(border=True):
         with st.container(border=True, height="stretch"):
             st.markdown(f"**Outcome distribution per trade**")
             dist_mode_key = "dashboard_dist_mode_label"
-            if not st.session_state.get(dist_mode_key):
+            if dist_mode_key not in st.session_state:
                 st.session_state[dist_mode_key] = "RR (R)"
             dist_mode = st.segmented_control(
                 "Distribution view",
@@ -495,7 +492,7 @@ with st.container(border=True):
                     )
                     .properties(height=220)
                 )
-                st.altair_chart(hist, height="stretch")
+                st.altair_chart(hist, use_container_width=True)
             else:
                 st.info("No executed trades for distribution in the current filters.")
 
@@ -517,7 +514,7 @@ with st.container(border=True):
             fact.groupby(group_col)
             .agg(
                 Trades=("rr", "size"),
-                Winrate=("rr", lambda s: (s > 0).mean() * 100.0),
+                Winrate=("rr", lambda s: s.map(is_win_rr).mean() * 100.0),
                 Avg_RR=("rr", "mean"),
                 Total_RR=("rr", "sum"),
             )
@@ -561,6 +558,15 @@ with st.container(border=True):
     st.subheader("Notes & observations")
     st.caption("OOR – Observation Occurrence Rate. Per-observation metric.")
 
+    if not obs_df.empty:
+        filtered_fact_count = len(fact)
+        if filtered_fact_count:
+            obs_df = obs_df.copy()
+            obs_df["oor"] = obs_df["linked_trades"] / filtered_fact_count * 100
+        else:
+            obs_df = obs_df.copy()
+            obs_df["oor"] = 0.0
+
     st.dataframe(
         obs_df[["excerpt", "linked_trades", "oor"]],
         column_config={
@@ -580,10 +586,14 @@ with st.container(border=True):
     if len(fact):
         recent = fact.sort_values("date", ascending=False).head(25).copy()
         recent["date"] = recent["date"].dt.strftime("%Y-%m-%d")
-        cols = ["date", "asset", "session", "setup", "risk_pct", "rr", "pnl_usd"]
+        recent["result"] = recent.apply(
+            lambda r: calculate_trade_result(r.get("risk_reward"), r.get("is_missed", 0)),
+            axis=1,
+        )
+        cols = ["date", "asset", "session", "setup", "risk_pct", "rr", "result", "pnl_usd"]
         recent = recent[cols]
         recent = recent.rename(
-            columns={"risk_pct": "Risk (%)", "rr": "RR", "pnl_usd": "PnL ($)"}
+            columns={"risk_pct": "Risk (%)", "rr": "RR", "result": "Result", "pnl_usd": "PnL ($)"}
         )
         st.dataframe(
             recent,
@@ -596,6 +606,7 @@ with st.container(border=True):
                 "setup": "Setup",
                 "Risk (%)": st.column_config.NumberColumn("Risk (%)", format="%0.1f"),
                 "RR": st.column_config.NumberColumn("RR", format="%0.1f"),
+                "Result": "Result",
                 "PnL ($)": st.column_config.NumberColumn("PnL ($)", format="%0.01f"),
             }
         )

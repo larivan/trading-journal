@@ -166,9 +166,9 @@ def compute_risk_metrics(
     # Potential calculations (from all trades)
     if all_df is not None and len(all_df):
         if "rr" in all_df.columns:
-            potential_rr = float(all_df["rr"].mean())
+            potential_rr = float(all_df["rr"].sum())
         elif "risk_reward" in all_df.columns:
-            potential_rr = float(all_df["risk_reward"].mean())
+            potential_rr = float(all_df["risk_reward"].sum())
         else:
             potential_rr = 0.0
         

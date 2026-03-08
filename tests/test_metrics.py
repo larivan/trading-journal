@@ -81,8 +81,8 @@ def test_compute_risk_metrics_basic(sample_trades_df):
     # 0.5 * 2.0 + 0.5 * (-1.0) = 1.0 - 0.5 = 0.5
     assert metrics["expected_value"] == 0.5
     
-    # Potential RR (from all_df): (2.0 - 1.0 + 3.0) / 3 = 1.333...
-    assert metrics["potential_rr"] == pytest.approx(4/3)
+    # Potential RR (from all_df): sum(2.0, -1.0, 3.0) = 4.0
+    assert metrics["potential_rr"] == pytest.approx(4.0)
 
 def test_compute_equity_curve(sample_trades_df):
     fact_df = sample_trades_df[sample_trades_df["is_missed"] == 0]
