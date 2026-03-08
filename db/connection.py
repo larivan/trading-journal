@@ -153,7 +153,10 @@ def transaction(conn=None):
         yield connection
         connection.commit()
     except Exception:
-        connection.rollback()
+        try:
+            connection.rollback()
+        except Exception:
+            pass  # не подавляем оригинальное исключение
         raise
     finally:
         if own:
