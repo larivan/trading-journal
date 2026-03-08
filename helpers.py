@@ -5,14 +5,6 @@ import streamlit as st
 import uuid
 
 
-RESULT_LABELS = {
-    "win": "Win",
-    "loss": "Loss",
-    "be": "Break-even",
-    "miss": "Miss",
-}
-
-
 def is_win_rr(risk_reward: Optional[float]) -> bool:
     """Returns True if risk_reward qualifies as a Win."""
     try:
@@ -131,12 +123,6 @@ def safe_choice_index(options: List[str], value: Optional[str]) -> Optional[int]
         return options.index(value)
     except ValueError:
         return None
-
-
-def result_label(value: Optional[str]) -> str:
-    if not value:
-        return ""
-    return RESULT_LABELS.get(value, value.replace("_", " ").title())
 
 
 # --- Общие форматеры для таблиц ---

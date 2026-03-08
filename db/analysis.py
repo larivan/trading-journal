@@ -208,19 +208,3 @@ def delete_analysis(
         if own:
             conn.close()
 
-
-def attach_image_to_analysis(
-    analysis_id: int, image_id: int, *, conn: Optional[sqlite3.Connection] = None
-) -> None:
-    """Прикрепляет изображение напрямую к анализу."""
-    conn, own = _managed_conn(conn)
-    try:
-        conn.execute(
-            "UPDATE images SET analysis_id=? WHERE id=?",
-            (analysis_id, image_id),
-        )
-        if own:
-            conn.commit()
-    finally:
-        if own:
-            conn.close()

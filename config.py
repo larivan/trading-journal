@@ -32,8 +32,6 @@ PAGES = {
     },
 }
 
-SETTINGS_PAGES = {}
-
 EDITOR_PAGES = {
     "trade_editor": {"title": "Trade Editor", "icon": ":material/edit:", "default": False},
     "analysis_editor": {"title": "Analysis Editor", "icon": ":material/edit:", "default": False},
@@ -47,7 +45,6 @@ TRADE_ID_STATE = "tm_trade_id"
 TRADE_SUCCESS_STATE = "tm_success_message"
 TM_KEY_PREFIX = "tm_trade_id_"
 TM_DEFAULT_PREFIX = "tm_default_"
-TM_DEFAULT_ANALYSIS_ID_STATE = "tm_default_analysis_id"
 TRADE_STATUS_VALUES = ["Open", "Outcome", "Reviewed"]  # computed, not stored
 TRADE_TYPE_VALUES = ["Intraday", "Swing"]
 TRADE_RESULT_VALUES = ["Win", "Loss", "BE", "Miss"]

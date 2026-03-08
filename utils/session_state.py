@@ -51,10 +51,6 @@ def set_selected_entity(entity: EntityName, entity_id: Optional[int]) -> None:
     st.session_state[_selected_key(entity)] = entity_id
 
 
-def get_selected_entity(entity: EntityName) -> Optional[int]:
-    return st.session_state.get(_selected_key(entity))
-
-
 def handle_selection_change(entity: EntityName, selected_ids: Sequence[Any]) -> None:
     if selected_ids:
         set_selected_entity(entity, selected_ids[-1])
@@ -67,7 +63,6 @@ __all__ = [
     "close_dialog",
     "dialog_is_active",
     "get_active_dialog",
-    "get_selected_entity",
     "handle_selection_change",
     "open_dialog",
     "set_selected_entity",
