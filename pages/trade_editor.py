@@ -54,12 +54,14 @@ from utils.cached_data import (
     cached_trade_notes,
     invalidate_notes,
     invalidate_trades,
+    page_mark,
 )
 from utils.trade_sessions import detect_trade_session
 
 st.set_page_config(layout="wide")
 
 user_id = get_current_user_id()
+page_mark("trade_editor", "start")
 
 # --- Читаем trade_id из URL-параметров ---
 params = st.query_params
@@ -115,6 +117,7 @@ analyses = to_option_format(
 )
 defaults = get_trade_defaults(trade, accounts)
 images = cached_images(trade_id=trade_id) if trade_id else []
+page_mark("trade_editor", "data_loaded")
 
 
 def _get_account_id_by_label(label: str) -> Optional[int]:
@@ -229,6 +232,7 @@ with side_col:
         layout_columns=2,
     )
 
+    page_mark("trade_editor", "charts_rendered")
     if trade_id and _chart_images_changed(images, current_images):
         with transaction() as conn:
             persist_image_editor(
@@ -319,6 +323,7 @@ with side_col:
         label_visibility="collapsed",
     )
 
+    page_mark("trade_editor", "notes_rendered")
     response = chat_prompt(
         name=f"obs_{state_key}",
         key=f"obs_{state_key}",
@@ -406,6 +411,8 @@ with stages_col:
         entity_id=trade_id,
         default_back_page="pages/trades.py",
     )
+
+page_mark("trade_editor", "done")
 
 # --- Сохранение ---
 if submitted:

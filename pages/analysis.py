@@ -13,7 +13,7 @@ from config import (
     LOCAL_TZ,
 )
 from db import add_analysis, delete_analysis, transaction
-from utils.cached_data import cached_analysis, filter_analysis, invalidate_analysis
+from utils.cached_data import cached_analysis, filter_analysis, invalidate_analysis, page_mark
 from helpers import format_local_date
 from utils.auth import get_current_user_id, get_setting
 
@@ -22,6 +22,7 @@ st.set_page_config(page_title="Analysis Database",
 st.title(":material/insights: Analysis Database")
 
 user_id = get_current_user_id()
+page_mark("analysis", "start")
 
 TAB_DEFINITIONS: Dict[str, str] = {
     "today": "Today",
@@ -90,6 +91,7 @@ if date_range:
     filters["date_to"] = date_range[1].isoformat()
 
 rows = filter_analysis(cached_analysis(user_id), filters)
+page_mark("analysis", "data_loaded")
 
 # === ТАБЛИЦА ===
 selected_rows: List[int] = []
@@ -188,3 +190,5 @@ def _confirm_delete_analyses(ids: List[Any]) -> None:
 pending_delete_ids = st.session_state.get("_pending_delete_analysis_ids")
 if pending_delete_ids:
     _confirm_delete_analyses(pending_delete_ids)
+
+page_mark("analysis", "done")

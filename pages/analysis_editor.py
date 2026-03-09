@@ -46,12 +46,14 @@ from utils.cached_data import (
     filter_trades,
     invalidate_analysis,
     invalidate_notes,
+    page_mark,
 )
 from utils.trade_sessions import detect_trade_session
 
 st.set_page_config(layout="wide")
 
 user_id = get_current_user_id()
+page_mark("analysis_editor", "start")
 
 # --- Читаем analysis_id из URL-параметров ---
 params = st.query_params
@@ -100,6 +102,8 @@ note_counts: Dict[int, int] = {}
 if not is_new_analysis:
     analysis_notes = cached_analysis_notes(analysis_id)
     note_counts = cached_notes_count_by_analysis(user_id)
+
+page_mark("analysis_editor", "data_loaded")
 
 # --- Диалог подтверждения удаления ---
 render_delete_dialog(
@@ -184,6 +188,7 @@ with side_col:
         label_visibility="collapsed",
     )
 
+    page_mark("analysis_editor", "journal_rendered")
     resp = chat_prompt(
         name=f"journal_{sk}",
         key=f"journal_{sk}",
@@ -268,6 +273,8 @@ with meta_col:
         entity_id=analysis_id,
         default_back_page="pages/analysis.py",
     )
+
+page_mark("analysis_editor", "done")
 
 # --- Секция трейдов (под actions, отдельный раздел) ---
 if not is_new_analysis:

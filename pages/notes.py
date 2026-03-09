@@ -11,6 +11,7 @@ from utils.cached_data import (
     cached_notes_count_by_trade,
     cached_trades,
     filter_notes,
+    page_mark,
 )
 from helpers import (
     format_local_date,
@@ -28,6 +29,7 @@ st.set_page_config(page_title="Notes", page_icon=":material/sticky_note_2:", lay
 st.title(":material/sticky_note_2: Notes")
 
 user_id = get_current_user_id()
+page_mark("notes", "start")
 
 # === Верхняя панель фильтров ===
 search_col, period_col, _, actions_col = st.columns(
@@ -77,6 +79,7 @@ rows = filter_notes(
 notes_by_trade = cached_notes_count_by_trade(user_id)
 notes_by_analysis = cached_notes_count_by_analysis(user_id)
 _total_trades = len(cached_trades(user_id) or [])
+page_mark("notes", "data_loaded")
 
 note_columns: List[Dict[str, Any]] = [
     {
@@ -186,3 +189,4 @@ render_entity_gallery(
 )
 
 render_note_manager()
+page_mark("notes", "done")

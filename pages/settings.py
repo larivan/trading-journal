@@ -24,13 +24,14 @@ from db import delete_account, delete_setup, update_user_settings
 from helpers import custom_selectbox, get_excerpt, to_option_format
 from utils.auth import get_current_user_id, get_user_settings, load_user_session
 from utils.backup import create_backup, get_backup_bytes, list_backups, validate_backup_file
-from utils.cached_data import cached_accounts, cached_setups, cached_trades, filter_setups, invalidate_accounts, invalidate_setups
+from utils.cached_data import cached_accounts, cached_setups, cached_trades, filter_setups, invalidate_accounts, invalidate_setups, page_mark
 from utils.session_state import open_dialog
 
 st.set_page_config(page_title="Settings", page_icon=":material/settings:", layout="wide")
 st.title(":material/settings: Settings")
 
 user_id = get_current_user_id()
+page_mark("settings", "start")
 settings = get_user_settings(user_id) if user_id else {}
 
 tab_accounts, tab_setups, tab_journal, tab_prefs, tab_backup = st.tabs(
@@ -77,6 +78,7 @@ with tab_accounts:
             open_dialog(ACCOUNT_DIALOG_NAME)
 
     account_rows = cached_accounts(user_id, include_archived=True)
+    page_mark("settings", "accounts_loaded")
 
     trades_all = cached_trades(user_id)
     account_pnl: Dict[int, float] = {}
@@ -437,3 +439,5 @@ with tab_backup:
                         st.success("Database restored. Please restart the application.")
                     except Exception as exc:
                         st.error(f"Restore failed: {exc}")
+
+page_mark("settings", "done")
