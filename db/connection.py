@@ -370,8 +370,14 @@ DROP TABLE IF EXISTS analysis_stages;
 """
 
 
+_db_initialized = False
+
+
 def init_db() -> None:
-    """Create DB schema if not exists."""
+    """Create DB schema if not exists. Runs only once per process lifetime."""
+    global _db_initialized
+    if _db_initialized:
+        return
     if not _USE_TURSO:
         _ensure_dirs()
     conn = get_conn()
@@ -387,6 +393,7 @@ def init_db() -> None:
             conn.commit()
     finally:
         conn.close()
+    _db_initialized = True
 
 
 if __name__ == "__main__":

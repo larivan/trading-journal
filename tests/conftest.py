@@ -18,6 +18,7 @@ def temp_db() -> Generator[str, None, None]:
     import db.connection as conn_module
     original_path = conn_module.DB_PATH
     conn_module.DB_PATH = path
+    conn_module._db_initialized = False  # force re-init for fresh temp DB
 
     # Initialize schema
     from db import init_db
