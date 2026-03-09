@@ -13,7 +13,7 @@ from config import (
     LOCAL_TZ,
 )
 from db import add_analysis, delete_analysis, transaction
-from utils.cached_data import cached_analysis, filter_analysis
+from utils.cached_data import cached_analysis, filter_analysis, invalidate_analysis
 from helpers import format_local_date
 from utils.auth import get_current_user_id, get_setting
 
@@ -147,7 +147,7 @@ with btn_create.popover("Create", type="primary", width="stretch"):
                 "date_local": date.today().isoformat(),
                 "asset": pop_asset,
             }, conn=conn)
-        st.cache_data.clear()
+        invalidate_analysis()
         st.session_state["_new_analysis_id"] = new_id
         st.session_state["_back_page"] = "pages/analysis.py"
         st.session_state.pop("_back_params", None)
@@ -178,7 +178,7 @@ def _confirm_delete_analyses(ids: List[Any]) -> None:
         except Exception as exc:
             st.toast(f"Delete failed: {exc}", icon="❌")
         st.session_state.pop("_pending_delete_analysis_ids", None)
-        st.cache_data.clear()
+        invalidate_analysis()
         st.rerun()
     if col2.button("Cancel", width="stretch"):
         st.session_state.pop("_pending_delete_analysis_ids", None)

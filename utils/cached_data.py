@@ -180,6 +180,44 @@ def cached_images(
 
 
 # ---------------------------------------------------------------------------
+# Гранулярная инвалидация кеша
+# ---------------------------------------------------------------------------
+
+def invalidate_trades() -> None:
+    cached_trades.clear()
+    cached_trade.clear()
+    cached_images.clear()
+
+
+def invalidate_accounts() -> None:
+    cached_accounts.clear()
+    cached_account.clear()
+
+
+def invalidate_setups() -> None:
+    cached_setups.clear()
+    cached_setup.clear()
+    cached_images.clear()
+
+
+def invalidate_notes() -> None:
+    cached_notes.clear()
+    cached_note.clear()
+    cached_trade_notes.clear()
+    cached_analysis_notes.clear()
+    cached_notes_count_by_trade.clear()
+    cached_notes_count_by_analysis.clear()
+    cached_images.clear()
+
+
+def invalidate_analysis() -> None:
+    cached_analysis.clear()
+    cached_analysis_by_id.clear()
+    cached_analysis_notes.clear()
+    cached_notes_count_by_analysis.clear()
+
+
+# ---------------------------------------------------------------------------
 # Python-фильтрация (работает с результатами cached_*)
 # ---------------------------------------------------------------------------
 

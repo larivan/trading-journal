@@ -4,6 +4,8 @@ from typing import Callable, Dict, List, Optional
 
 import streamlit as st
 
+from utils.cached_data import invalidate_notes
+
 
 def section_divider() -> None:
     st.markdown(
@@ -18,6 +20,7 @@ def render_delete_dialog(
     delete_fn: Callable,
     user_id: int,
     redirect_page: str,
+    invalidate_fn: Optional[Callable] = None,
 ) -> None:
     """Отображает диалог подтверждения удаления сущности.
 
@@ -39,7 +42,7 @@ def render_delete_dialog(
             except Exception as exc:
                 st.toast(f"Failed to delete: {exc}", icon="❌")
             st.session_state.pop(pending_key, None)
-            st.cache_data.clear()
+            (invalidate_fn or st.cache_data.clear)()
             st.switch_page(redirect_page)
         if c2.button("Cancel", width="stretch"):
             st.session_state.pop(pending_key, None)
@@ -113,7 +116,7 @@ def render_entry_card(
             st.rerun()
         if del_col.button("✕", key=f"_del_{key_prefix}_{entry_id}", help=delete_help, use_container_width=True):
             on_delete()
-            st.cache_data.clear()
+            invalidate_notes()
             st.rerun()
 
         if st.session_state.get(_edit_key):
@@ -127,7 +130,7 @@ def render_entry_card(
             if save_col.button("Save", key=f"_edit_save_{key_prefix}_{entry_id}", type="primary", width="stretch"):
                 on_save(new_body)
                 st.session_state.pop(_edit_key, None)
-                st.cache_data.clear()
+                invalidate_notes()
                 st.rerun()
             if cancel_col.button("Cancel", key=f"_edit_cancel_{key_prefix}_{entry_id}", width="stretch"):
                 st.session_state.pop(_edit_key, None)

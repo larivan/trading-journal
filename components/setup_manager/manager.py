@@ -26,7 +26,7 @@ from db import (
     update_setup,
 )
 from utils.auth import get_current_user_id
-from utils.cached_data import cached_images, cached_setup
+from utils.cached_data import cached_images, cached_setup, invalidate_setups
 from utils.session_state import close_dialog, dialog_is_active
 
 
@@ -152,7 +152,7 @@ def render_setup_manager() -> None:
                 st.error(f"Failed to save setup: {exc}")
                 return
 
-            st.cache_data.clear()
+            invalidate_setups()
             st.rerun()
 
     if dialog_is_active(SETUP_DIALOG_NAME):

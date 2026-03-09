@@ -39,7 +39,7 @@ from db import (
     update_trade,
     transaction,
 )
-from utils.cached_data import cached_accounts, cached_analysis, cached_images, cached_setups, cached_trade
+from utils.cached_data import cached_accounts, cached_analysis, cached_images, cached_setups, cached_trade, invalidate_trades
 
 
 def render_trade_manager() -> None:
@@ -279,7 +279,7 @@ def render_trade_manager() -> None:
         except Exception as exc:  # pragma: no cover - UI feedback
             message_col.error(f"Failed to save the trade: {exc}")
             return
-        st.cache_data.clear()
+        invalidate_trades()
         st.rerun()
 
     if dialog_is_active(TRADE_DIALOG_NAME):

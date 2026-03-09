@@ -24,7 +24,7 @@ from db import delete_account, delete_setup, update_user_settings
 from helpers import custom_selectbox, get_excerpt, to_option_format
 from utils.auth import get_current_user_id, get_user_settings, load_user_session
 from utils.backup import create_backup, get_backup_bytes, list_backups, validate_backup_file
-from utils.cached_data import cached_accounts, cached_setups, cached_trades, filter_setups
+from utils.cached_data import cached_accounts, cached_setups, cached_trades, filter_setups, invalidate_accounts, invalidate_setups
 from utils.session_state import open_dialog
 
 st.set_page_config(page_title="Settings", page_icon=":material/settings:", layout="wide")
@@ -59,7 +59,7 @@ def _confirm_delete_accounts(ids: List[Any], name_map: Dict[int, str]) -> None:
                 st.toast(f"Failed to delete account: {exc}", icon="❌")
         st.session_state.pop("_pending_delete_account_ids", None)
         st.session_state.pop("settings_accounts_gallery", None)
-        st.cache_data.clear()
+        invalidate_accounts()
         if blocked:
             names = ", ".join(f'"{name}"' for name in blocked)
             st.toast(f"Cannot delete {names}: account has trades", icon="⚠️")
@@ -181,7 +181,7 @@ def _confirm_delete_setups(ids: List[Any], name_map: Dict[int, str]) -> None:
                 st.toast(f"Failed to delete setup #{sid}: {exc}", icon="❌")
         st.session_state.pop("_pending_delete_setup_ids", None)
         st.session_state.pop("settings_setups_gallery", None)
-        st.cache_data.clear()
+        invalidate_setups()
         st.rerun()
     if col2.button("Cancel", width="stretch"):
         st.session_state.pop("_pending_delete_setup_ids", None)

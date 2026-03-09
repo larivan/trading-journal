@@ -44,6 +44,8 @@ from utils.cached_data import (
     cached_setups,
     cached_trades,
     filter_trades,
+    invalidate_analysis,
+    invalidate_notes,
 )
 from utils.trade_sessions import detect_trade_session
 
@@ -106,6 +108,7 @@ render_delete_dialog(
     delete_fn=delete_analysis,
     user_id=user_id,
     redirect_page="pages/analysis.py",
+    invalidate_fn=invalidate_analysis,
 )
 
 
@@ -209,7 +212,7 @@ with side_col:
                     data_uri = f"data:{img.type};{img.format},{img.data}"
                     image_id = add_image(data_uri, conn=conn)
                     attach_image_to_note(note_id, image_id, conn=conn)
-            st.cache_data.clear()
+            invalidate_notes()
             st.rerun()
 
 # --- Мета-колонка ---
@@ -350,7 +353,7 @@ if not is_new_analysis:
                         "local_tz": local_tz,
                         "is_missed": 0,
                     }, conn=conn)
-                st.cache_data.clear()
+                invalidate_trades()
                 st.session_state["_new_trade_id"] = new_id
                 st.session_state["_back_page"] = "pages/analysis_editor.py"
                 st.session_state["_back_params"] = {"id": str(analysis_id)}
@@ -377,7 +380,7 @@ if submitted:
                 update_analysis(analysis_id, user_id, payload, conn=conn)
                 current_analysis_id = analysis_id
 
-        st.cache_data.clear()
+        invalidate_analysis()
         st.toast(
             "Analysis saved." if not is_new_analysis else "Analysis created.", icon="🔥")
         if is_new_analysis:

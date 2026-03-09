@@ -52,6 +52,8 @@ from utils.cached_data import (
     cached_setups,
     cached_trade,
     cached_trade_notes,
+    invalidate_notes,
+    invalidate_trades,
 )
 from utils.trade_sessions import detect_trade_session
 
@@ -211,6 +213,7 @@ render_delete_dialog(
     delete_fn=delete_trade,
     user_id=user_id,
     redirect_page="pages/trades.py",
+    invalidate_fn=invalidate_trades,
 )
 
 _NOTE_CATEGORIES = ["Hot thought", "Cold thought", "Observation"]
@@ -237,7 +240,7 @@ with side_col:
         _editor_key = f"{state_key}_chart_editor"
         st.session_state.pop(_editor_key, None)
         st.session_state.pop(image_editor_value_state_key(_editor_key), None)
-        st.cache_data.clear()
+        invalidate_trades()
         st.rerun()
 
     st.markdown("#### Comments")
@@ -295,7 +298,7 @@ with side_col:
                     c_text.markdown((ln.get("body") or "")[:80])
                     if c_btn.button("🔗", key=f"_link_note_{ln['id']}", use_container_width=True):
                         attach_note_to_trade(trade_id, ln["id"])
-                        st.cache_data.clear()
+                        invalidate_notes()
                         st.rerun()
 
     st.divider()
@@ -340,7 +343,7 @@ with side_col:
                     data_uri = f"data:{img.type};{img.format},{img.data}"
                     image_id = add_image(data_uri, conn=conn)
                     attach_image_to_note(new_note_id, image_id, conn=conn)
-            st.cache_data.clear()
+            invalidate_notes()
             st.rerun()
 
 with stages_col:
@@ -477,7 +480,7 @@ if submitted:
         # Очистка состояния дефолтов
         st.session_state.pop(f"{TM_DEFAULT_PREFIX}analysis", None)
         st.session_state.pop(f"{TM_DEFAULT_PREFIX}asset", None)
-        st.cache_data.clear()
+        invalidate_trades()
         st.toast("Trade saved." if not is_new_trade else "Trade created.", icon="🔥")
         if is_new_trade:
             st.query_params["id"] = str(current_trade_id)

@@ -20,7 +20,7 @@ from db import (
     update_account,
 )
 from utils.auth import get_current_user_id
-from utils.cached_data import cached_account, cached_trades
+from utils.cached_data import cached_account, cached_trades, invalidate_accounts
 from utils.session_state import close_dialog, dialog_is_active
 
 
@@ -190,7 +190,7 @@ def render_account_manager() -> None:
                 st.error(f"Failed to save account: {exc}")
                 return
 
-            st.cache_data.clear()
+            invalidate_accounts()
             st.rerun()
 
     if dialog_is_active(ACCOUNT_DIALOG_NAME):

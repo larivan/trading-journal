@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 import streamlit as st
 from db import create_trade, delete_trade, transaction
-from utils.cached_data import cached_accounts, cached_setups, cached_trades, filter_trades, page_mark
+from utils.cached_data import cached_accounts, cached_setups, cached_trades, filter_trades, invalidate_trades, page_mark
 from helpers import (
     parse_date,
     to_option_format,
@@ -271,7 +271,7 @@ with btn_create.popover("Create", type="primary", width="stretch"):
                     "local_tz": local_tz,
                     "is_missed": 0,
                 }, conn=conn)
-            st.cache_data.clear()
+            invalidate_trades()
             st.session_state["_new_trade_id"] = new_id
             st.session_state["_back_page"] = "pages/trades.py"
             st.session_state.pop("_back_params", None)
@@ -302,7 +302,7 @@ def _confirm_delete_trades(ids: List[Any]) -> None:
         except Exception as exc:
             st.toast(f"Delete failed: {exc}", icon="❌")
         st.session_state.pop("_pending_delete_trade_ids", None)
-        st.cache_data.clear()
+        invalidate_trades()
         st.rerun()
     if col2.button("Cancel", width="stretch"):
         st.session_state.pop("_pending_delete_trade_ids", None)
