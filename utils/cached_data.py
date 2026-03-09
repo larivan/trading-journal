@@ -15,11 +15,21 @@ import streamlit as st
 
 from config import BE_THRESHOLD
 from db import (
+    count_notes_by_analysis,
+    count_notes_by_trade,
+    get_account,
+    get_analysis,
+    get_note,
+    get_setup,
+    get_trade_by_id,
     list_accounts,
     list_analysis,
+    list_analysis_notes,
+    list_images,
     list_notes,
     list_setups,
     list_trades,
+    list_trade_notes,
 )
 
 _log = logging.getLogger("cache")
@@ -94,6 +104,79 @@ def cached_notes(user_id: int) -> List[Dict[str, Any]]:
     if user_id is None:
         return []
     return _timed(f"list_notes(user={user_id})", list_notes, user_id)
+
+
+@st.cache_data(ttl=3600)
+def cached_account(account_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+    if account_id is None or user_id is None:
+        return None
+    return _timed(f"get_account(id={account_id})", get_account, int(account_id), user_id)
+
+
+@st.cache_data(ttl=3600)
+def cached_note(note_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+    if note_id is None or user_id is None:
+        return None
+    return _timed(f"get_note(id={note_id})", get_note, note_id, user_id)
+
+
+@st.cache_data(ttl=3600)
+def cached_setup(setup_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+    if setup_id is None or user_id is None:
+        return None
+    return _timed(f"get_setup(id={setup_id})", get_setup, int(setup_id), user_id)
+
+
+@st.cache_data(ttl=3600)
+def cached_analysis_by_id(analysis_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+    if analysis_id is None or user_id is None:
+        return None
+    return _timed(f"get_analysis(id={analysis_id})", get_analysis, analysis_id, user_id)
+
+
+@st.cache_data(ttl=3600)
+def cached_analysis_notes(analysis_id: int) -> List[Dict[str, Any]]:
+    if analysis_id is None:
+        return []
+    return _timed(f"list_analysis_notes(analysis={analysis_id})", list_analysis_notes, analysis_id)
+
+
+@st.cache_data(ttl=3600)
+def cached_notes_count_by_analysis(user_id: int) -> Dict[int, int]:
+    if user_id is None:
+        return {}
+    return _timed(f"count_notes_by_analysis(user={user_id})", count_notes_by_analysis, user_id)
+
+
+@st.cache_data(ttl=3600)
+def cached_trade(trade_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+    if trade_id is None or user_id is None:
+        return None
+    return _timed(f"get_trade(id={trade_id})", get_trade_by_id, trade_id, user_id)
+
+
+@st.cache_data(ttl=3600)
+def cached_trade_notes(trade_id: int) -> List[Dict[str, Any]]:
+    if trade_id is None:
+        return []
+    return _timed(f"list_trade_notes(trade={trade_id})", list_trade_notes, trade_id)
+
+
+@st.cache_data(ttl=3600)
+def cached_notes_count_by_trade(user_id: int) -> Dict[int, int]:
+    if user_id is None:
+        return {}
+    return _timed(f"count_notes_by_trade(user={user_id})", count_notes_by_trade, user_id)
+
+
+@st.cache_data(ttl=3600)
+def cached_images(
+    trade_id: Optional[int] = None,
+    setup_id: Optional[int] = None,
+    note_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    label = f"list_images(trade={trade_id}, setup={setup_id}, note={note_id})"
+    return _timed(label, list_images, trade_id=trade_id, setup_id=setup_id, note_id=note_id)
 
 
 # ---------------------------------------------------------------------------

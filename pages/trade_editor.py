@@ -32,23 +32,27 @@ from db import (
     attach_image_to_note,
     attach_image_to_trade,
     attach_note_to_trade,
-    count_notes_by_trade,
     create_note,
     create_trade,
     delete_note,
     delete_trade,
     detach_note_from_trade,
     update_note,
-    get_trade_by_id,
-    list_images,
-    list_notes,
-    list_trade_notes,
     transaction,
     update_trade,
 )
 from helpers import parse_date, parse_time, to_option_format
 from utils.auth import get_current_user_id, get_setting
-from utils.cached_data import cached_accounts, cached_analysis, cached_setups
+from utils.cached_data import (
+    cached_accounts,
+    cached_analysis,
+    cached_images,
+    cached_notes,
+    cached_notes_count_by_trade,
+    cached_setups,
+    cached_trade,
+    cached_trade_notes,
+)
 from utils.trade_sessions import detect_trade_session
 
 st.set_page_config(layout="wide")
@@ -67,7 +71,7 @@ is_new_trade = trade_id is None
 # --- Загружаем трейд из БД ---
 trade: Dict[str, Any] = {}
 if not is_new_trade:
-    trade = get_trade_by_id(trade_id, user_id) or {}
+    trade = cached_trade(trade_id, user_id) or {}
     if not trade:
         st.error("Trade not found.")
         if st.button("← Back"):
@@ -108,7 +112,7 @@ analyses = to_option_format(
     formatter=lambda a: f"{a.get('date_local')} · {a.get('asset')}",
 )
 defaults = get_trade_defaults(trade, accounts)
-images = list_images(trade_id=trade_id) if trade_id else []
+images = cached_images(trade_id=trade_id) if trade_id else []
 
 
 def _get_account_id_by_label(label: str) -> Optional[int]:
@@ -237,8 +241,8 @@ with side_col:
         st.rerun()
 
     st.markdown("#### Comments")
-    trade_notes = list_trade_notes(trade_id) if trade_id else []
-    note_counts = count_notes_by_trade(user_id) if trade_id else {}
+    trade_notes = cached_trade_notes(trade_id) if trade_id else []
+    note_counts = cached_notes_count_by_trade(user_id) if trade_id else {}
 
     if not trade_notes:
         with st.container(border=True):
@@ -251,7 +255,7 @@ with side_col:
             is_shared = count > 1
             shared_badge = f"  ·  🔗 {count} trades" if is_shared else ""
             badge = f"{note.get('date_local', '')}  {time_display}  ·  {category}{shared_badge}"
-            note_images = list_images(note_id=note["id"])
+            note_images = cached_images(note_id=note["id"])
             render_entry_card(
                 entry_id=note["id"],
                 badge=badge,
@@ -268,7 +272,7 @@ with side_col:
             )
 
     if trade_id:
-        _all_notes = list_notes(user_id, {"exclude_analysis": True})
+        _all_notes = cached_notes(user_id)
         _attached_ids = {n["id"] for n in trade_notes}
         _linkable = [n for n in _all_notes if n["id"] not in _attached_ids]
         if _linkable:

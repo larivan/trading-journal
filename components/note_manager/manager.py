@@ -20,15 +20,18 @@ from config import (
 )
 from db import (
     attach_image_to_note,
-    count_notes_by_trade,
     create_note,
-    get_note,
-    list_images,
     transaction,
     update_note,
 )
 from utils.auth import get_current_user_id
-from utils.cached_data import cached_notes, cached_trades
+from utils.cached_data import (
+    cached_images,
+    cached_note,
+    cached_notes,
+    cached_notes_count_by_trade,
+    cached_trades,
+)
 from utils.session_state import (
     open_dialog,
     close_dialog,
@@ -55,7 +58,7 @@ def render_note_manager() -> None:
     note: Dict[str, Any] = {}
 
     if not is_new_note:
-        note = get_note(note_id, user_id) or {}
+        note = cached_note(note_id, user_id) or {}
         if not note:
             st.error("Note not found.")
             st.session_state.pop(NOTE_ID_STATE, None)
@@ -64,10 +67,9 @@ def render_note_manager() -> None:
             return
 
     state_key = f"{NOTE_MANAGER_KEY_PREFIX}{note_id or 'new'}"
-    images: List[Dict[str, Any]] = list_images(
-        note_id=note_id) if note_id else []
+    images: List[Dict[str, Any]] = cached_images(note_id=note_id) if note_id else []
 
-    _notes_by_trade = count_notes_by_trade(user_id) if not is_new_note else {}
+    _notes_by_trade = cached_notes_count_by_trade(user_id) if not is_new_note else {}
     _all_trades = cached_trades(user_id) if not is_new_note else []
     _total_trades = len(_all_trades) if _all_trades else 0
     _linked_trade_count = _notes_by_trade.get(int(note_id), 0) if note_id else 0

@@ -20,7 +20,7 @@ from config import (
     SETUP_DIALOG_NAME,
     SETUP_ID_STATE,
 )
-from db import delete_account, delete_setup, list_accounts, update_user_settings
+from db import delete_account, delete_setup, update_user_settings
 from helpers import custom_selectbox, get_excerpt, to_option_format
 from utils.auth import get_current_user_id, get_user_settings, load_user_session
 from utils.backup import create_backup, get_backup_bytes, list_backups, validate_backup_file
@@ -76,7 +76,7 @@ with tab_accounts:
             st.session_state.pop(ACCOUNT_ID_STATE, None)
             open_dialog(ACCOUNT_DIALOG_NAME)
 
-    account_rows = list_accounts(user_id, include_archived=True)
+    account_rows = cached_accounts(user_id, include_archived=True)
 
     trades_all = cached_trades(user_id)
     account_pnl: Dict[int, float] = {}

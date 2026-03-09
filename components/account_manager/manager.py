@@ -16,12 +16,11 @@ from config import (
 from db import (
     create_account,
     delete_account,
-    get_account,
     set_account_archived,
     update_account,
 )
 from utils.auth import get_current_user_id
-from utils.cached_data import cached_trades
+from utils.cached_data import cached_account, cached_trades
 from utils.session_state import close_dialog, dialog_is_active
 
 
@@ -39,7 +38,7 @@ def render_account_manager() -> None:
     account: Dict[str, Any] = {}
 
     if not is_new:
-        account = get_account(int(account_id), user_id) or {}
+        account = cached_account(int(account_id), user_id) or {}
         if not account:
             st.error("Account not found.")
             st.session_state.pop(ACCOUNT_ID_STATE, None)

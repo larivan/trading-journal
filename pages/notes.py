@@ -4,8 +4,14 @@ from typing import Any, Dict, List
 import streamlit as st
 from components.entity_gallery import render_entity_gallery
 from components.note_manager import render_note_manager
-from db import delete_note, count_notes_by_trade, count_notes_by_analysis
-from utils.cached_data import cached_notes, cached_trades, filter_notes
+from db import delete_note
+from utils.cached_data import (
+    cached_notes,
+    cached_notes_count_by_analysis,
+    cached_notes_count_by_trade,
+    cached_trades,
+    filter_notes,
+)
 from helpers import (
     format_local_date,
     format_local_time,
@@ -68,8 +74,8 @@ rows = filter_notes(
     ascending=False,
 )
 
-notes_by_trade = count_notes_by_trade(user_id)
-notes_by_analysis = count_notes_by_analysis(user_id)
+notes_by_trade = cached_notes_count_by_trade(user_id)
+notes_by_analysis = cached_notes_count_by_analysis(user_id)
 _total_trades = len(cached_trades(user_id) or [])
 
 note_columns: List[Dict[str, Any]] = [

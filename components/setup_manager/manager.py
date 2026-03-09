@@ -22,12 +22,11 @@ from db import (
     attach_image_to_setup,
     create_setup,
     delete_setup,
-    get_setup,
-    list_images,
     transaction,
     update_setup,
 )
 from utils.auth import get_current_user_id
+from utils.cached_data import cached_images, cached_setup
 from utils.session_state import close_dialog, dialog_is_active
 
 
@@ -45,7 +44,7 @@ def render_setup_manager() -> None:
     setup: Dict[str, Any] = {}
 
     if not is_new:
-        setup = get_setup(int(setup_id), user_id) or {}
+        setup = cached_setup(int(setup_id), user_id) or {}
         if not setup:
             st.error("Setup not found.")
             _reset_setup_state()
@@ -54,8 +53,7 @@ def render_setup_manager() -> None:
             return
 
     state_key = f"{SETUP_MANAGER_KEY_PREFIX}{setup_id or 'new'}"
-    images: List[Dict[str, Any]] = list_images(
-        setup_id=setup_id) if setup_id else []
+    images: List[Dict[str, Any]] = cached_images(setup_id=setup_id) if setup_id else []
 
     @st.dialog(
         _get_dialog_title(setup, is_new),

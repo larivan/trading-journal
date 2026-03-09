@@ -35,13 +35,11 @@ from config import (
 from db import (
     create_trade,
     delete_trade,
-    get_trade_by_id,
-    list_images,
     attach_image_to_trade,
     update_trade,
     transaction,
 )
-from utils.cached_data import cached_accounts, cached_analysis, cached_setups
+from utils.cached_data import cached_accounts, cached_analysis, cached_images, cached_setups, cached_trade
 
 
 def render_trade_manager() -> None:
@@ -66,7 +64,7 @@ def render_trade_manager() -> None:
 
     trade: Dict[str, Any] = {}
     if not is_new_trade:
-        trade = get_trade_by_id(trade_id, user_id)
+        trade = cached_trade(trade_id, user_id)
         if not trade:
             st.error("Trade not found.")
             st.session_state.pop(TRADE_ID_STATE, None)
@@ -105,7 +103,7 @@ def render_trade_manager() -> None:
             formatter=lambda analysis: f"{analysis.get('date_local')} · {analysis.get('asset')}",
         )
         defaults = get_trade_defaults(trade, accounts)
-        images = list_images(trade_id=trade_id) if trade_id else []
+        images = cached_images(trade_id=trade_id) if trade_id else []
 
         # Хедер с кнопками действий
         with st.container(border=True):

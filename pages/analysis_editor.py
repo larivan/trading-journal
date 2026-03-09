@@ -18,17 +18,12 @@ from db import (
     add_image,
     attach_image_to_note,
     attach_note_to_analysis,
-    count_notes_by_analysis,
     create_note,
     create_trade,
     delete_analysis,
     delete_note,
     detach_note_from_analysis,
     update_note,
-    get_analysis,
-    list_analysis_notes,
-    list_images,
-    list_trades,
     transaction,
     update_analysis,
 )
@@ -40,7 +35,16 @@ from components.editor_ui import (
 )
 from helpers import calculate_trade_result, custom_selectbox, parse_date, to_option_format
 from utils.auth import get_current_user_id, get_setting
-from utils.cached_data import cached_accounts, cached_setups
+from utils.cached_data import (
+    cached_accounts,
+    cached_analysis_by_id,
+    cached_analysis_notes,
+    cached_images,
+    cached_notes_count_by_analysis,
+    cached_setups,
+    cached_trades,
+    filter_trades,
+)
 from utils.trade_sessions import detect_trade_session
 
 st.set_page_config(layout="wide")
@@ -63,7 +67,7 @@ is_new_analysis = analysis_id is None
 # --- Загружаем анализ из БД ---
 analysis: Dict[str, Any] = {}
 if not is_new_analysis:
-    analysis = get_analysis(analysis_id, user_id) or {}
+    analysis = cached_analysis_by_id(analysis_id, user_id) or {}
     if not analysis:
         st.error("Analysis not found.")
         if st.button("← Back"):
@@ -92,8 +96,8 @@ analysis_notes: List[Dict[str, Any]] = []
 note_counts: Dict[int, int] = {}
 
 if not is_new_analysis:
-    analysis_notes = list_analysis_notes(analysis_id)
-    note_counts = count_notes_by_analysis(user_id)
+    analysis_notes = cached_analysis_notes(analysis_id)
+    note_counts = cached_notes_count_by_analysis(user_id)
 
 # --- Диалог подтверждения удаления ---
 render_delete_dialog(
@@ -277,7 +281,7 @@ if not is_new_analysis:
         (a for a in account_rows_all if not a.get("is_archived")), None)
     _default_acc = _default_acc_row["id"] if _default_acc_row else None
 
-    trade_rows = list_trades(user_id, {"analysis_id": analysis_id})
+    trade_rows = filter_trades(cached_trades(user_id), {"analysis_id": analysis_id})
     if trade_rows:
         df_exec = pd.DataFrame(trade_rows)
         df_exec["result"] = df_exec.apply(
