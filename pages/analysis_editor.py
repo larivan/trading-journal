@@ -145,7 +145,7 @@ with side_col:
                 category, category) if category else "Note"
             badge_extra = f"  ·  🔗 {count} analyses" if is_shared else ""
             time_display = (entry.get("time_local") or "")[:5]
-            note_images = list_images(note_id=entry["id"])
+            note_images = cached_images(note_id=entry["id"])
             render_entry_card(
                 entry_id=entry["id"],
                 badge=f"[{badge_label}]{badge_extra}",
