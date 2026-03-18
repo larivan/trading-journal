@@ -46,6 +46,7 @@ from utils.cached_data import (
     filter_trades,
     invalidate_analysis,
     invalidate_notes,
+    invalidate_trades,
     page_mark,
 )
 from utils.trade_sessions import detect_trade_session
