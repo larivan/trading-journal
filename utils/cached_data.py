@@ -1,9 +1,9 @@
 """Кешированные обёртки над db/ и вспомогательные функции Python-фильтрации.
 
-Стратегия:
-- Грузим полный список один раз, кешируем на уровне приложения (ttl=3600).
-- Фильтруем в Python — мгновенно для объёмов < 1000 записей.
-- Явно сбрасываем кеш через st.cache_data.clear() после любой мутации.
+Стратегия кеширования:
+- КЕШИРУЮТСЯ только стабильные справочники: accounts, setups.
+- Всё остальное (trades, notes, analysis, images) — прямые DB-запросы без кеша.
+- Инвалидация нужна только для accounts и setups.
 - user_id=None → пустой список без DB-запроса (защита от раннего рендера).
 """
 
@@ -68,42 +68,14 @@ def _timed(label: str, fn, *args, **kwargs):
 
 
 # ---------------------------------------------------------------------------
-# Кешированные обёртки
+# Кешируемые справочники (меняются редко)
 # ---------------------------------------------------------------------------
-
-@st.cache_data(ttl=3600)
-def cached_trades(user_id: int) -> List[Dict[str, Any]]:
-    if user_id is None:
-        return []
-    return _timed(f"list_trades(user={user_id})", list_trades, user_id)
-
 
 @st.cache_data(ttl=3600)
 def cached_accounts(user_id: int, include_archived: bool = False) -> List[Dict[str, Any]]:
     if user_id is None:
         return []
     return _timed(f"list_accounts(user={user_id}, arch={include_archived})", list_accounts, user_id, include_archived)
-
-
-@st.cache_data(ttl=3600)
-def cached_setups(user_id: int) -> List[Dict[str, Any]]:
-    if user_id is None:
-        return []
-    return _timed(f"list_setups(user={user_id})", list_setups, user_id)
-
-
-@st.cache_data(ttl=3600)
-def cached_analysis(user_id: int) -> List[Dict[str, Any]]:
-    if user_id is None:
-        return []
-    return _timed(f"list_analysis(user={user_id})", list_analysis, user_id)
-
-
-@st.cache_data(ttl=3600)
-def cached_notes(user_id: int) -> List[Dict[str, Any]]:
-    if user_id is None:
-        return []
-    return _timed(f"list_notes(user={user_id})", list_notes, user_id)
 
 
 @st.cache_data(ttl=3600)
@@ -114,10 +86,10 @@ def cached_account(account_id: int, user_id: int) -> Optional[Dict[str, Any]]:
 
 
 @st.cache_data(ttl=3600)
-def cached_note(note_id: int, user_id: int) -> Optional[Dict[str, Any]]:
-    if note_id is None or user_id is None:
-        return None
-    return _timed(f"get_note(id={note_id})", get_note, note_id, user_id)
+def cached_setups(user_id: int) -> List[Dict[str, Any]]:
+    if user_id is None:
+        return []
+    return _timed(f"list_setups(user={user_id})", list_setups, user_id)
 
 
 @st.cache_data(ttl=3600)
@@ -127,49 +99,70 @@ def cached_setup(setup_id: int, user_id: int) -> Optional[Dict[str, Any]]:
     return _timed(f"get_setup(id={setup_id})", get_setup, int(setup_id), user_id)
 
 
-@st.cache_data(ttl=3600)
-def cached_analysis_by_id(analysis_id: int, user_id: int) -> Optional[Dict[str, Any]]:
-    if analysis_id is None or user_id is None:
-        return None
-    return _timed(f"get_analysis(id={analysis_id})", get_analysis, analysis_id, user_id)
+# ---------------------------------------------------------------------------
+# Прямые DB-запросы без кеша (меняются часто)
+# ---------------------------------------------------------------------------
 
-
-@st.cache_data(ttl=3600)
-def cached_analysis_notes(analysis_id: int) -> List[Dict[str, Any]]:
-    if analysis_id is None:
-        return []
-    return _timed(f"list_analysis_notes(analysis={analysis_id})", list_analysis_notes, analysis_id)
-
-
-@st.cache_data(ttl=3600)
-def cached_notes_count_by_analysis(user_id: int) -> Dict[int, int]:
+def cached_trades(user_id: int) -> List[Dict[str, Any]]:
     if user_id is None:
-        return {}
-    return _timed(f"count_notes_by_analysis(user={user_id})", count_notes_by_analysis, user_id)
+        return []
+    return _timed(f"list_trades(user={user_id})", list_trades, user_id)
 
 
-@st.cache_data(ttl=3600)
 def cached_trade(trade_id: int, user_id: int) -> Optional[Dict[str, Any]]:
     if trade_id is None or user_id is None:
         return None
     return _timed(f"get_trade(id={trade_id})", get_trade_by_id, trade_id, user_id)
 
 
-@st.cache_data(ttl=3600)
+def cached_analysis(user_id: int) -> List[Dict[str, Any]]:
+    if user_id is None:
+        return []
+    return _timed(f"list_analysis(user={user_id})", list_analysis, user_id)
+
+
+def cached_analysis_by_id(analysis_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+    if analysis_id is None or user_id is None:
+        return None
+    return _timed(f"get_analysis(id={analysis_id})", get_analysis, analysis_id, user_id)
+
+
+def cached_analysis_notes(analysis_id: int) -> List[Dict[str, Any]]:
+    if analysis_id is None:
+        return []
+    return _timed(f"list_analysis_notes(analysis={analysis_id})", list_analysis_notes, analysis_id)
+
+
+def cached_notes_count_by_analysis(user_id: int) -> Dict[int, int]:
+    if user_id is None:
+        return {}
+    return _timed(f"count_notes_by_analysis(user={user_id})", count_notes_by_analysis, user_id)
+
+
+def cached_notes(user_id: int) -> List[Dict[str, Any]]:
+    if user_id is None:
+        return []
+    return _timed(f"list_notes(user={user_id})", list_notes, user_id)
+
+
+def cached_note(note_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+    if note_id is None or user_id is None:
+        return None
+    return _timed(f"get_note(id={note_id})", get_note, note_id, user_id)
+
+
 def cached_trade_notes(trade_id: int) -> List[Dict[str, Any]]:
     if trade_id is None:
         return []
     return _timed(f"list_trade_notes(trade={trade_id})", list_trade_notes, trade_id)
 
 
-@st.cache_data(ttl=3600)
 def cached_notes_count_by_trade(user_id: int) -> Dict[int, int]:
     if user_id is None:
         return {}
     return _timed(f"count_notes_by_trade(user={user_id})", count_notes_by_trade, user_id)
 
 
-@st.cache_data(ttl=3600)
 def cached_images(
     trade_id: Optional[int] = None,
     setup_id: Optional[int] = None,
@@ -180,14 +173,8 @@ def cached_images(
 
 
 # ---------------------------------------------------------------------------
-# Гранулярная инвалидация кеша
+# Инвалидация кеша
 # ---------------------------------------------------------------------------
-
-def invalidate_trades() -> None:
-    cached_trades.clear()
-    cached_trade.clear()
-    cached_images.clear()
-
 
 def invalidate_accounts() -> None:
     cached_accounts.clear()
@@ -197,24 +184,19 @@ def invalidate_accounts() -> None:
 def invalidate_setups() -> None:
     cached_setups.clear()
     cached_setup.clear()
-    cached_images.clear()
+
+
+# Остальные — no-op: данные не кешируются, каждый запрос итак идёт в DB.
+def invalidate_trades() -> None:
+    pass
 
 
 def invalidate_notes() -> None:
-    cached_notes.clear()
-    cached_note.clear()
-    cached_trade_notes.clear()
-    cached_analysis_notes.clear()
-    cached_notes_count_by_trade.clear()
-    cached_notes_count_by_analysis.clear()
-    cached_images.clear()
+    pass
 
 
 def invalidate_analysis() -> None:
-    cached_analysis.clear()
-    cached_analysis_by_id.clear()
-    cached_analysis_notes.clear()
-    cached_notes_count_by_analysis.clear()
+    pass
 
 
 # ---------------------------------------------------------------------------

@@ -234,17 +234,19 @@ with side_col:
 
     page_mark("trade_editor", "charts_rendered")
     if trade_id and _chart_images_changed(images, current_images):
-        with transaction() as conn:
-            persist_image_editor(
-                attached_images=images,
-                editor_rows=current_images,
-                attach_image=lambda iid, c=conn: attach_image_to_trade(trade_id, iid, conn=c),
-                conn=conn,
-            )
-        _editor_key = f"{state_key}_chart_editor"
-        st.session_state.pop(_editor_key, None)
-        st.session_state.pop(image_editor_value_state_key(_editor_key), None)
-        invalidate_trades()
+        try:
+            with transaction() as conn:
+                persist_image_editor(
+                    attached_images=images,
+                    editor_rows=current_images,
+                    attach_image=lambda iid, c=conn: attach_image_to_trade(trade_id, iid, conn=c),
+                    conn=conn,
+                )
+        finally:
+            _editor_key = f"{state_key}_chart_editor"
+            st.session_state.pop(_editor_key, None)
+            st.session_state.pop(image_editor_value_state_key(_editor_key), None)
+            invalidate_trades()
         st.rerun()
 
     st.markdown("#### Comments")

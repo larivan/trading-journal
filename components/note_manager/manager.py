@@ -28,9 +28,9 @@ from utils.auth import get_current_user_id
 from utils.cached_data import (
     cached_images,
     cached_note,
-    cached_notes,
     cached_notes_count_by_trade,
     cached_trades,
+    invalidate_notes,
 )
 from utils.session_state import (
     open_dialog,
@@ -187,7 +187,7 @@ def render_note_manager() -> None:
                 message_col.error(f"Failed to save note: {exc}")
                 return
 
-            cached_notes.clear()
+            invalidate_notes()
             st.rerun()
 
     if dialog_is_active(NOTE_DIALOG_NAME):

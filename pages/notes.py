@@ -11,6 +11,7 @@ from utils.cached_data import (
     cached_notes_count_by_trade,
     cached_trades,
     filter_notes,
+    invalidate_notes,
     page_mark,
 )
 from helpers import (
@@ -172,7 +173,7 @@ def _delete_notes(ids: List[Any]) -> None:
             delete_note(int(note_id), user_id)
         except (ValueError, sqlite3.Error) as exc:
             st.toast(f"Failed to delete note #{note_id}: {exc}", icon="❌")
-    cached_notes.clear()
+    invalidate_notes()
     st.rerun()
 
 

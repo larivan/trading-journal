@@ -155,7 +155,10 @@ def persist_image_editor(
 
     for image_id in set(current_by_id.keys()) - desired_ids:
         if image_id is not None:
-            delete_image(image_id, conn=conn)
+            try:
+                delete_image(image_id, conn=conn)
+            except ValueError:
+                pass  # already deleted — desired state achieved
 
     for row in desired_rows:
         image_id = row.get("id")
