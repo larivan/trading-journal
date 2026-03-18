@@ -213,6 +213,7 @@ def filter_trades(
       date_from, date_to  — строки ISO (date_local >= / <=)
       account_id          — int
       setup_id            — int
+      analysis_id         — int
       status              — str (computed: "Open" | "Outcome" | "Reviewed")
       trade_type          — str
       asset               — str
@@ -229,6 +230,7 @@ def filter_trades(
     date_to = filters.get("date_to")
     account_id = filters.get("account_id")
     setup_id = filters.get("setup_id")
+    analysis_id = filters.get("analysis_id")
     status = filters.get("status")
     asset = filters.get("asset")
     trade_type = filters.get("trade_type")
@@ -245,6 +247,8 @@ def filter_trades(
         if account_id is not None and row.get("account_id") != account_id:
             continue
         if setup_id is not None and row.get("setup_id") != setup_id:
+            continue
+        if analysis_id is not None and row.get("analysis_id") != analysis_id:
             continue
         if status is not None and row.get("status") != status:
             continue
