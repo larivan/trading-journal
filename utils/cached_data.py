@@ -301,8 +301,9 @@ def filter_analysis(
     result = []
     date_from = filters.get("date_from")
     date_to = filters.get("date_to")
+    asset_filter = filters.get("asset")
     simple_fields = {
-        k: filters[k] for k in ("asset", "daily_bias", "fact_bias", "day_result", "state")
+        k: filters[k] for k in ("daily_bias", "fact_bias", "day_result", "state")
         if filters.get(k) is not None
     }
 
@@ -311,6 +312,10 @@ def filter_analysis(
             continue
         if date_to and (row.get("date_local") or "") > date_to:
             continue
+        if asset_filter is not None:
+            row_assets = row.get("asset") or []
+            if asset_filter not in row_assets:
+                continue
         skip = False
         for field, value in simple_fields.items():
             if row.get(field) != value:

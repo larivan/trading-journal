@@ -247,7 +247,7 @@ CREATE TABLE IF NOT EXISTS analysis (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     INTEGER NOT NULL,
     date_local  TEXT NOT NULL,
-    asset       TEXT,
+    asset       TEXT NOT NULL DEFAULT '[]',
     daily_bias  TEXT,
     fact_bias   TEXT,
     day_result  TEXT,
@@ -369,6 +369,11 @@ DROP TABLE IF EXISTS analysis_note_links;
 DROP TABLE IF EXISTS analysis_stages;
 """
 
+_MIGRATE_ANALYSIS_ASSET_SQL = """
+UPDATE analysis SET asset = json_array(asset) WHERE asset IS NOT NULL AND asset NOT LIKE '[%';
+UPDATE analysis SET asset = '[]' WHERE asset IS NULL;
+"""
+
 
 _db_initialized = False
 
@@ -388,8 +393,13 @@ def init_db() -> None:
                 if s:
                     conn.execute(s)
             _execute_schema(conn)
+            for stmt in _MIGRATE_ANALYSIS_ASSET_SQL.split(";"):
+                s = stmt.strip()
+                if s:
+                    conn.execute(s)
+            conn.commit()
         else:
-            conn.executescript(_DROP_LEGACY_SQL + SCHEMA_SQL)
+            conn.executescript(_DROP_LEGACY_SQL + SCHEMA_SQL + _MIGRATE_ANALYSIS_ASSET_SQL)
             conn.commit()
     finally:
         conn.close()

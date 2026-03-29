@@ -87,9 +87,10 @@ if not is_new_analysis:
 if is_new_analysis:
     st.title("New analysis")
 else:
-    asset = (analysis.get("asset") or "Analysis").strip() or "Analysis"
+    _assets_list = analysis.get("asset") or []
+    asset_label = ", ".join(_assets_list) if _assets_list else "Analysis"
     date_value = (analysis.get("date_local") or "").strip() or ""
-    st.title(f"{asset} · {date_value}" if date_value else asset)
+    st.title(f"{asset_label} · {date_value}" if date_value else asset_label)
 
 message_placeholder = st.empty()
 sk = f"{ANALYSIS_MANAGER_KEY_PREFIX}{analysis_id or 'new'}"
@@ -229,13 +230,11 @@ with meta_col:
                              key=f"{sk}_date", format="DD.MM.YYYY")
 
     # Актив
-    _asset_val = analysis.get("asset") or ""
-    _asset_idx = assets.index(_asset_val) if _asset_val in assets else None
-    asset_val = st.selectbox(
+    _asset_val = analysis.get("asset") or []
+    asset_val = st.multiselect(
         "Asset",
         assets,
-        index=_asset_idx,
-        placeholder="Select asset...",
+        default=[a for a in _asset_val if a in assets],
         key=f"{sk}_asset",
     )
 
@@ -344,6 +343,11 @@ if not is_new_analysis:
                 value=_default_acc,
                 key=f"{sk}_pop_account",
             )
+            _analysis_assets = analysis.get("asset") or []
+            pop_asset = (
+                _analysis_assets[0] if len(_analysis_assets) == 1
+                else st.selectbox("Asset", _analysis_assets, key=f"{sk}_pop_asset")
+            ) if _analysis_assets else ""
             if st.button("Go", type="primary", width=250, key=f"{sk}_pop_go"):
                 _now = _dt.now()
                 with transaction() as conn:
@@ -351,7 +355,7 @@ if not is_new_analysis:
                         "date_local": _now.date().isoformat(),
                         "time_local": _now.strftime("%H:%M:%S"),
                         "account_id": pop_account,
-                        "asset": asset_val or "",
+                        "asset": pop_asset,
                         "analysis_id": analysis_id,
                         "session": detect_trade_session(
                             _now.date(),
@@ -370,7 +374,7 @@ if not is_new_analysis:
 # --- Сохранение ---
 if submitted:
     if not asset_val:
-        message_placeholder.error("Select an asset.")
+        message_placeholder.error("Select at least one asset.")
         st.stop()
 
     payload: Dict[str, Any] = {

@@ -101,8 +101,11 @@ else:
     df = pd.DataFrame(rows)
     df["date_display"] = df["date_local"].apply(format_local_date)
     df["_link"] = "/analysis_editor?id=" + df["id"].astype(str)
+    df["asset_display"] = df["asset"].apply(
+        lambda v: ", ".join(v) if isinstance(v, list) else (v or "")
+    )
 
-    display_cols = ["_link", "date_display", "asset",
+    display_cols = ["_link", "date_display", "asset_display",
                     "daily_bias", "fact_bias", "day_result"]
     for col in display_cols:
         if col not in df.columns:
@@ -112,7 +115,7 @@ else:
         df[display_cols],
         column_config={
             "date_display": st.column_config.TextColumn("Date"),
-            "asset": st.column_config.TextColumn("Asset"),
+            "asset_display": st.column_config.TextColumn("Asset"),
             "daily_bias": st.column_config.TextColumn("Daily bias"),
             "fact_bias": st.column_config.TextColumn("Fact bias"),
             "day_result": st.column_config.TextColumn("Result"),
@@ -137,17 +140,19 @@ with btn_create.popover("Create", type="primary", width="stretch"):
         or (get_setting("default_asset") if get_setting("default_asset") in assets_list else None)
         or (assets_list[0] if assets_list else "EUR/USD")
     )
-    pop_asset = st.selectbox(
+    pop_assets = st.multiselect(
         "Asset", assets_list,
-        index=assets_list.index(
-            default_ast) if default_ast in assets_list else 0,
+        default=[default_ast] if default_ast in assets_list else [],
         key="_create_analysis_pop_asset",
     )
     if st.button("Go", type="primary", width=250, key="_create_analysis_pop_go"):
+        if not pop_assets:
+            st.error("Select at least one asset.")
+            st.stop()
         with transaction() as conn:
             new_id = add_analysis(user_id, {
                 "date_local": date.today().isoformat(),
-                "asset": pop_asset,
+                "asset": pop_assets,
             }, conn=conn)
         invalidate_analysis()
         st.session_state["_new_analysis_id"] = new_id

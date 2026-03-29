@@ -1,4 +1,5 @@
 # db/analysis.py — Analysis CRUD operations
+import json
 import sqlite3
 from typing import Any, Dict, List, Optional
 
@@ -52,8 +53,27 @@ def _normalize_analysis_payload(data: Dict[str, Any]) -> Dict[str, Any]:
         if key == "date_local":
             payload[key] = normalize_date(value)
             continue
+        if key == "asset":
+            if isinstance(value, list):
+                payload[key] = json.dumps(value)
+            else:
+                payload[key] = json.dumps([value]) if value else json.dumps([])
+            continue
         payload[key] = value
     return payload
+
+
+def _deserialize_analysis(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Deserialize asset JSON string to list."""
+    raw = row.get("asset")
+    if isinstance(raw, str):
+        try:
+            row["asset"] = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            row["asset"] = [raw] if raw else []
+    elif raw is None:
+        row["asset"] = []
+    return row
 
 
 # =====================================================================
@@ -70,6 +90,8 @@ def add_analysis(
     payload = _normalize_analysis_payload(data)
     if "date_local" not in payload:
         raise ValueError("date_local is required for analysis.")
+    if "asset" not in payload or json.loads(payload["asset"]) == []:
+        raise ValueError("asset is required for analysis.")
 
     payload["user_id"] = user_id
     columns = ", ".join(payload.keys())
@@ -107,7 +129,6 @@ def list_analysis(
     params: List[Any] = [user_id]
 
     mapping = {
-        "asset": "a.asset",
         "daily_bias": "a.daily_bias",
         "fact_bias": "a.fact_bias",
         "date_from": "a.date_local >= ?",
@@ -118,6 +139,9 @@ def list_analysis(
             continue
         if key in ("date_from", "date_to"):
             q += f" AND {mapping[key]}"
+            params.append(value)
+        elif key == "asset":
+            q += " AND EXISTS (SELECT 1 FROM json_each(a.asset) WHERE value = ?)"
             params.append(value)
         elif key in mapping:
             q += f" AND {mapping[key]} = ?"
@@ -140,7 +164,7 @@ def list_analysis(
     conn = get_conn()
     try:
         rows = conn.execute(q, params).fetchall()
-        return _rows_to_dicts(rows)
+        return [_deserialize_analysis(r) for r in _rows_to_dicts(rows)]
     finally:
         conn.close()
 
@@ -155,7 +179,7 @@ def get_analysis(analysis_id: int, user_id: int) -> Optional[Dict[str, Any]]:
             f"WHERE a.id=? AND a.user_id=? GROUP BY a.id",
             (analysis_id, user_id),
         ).fetchone()
-        return dict(row) if row else None
+        return _deserialize_analysis(dict(row)) if row else None
     finally:
         conn.close()
 

@@ -100,7 +100,10 @@ def render_trade_manager() -> None:
         )
         analyses = to_option_format(
             cached_analysis(user_id),
-            formatter=lambda analysis: f"{analysis.get('date_local')} · {analysis.get('asset')}",
+            formatter=lambda analysis: (
+                f"{analysis.get('date_local')} · "
+                f"{', '.join(analysis.get('asset') or [])}"
+            ),
         )
         defaults = get_trade_defaults(trade, accounts)
         images = cached_images(trade_id=trade_id) if trade_id else []

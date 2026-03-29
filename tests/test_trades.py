@@ -18,7 +18,7 @@ def trade_dependencies(test_user):
     """Create required dependencies for trades."""
     account_id = create_account(test_user, name="Test Account", starting_balance=10000.0)
     setup_id = create_setup(test_user, name="Test Setup")
-    analysis_id = add_analysis(test_user, {"date_local": "2026-02-01"})
+    analysis_id = add_analysis(test_user, {"date_local": "2026-02-01", "asset": ["EUR/USD"]})
     return {
         "account_id": account_id,
         "setup_id": setup_id,
@@ -193,7 +193,7 @@ class TestListTrades:
         acc1 = create_account(user_id, name="Account 1", starting_balance=10000.0)
         acc2 = create_account(user_id, name="Account 2", starting_balance=10000.0)
         setup_id = create_setup(user_id, name="Setup")
-        analysis_id = add_analysis(user_id, {"date_local": "2026-02-01"})
+        analysis_id = add_analysis(user_id, {"date_local": "2026-02-01", "asset": ["EUR/USD"]})
 
         deps1 = {"account_id": acc1, "setup_id": setup_id, "analysis_id": analysis_id, "user_id": user_id}
         deps2 = {"account_id": acc2, "setup_id": setup_id, "analysis_id": analysis_id, "user_id": user_id}
@@ -227,7 +227,7 @@ class TestFilterByResult:
         user_id = test_user
         account_id = create_account(user_id, name="Acc", starting_balance=10000.0)
         setup_id = create_setup(user_id, name="S")
-        analysis_id = add_analysis(user_id, {"date_local": "2026-01-01"})
+        analysis_id = add_analysis(user_id, {"date_local": "2026-01-01", "asset": ["EUR/USD"]})
         return {"account_id": account_id, "setup_id": setup_id, "analysis_id": analysis_id, "user_id": user_id}
 
     def _make(self, deps, **kw):

@@ -22,7 +22,7 @@ def note_m2m_deps(test_user):
     """Dependencies for M2M note tests: a trade."""
     account_id = create_account(test_user, name="Acc", starting_balance=10000.0)
     setup_id = create_setup(test_user, name="S")
-    add_analysis(test_user, {"date_local": "2026-01-01"})
+    add_analysis(test_user, {"date_local": "2026-01-01", "asset": ["EUR/USD"]})
     trade_id = create_trade(test_user, {
         "local_tz": "UTC+3",
         "date_local": "2026-01-01",
