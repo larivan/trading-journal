@@ -41,7 +41,7 @@ from db import (
     transaction,
     update_trade,
 )
-from helpers import parse_date, parse_time, to_option_format
+from helpers import format_local_date, parse_date, parse_time, to_option_format
 from utils.auth import get_current_user_id, get_setting
 from utils.cached_data import (
     cached_accounts,
@@ -219,13 +219,13 @@ render_delete_dialog(
     invalidate_fn=invalidate_trades,
 )
 
-_NOTE_CATEGORIES = ["Hot thought", "Cold thought", "Observation"]
+_NOTE_CATEGORIES = ["Hot thought", "Cold thought", "Observation", "Note"]
 
 # --- Форма: чарты/комментарии (слева) + секции (справа) ---
 side_col, stages_col = st.columns([2, 1], gap="medium")
 
 with side_col:
-    st.markdown("#### Charts")
+    st.markdown("### Charts")
     current_images = render_image_editor(
         key=f"{state_key}_chart_editor",
         base_rows=images,
@@ -249,7 +249,7 @@ with side_col:
             invalidate_trades()
         st.rerun()
 
-    st.markdown("#### Comments")
+    st.markdown("### Comments")
     trade_notes = cached_trade_notes(trade_id) if trade_id else []
     note_counts = cached_notes_count_by_trade(user_id) if trade_id else {}
 
@@ -263,7 +263,7 @@ with side_col:
             count = note_counts.get(note["id"], 1)
             is_shared = count > 1
             shared_badge = f"  ·  🔗 {count} trades" if is_shared else ""
-            badge = f"{note.get('date_local', '')}  {time_display}  ·  {category}{shared_badge}"
+            badge = f"{format_local_date(note.get('date_local'))}  {time_display}  ·  {category}{shared_badge}"
             note_images = cached_images(note_id=note["id"])
             render_entry_card(
                 entry_id=note["id"],

@@ -33,7 +33,7 @@ from components.editor_ui import (
     render_entry_card,
     section_divider,
 )
-from helpers import calculate_trade_result, custom_selectbox, parse_date, to_option_format
+from helpers import calculate_trade_result, custom_selectbox, format_local_date, parse_date, to_option_format
 from utils.auth import get_current_user_id, get_setting
 from utils.cached_data import (
     cached_accounts,
@@ -125,12 +125,13 @@ render_delete_dialog(
 side_col, meta_col = st.columns([2, 1], gap="medium")
 
 with side_col:
-    st.markdown("#### Journal")
+    st.markdown("### Journal")
 
     _CATEGORY_LABEL = {
         "pre-market": "Pre-Market",
         "plan": "Plan",
         "post-market": "Post-Market",
+        "note": "Note",
     }
 
     if not analysis_notes:
@@ -146,12 +147,13 @@ with side_col:
             badge_label = _CATEGORY_LABEL.get(
                 category, category) if category else "Note"
             badge_extra = f"  ·  🔗 {count} analyses" if is_shared else ""
+            date_display = format_local_date(entry.get("date_local"))
             time_display = (entry.get("time_local") or "")[:5]
             note_images = cached_images(note_id=entry["id"])
             render_entry_card(
                 entry_id=entry["id"],
-                badge=f"[{badge_label}]{badge_extra}",
-                time_display=time_display,
+                badge=f"{date_display}  {time_display}  ·  {badge_label}{badge_extra}",
+                time_display="",
                 body=entry.get("body") or "",
                 images=note_images,
                 on_save=lambda new_body, eid=entry["id"]: update_note(
@@ -177,7 +179,7 @@ with side_col:
     _available_pills = [
         label for label, key in _CATEGORY_LABEL_MAP
         if _CATEGORY_ORDER[key] >= _min_order
-    ]
+    ] + ["Note"]
 
     _type_key = f"{sk}_entry_type"
     if st.session_state.get(_type_key) not in _available_pills:
@@ -207,6 +209,7 @@ with side_col:
                 "Pre-Market": "pre-market",
                 "Plan": "plan",
                 "Post-Market": "post-market",
+                "Note": "note",
             }
             with transaction() as conn:
                 note_id = create_note(user_id, {

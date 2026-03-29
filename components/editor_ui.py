@@ -108,7 +108,7 @@ def render_entry_card(
 
     with st.container(border=True):
         hdr_col, actions_col = st.columns([0.85, 0.15])
-        hdr_col.markdown(f"**{badge}** {time_display}")
+        hdr_col.markdown(f"##### {badge} {time_display}")
 
         edit_col, del_col = actions_col.columns(2, gap="small")
         if edit_col.button("✎", key=f"_edit_btn_{key_prefix}_{entry_id}", help="Edit", use_container_width=True):
@@ -137,7 +137,7 @@ def render_entry_card(
                 st.rerun()
         else:
             if body and body != "(image)":
-                st.markdown(body)
+                st.markdown(body.replace("\n", "  \n"))
 
         if images:
             img_cols = st.columns(min(len(images), 2))
