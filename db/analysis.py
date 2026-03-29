@@ -66,12 +66,15 @@ def _normalize_analysis_payload(data: Dict[str, Any]) -> Dict[str, Any]:
 def _deserialize_analysis(row: Dict[str, Any]) -> Dict[str, Any]:
     """Deserialize asset JSON string to list."""
     raw = row.get("asset")
+    if isinstance(raw, list):
+        return row
     if isinstance(raw, str):
         try:
-            row["asset"] = json.loads(raw)
+            parsed = json.loads(raw)
+            row["asset"] = parsed if isinstance(parsed, list) else ([parsed] if parsed is not None else [])
         except (json.JSONDecodeError, TypeError):
             row["asset"] = [raw] if raw else []
-    elif raw is None:
+    else:
         row["asset"] = []
     return row
 

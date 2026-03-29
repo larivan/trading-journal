@@ -369,10 +369,20 @@ DROP TABLE IF EXISTS analysis_note_links;
 DROP TABLE IF EXISTS analysis_stages;
 """
 
-_MIGRATE_ANALYSIS_ASSET_SQL = """
-UPDATE analysis SET asset = json_array(asset) WHERE asset IS NOT NULL AND asset NOT LIKE '[%';
-UPDATE analysis SET asset = '[]' WHERE asset IS NULL;
-"""
+def _migrate_analysis_assets(conn) -> None:
+    """Convert analysis.asset from plain text to JSON array format."""
+    import json as _json
+    rows = conn.execute("SELECT id, asset FROM analysis").fetchall()
+    for row in _rows_to_dicts(rows):
+        asset = row.get("asset")
+        if asset is None or asset == "":
+            conn.execute("UPDATE analysis SET asset = '[]' WHERE id = ?", (row["id"],))
+        elif not asset.startswith("["):
+            conn.execute(
+                "UPDATE analysis SET asset = ? WHERE id = ?",
+                (_json.dumps([asset]), row["id"]),
+            )
+    conn.commit()
 
 
 _db_initialized = False
@@ -393,14 +403,10 @@ def init_db() -> None:
                 if s:
                     conn.execute(s)
             _execute_schema(conn)
-            for stmt in _MIGRATE_ANALYSIS_ASSET_SQL.split(";"):
-                s = stmt.strip()
-                if s:
-                    conn.execute(s)
-            conn.commit()
         else:
-            conn.executescript(_DROP_LEGACY_SQL + SCHEMA_SQL + _MIGRATE_ANALYSIS_ASSET_SQL)
+            conn.executescript(_DROP_LEGACY_SQL + SCHEMA_SQL)
             conn.commit()
+        _migrate_analysis_assets(conn)
     finally:
         conn.close()
     _db_initialized = True
